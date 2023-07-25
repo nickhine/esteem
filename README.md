@@ -40,11 +40,11 @@ Write a script that imports esteem tasks and wrappers (or adapt something from
 
 Run the script, specifying the task, seedname and task_target
 
-python my_script.py <task> <seedname> <task_target>
+    python my_script.py <task> <seedname> <task_target>
 
 eg
 
-python cate.py solutes cate gs_PBE
+    python cate.py solutes cate gs_PBE
 
 The script should invoke the main drivers routine once the tasks are set up.
 
