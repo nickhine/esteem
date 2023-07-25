@@ -19,6 +19,7 @@ jobs:
   deploy:
 
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       # IMPORTANT: this permission is mandatory for trusted publishing
       id-token: write
@@ -41,4 +42,4 @@ jobs:
 #      @27b31702a0e7fc50959f5ad993c78deac1bdfc29
 #      with:
 #        user: __token__
-        password: ${{ secrets.PYPI_TOKEN }}
+#        password: ${{ secrets.PYPI_TOKEN }}
