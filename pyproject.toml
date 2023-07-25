@@ -1,0 +1,22 @@
+[build-system]
+requires = [
+    "setuptools>=42",
+    "wheel"
+]
+build-backend = "setuptools.build_meta"
+[project]
+name = "esteem"
+version = "1.0.0"
+authors = [ { name="Nicholas Hine", email="n.d.m.hine@warwick.ac.uk" }, ]
+description = "Explicit Solvent Toolkit for Electronic Excitations of Molecules"
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://esteem.readthedocs.io/en/latest/"
+"Bug Tracker" = "https://esteem.readthedocs.io/en/latest/"
