@@ -18,11 +18,11 @@ sys.path.insert(0, os.path.abspath('..'))
 # -- Project information -----------------------------------------------------
 
 project = 'ESTEEM'
-copyright = '2020, Nicholas Hine'
+copyright = '2023, Nicholas Hine'
 author = 'Nicholas Hine'
 
 # The full version, including alpha/beta/rc tags
-release = '0.0.1'
+release = '1.0.1'
 
 
 # -- General configuration ---------------------------------------------------
@@ -46,12 +46,6 @@ master_doc = 'index'
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = []
-
-# Convert notebooks to python
-os.chdir('..')
-import setup as package_setup
-package_setup.build_py()
-os.chdir('docs')
 
 # -- Options for HTML output -------------------------------------------------
 
