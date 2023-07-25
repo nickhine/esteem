@@ -19,13 +19,11 @@ If you find this project useful, I would appreciate if you cite these works:
    
    T.J. Zuehlsdorff, P.D. Haynes, M.C. Payne, and N.D.M. Hine, Predicting solvatochromic shifts and colours of a solvated organic dye: The example of Nile Red, `J. Chem. Phys. 146, 124504 (2017) <https://aip.scitation.org/doi/10.1063/1.4979196>`_
 
-I hope to make ESTEEM installable via pip soon. This means you would be able to install with just::
+ESTEEM is installable via pip: installation should be as simple as::
 
    $ pip3 install esteem
 
-But this is not available yet.
-
-Acknowledgements: Some parts of ESTEEM are based on earlier python scripting by members of my research group including Tim Zuehlsdorff, David Turban and Matt Turner.
+Acknowledgements: Some parts of ESTEEM are based on python scripting by members of my research group including Tim Zuehlsdorff, David Turban, Matt Turner, Carlo Maino and Panos Kourtis.
 
 **Manual**:
 
