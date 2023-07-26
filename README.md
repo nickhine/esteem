@@ -3,22 +3,25 @@ ESTEEM: Explicit Solvent Toolkit for Electronic Excitations in Molecules
 
 ## Contents of package:
 
-A python package that uses the Atomic Simulation Environment python
-packages, and a range of optional calculators that ASE can make
-available, to perform calculations of excited states of explicitly-solvated
-solute molecules.
+A python package that uses the Atomic Simulation Environment and a
+range of optional calculators that ASE supports, to perform
+calculations of excited states of explicitly-solvated solute molecules.
+
+ESTEEM can be used for DFT calculations in the ensemble approach, or to
+train a Machine Learned Interatomic Potential for Theoretical Spectroscopy.
+
 
 ## Dependencies:
 
 * Python 3
-* ASE (tested on 3.19.0)
+* ASE
 
 ## Codes which can be interfaced with (all optional):
-* NWChem >=6.6 (tested on 6.6, 6.8, 7.0)
-* ORCA >= 5.0.2
-* AMBER (tested on AmberTools 16.0 and 20.0)
+* ORCA (>= 5.0.2)
+* NWChem
+* AMBER
 * LAMMPS
-* ONETEP (tested on 5.3.x and 6.0)
+* ONETEP
 * PhysNet
 * MACE
 * AMP
