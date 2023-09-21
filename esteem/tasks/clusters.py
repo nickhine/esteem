@@ -684,7 +684,7 @@ def delete_counterions(t,solvent_radius,nat_tot,nat_solute,nat_counterions,
 def delete_excess_molecules(t,nat_tot,nat_solvent,nat_solute,nmol_solvent_targ,
                             deleted_atoms=None):
     """
-    Deletes solvent molecules
+    Deletes solvent molecules at random until nmol_solvent_targ is reached
     """
     import random
     nat_tot_cluster = len(t)
@@ -699,11 +699,14 @@ def delete_excess_molecules(t,nat_tot,nat_solvent,nat_solute,nmol_solvent_targ,
 
 def delete_furthest_molecules(t,nat_tot,nat_solvent,nat_solute,nmol_solvent_targ,
                               deleted_atoms=None):
+    """
+    Deletes furthest away solvent molecules until nmol_solvent_targ is reached
+    """
     nat_tot_cluster = len(t)
     nmol_solvent = int((nat_tot_cluster-nat_solute)/nat_solvent)
     Rij = np.zeros((nat_solvent*nmol_solvent,nat_solute))
     # Get entries in matrix of distances between all solute and solvent atoms
-    if nat_tot==nat_solute:
+    if nat_tot_cluster==nat_solute:
         for i in range(nat_solute):
             Rij[:,i] = np.zeros((0))
     else:
@@ -1045,7 +1048,7 @@ def sanity_check(trajname='', wrapper=None, calc_params = {},
         if not read_success:
             print(f'{i:04} {targ:03} {n:03} (JOB EXECUTION FAILED)')
         # Empirical thresholds currently
-        elif de_per_solv>0.85 or de_per_solv<0.0 or dnorm>refdnorm*2 or fnorm>1:
+        elif de_per_solv>0.85 or de_per_solv<0.0 or dnorm>refdnorm*3 or fnorm>1:
             fails.append(i)
             print(f'{i:04} {targ:03} {n:03} {e:16.8f} {eref:16.8f} {de_per_solv:16.8f} {fnorm:16.8f} {dnorm:16.8f} {refdnorm:16.8f}')
 
@@ -1053,7 +1056,7 @@ def sanity_check(trajname='', wrapper=None, calc_params = {},
         howmany = 'No'
     else:
         howmany = len(fails)
-    print('# {howmany} frames in the trajectory were found to have possibly alarming energy, force or dipole values')
+    print(f'# {howmany} frames in the trajectory were found to have possibly alarming energy, force or dipole values')
     print('# Thresholds used: energy deviation < 0.85eV per solv molecule, force norm < 1eV/A/atom, dipole < 2 ref value)')
     
     def energy_check():

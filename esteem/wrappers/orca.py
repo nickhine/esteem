@@ -132,6 +132,12 @@ class ORCAWrapper():
             return 'ethanol'
         elif solvent=='acet':
             return 'acetonitrile'
+        elif solvent=='actn':
+            return 'acetone'
+        elif solvent=='dich':
+            return 'CH2Cl2'
+        elif solvent=='diox':
+            return 'toluene' # closest match to properties - fixed later
         elif solvent=='dich':
             return 'CH2Cl2'
         elif solvent=='cycl':
@@ -144,6 +150,7 @@ class ORCAWrapper():
 # data from
 # https://www.engineeringtoolbox.com/liquid-dielectric-constants-d_1263.html#google_vignette
 # https://www.engineeringtoolbox.com/refractive-index-d_1264.html
+# https://depts.washington.edu/eooptic/linkfiles/dielectric_chart%5B1%5D.pdf
     def _add_cpcm_block(self,calc,solvent):
         if solvent=='etgl':
             self.cpcm_block = (f"\n%cpcm\n" + 
@@ -153,6 +160,10 @@ class ORCAWrapper():
             self.cpcm_block = (f"\n%cpcm\n" + 
                                f"epsilon 46.5\n" +
                                f"refrac 1.47\nend\n")
+        elif solvent=='diox':
+            self.cpcm_block = (f"\n%cpcm\n" + 
+                               f"epsilon 2.25\n" +
+                               f"refrac 1.4224\nend\n")
         else:
             self.cpcm_block = None
             # for reference, ethanol: 25.3, 1.36

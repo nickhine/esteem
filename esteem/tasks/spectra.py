@@ -170,12 +170,14 @@ class SpectraTask:
                             else:
                                 e1c = 0.0; e0c = 0.0
                             # Account for calculators which return an array of values
-                            if isinstance(e1,list) or isinstance(e1,np.ndarray):
-                                e1 = e1[0]
+                            if isinstance(e0,list) or isinstance(e0,np.ndarray):
                                 e0 = e0[0]
-                                if corr_traj[0] is not None and (isinstance(e1c,list) or isinstance(e1c,np.ndarray)):
-                                    e1c = e1c[0]
+                                if corr_traj[0] is not None and (isinstance(e0c,list) or isinstance(e0c,np.ndarray)):
                                     e0c = e0c[0]
+                            if isinstance(e1,list) or isinstance(e1,np.ndarray):
+                                e1 = e1[-1]
+                                if corr_traj[0] is not None and (isinstance(e1c,list) or isinstance(e1c,np.ndarray)):
+                                    e1c = e1c[-1]
                             ediff = e1 - e0 + e1c - e0c
                             # Swap sign of energy difference, if emission calculation is requested
                             if self.mode=='emission':

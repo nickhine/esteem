@@ -285,7 +285,7 @@ def compare_wrapper_to_traj(wrapper,calc_params,trajin,trajout_file):
         if isinstance(calc_params["calc_suffix"],dict):
             print(f'{i:4d} {e_traj:12.5f} {np.mean(e_calc):12.5f} {np.std(e_calc):8.5f} {np.mean(e_traj-e_calc):8.5f} {np.mean(np.abs(e_traj-e_calc)):8.5f} {rms_fd:8.5f} {max_fd:8.5f}')
         else:
-            print('%4d   %12.5f %12.5f     %12.8f     %8.5f  %8.5f %8.5f' %
+            print('%4d   %14.5f %14.5f     %12.8f     %8.5f  %8.5f %8.5f' %
               (i, e_traj, e_calc, e_traj-e_calc, rms_fd,max_fd,rms_dd))
         
         # Assemble dictionary of properties to write to the output trajectory

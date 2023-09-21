@@ -169,25 +169,34 @@ def add_trajectories(task,seeds,calc,traj_suffixes,dir_suffixes,ntraj,targets,ta
                         print('# Please ensure no overlap with other targets:')
                         print(task.which_trajs)
 
-def add_iterating_trajectories(task,seeds,calc,iter_dir_suffixes,targets,target,meth,truth):
+def add_iterating_trajectories(task,seeds,calc,iter_dir_suffixes,targets,target,meth,truth,only_gen=None):
     """
     Adds iterating trajectories
     """
     from esteem.tasks.ml_testing import MLTestingTask
     gen = get_gen_from_calc(calc)
+    genstart = 0
+    genend = gen
     if type(task)==MLTestingTask and gen is not None:
-        gen = gen + 1
+        if only_gen is not None:
+            genstart = only_gen
+            genend = only_gen + 1
+        else:
+            genend = gen + 1
     all_used_trajs = task.which_trajs.copy()
     if task.which_trajs_valid is not None:
         all_used_trajs += task.which_trajs_valid
     if task.which_trajs_test is not None:
         all_used_trajs += task.which_trajs_test
-    last_static_traj_char = sorted(all_used_trajs)[-1]
-    if gen is None or gen < 1:
+    if len(all_used_trajs)>0:
+        last_static_traj_char = sorted(all_used_trajs)[-1]
+    else:
+        last_static_traj_char = chr(ord('A')-1)
+    if gen is None or (gen < 1 and type(task)!=MLTestingTask):
         return
     targstr = targets[target]
     # Loop over generations prior to current
-    for g in range(gen):
+    for g in range(genstart,genend):
         calcp = f'{pref(calc)}{g}{calc[-1]}'
         # Use fixed traj_suffix along the lines of "orca_ac9ra" currently - perhaps make templatable?
         traj_suffix = f'{truth}_{suff(calcp)}'
@@ -314,6 +323,8 @@ def create_mltraj_tasks(mltraj_task,train_calcs,targets,rand_seed,meth,md_wrappe
                 # Save a task for just using one calculator at a time
                 mltraj_task.snap_wrapper = None
                 taskname = f'{targstr}_{meth}{t}{rs}'
+                mltraj_task.wrapper.train_args['seed'] = rand_seed[rs]
+                mltraj_task.calc_suffix = f'{meth}{t}{rs}'
                 if snap_wrapper is None:
                     mltraj_task.snap_calc_params = None
                 else:
@@ -330,9 +341,7 @@ def create_mltraj_tasks(mltraj_task,train_calcs,targets,rand_seed,meth,md_wrappe
                                                     'calc_prefix':'../../',
                                                     'calc_dir_suffix':mltraj_task.calc_dir_suffix,
                                                     'calc_suffix':calc_suffix,
-                                                    'calc_seed':mltraj_task.calc_seed}                    
-                mltraj_task.wrapper.train_args['seed'] = rand_seed[rs]
-                mltraj_task.calc_suffix = f'{meth}{t}{rs}'
+                                                    'calc_seed':mltraj_task.calc_seed}
                 mltraj_task.traj_suffix = f'{mltraj_task.calc_suffix}_{traj_suffix}'
                 new_mltraj_tasks[taskname] = deepcopy(mltraj_task)
     return new_mltraj_tasks
@@ -342,7 +351,7 @@ def create_mltraj_tasks(mltraj_task,train_calcs,targets,rand_seed,meth,md_wrappe
 
 
 def create_mltest_tasks(test_task,train_calcs,seeds,targets,rand_seed,truth,meth,
-                        traj_suffixes={},dir_suffixes={},iter_dir_suffixes={},ntraj={}):
+                        traj_suffixes={},dir_suffixes={},iter_dir_suffixes={},ntraj={},separate_valid=False):
     """
     Returns a dictionary of MLTest tasks, based on an input prototype task supplied by
     the user, for all the required MLTest tasks for an Active Learning task.
@@ -363,40 +372,45 @@ def create_mltest_tasks(test_task,train_calcs,seeds,targets,rand_seed,truth,meth
             targstr = targets[target]
             test_task.traj_links = {}
             test_task.which_trajs = []
+            if separate_valid:
+                test_task.traj_links_valid = test_task.traj_links
+                test_task.which_trajs_valid = test_task.which_trajs
+            else:
+                test_task.traj_links_valid = None
+                test_task.which_trajs_valid = None
             add_trajectories(test_task,seeds,t,traj_suffixes,dir_suffixes,ntraj,targets,target,truth)
             # For generations > 0, we now add chosen subset trajectories for active learning
             add_iterating_trajectories(test_task,seeds,t,iter_dir_suffixes,targets,target,meth,truth)
             for rs in rand_seed:
                 test_task.wrapper.train_args['seed'] = rand_seed[rs]
                 test_task.calc_suffix = f'{meth}{t}{rs}'
-                test_task.plotfile = f'{{solu}}_{test_task.calc_suffix}.png'
+                test_task.plotfile = f'{{solu}}_{{solv}}_{test_task.calc_suffix}.png'
                 # Store a test task for evaluating the success of the calculator on its training data
                 new_test_tasks[f"{targets[target]}_{meth}{t}{rs}"] = deepcopy(test_task)
-                # Now set up a task for testing against ground truth results sampled from each set of trajectory data
-                for itarg1,target1 in enumerate(targets): #targets):
-                    mltraj_target = targets[target1]
-                    if mltraj_target != "gs":
-                        continue
-                    for tp in train_calcs:
-                        gen = get_gen_from_calc(tp) # which generation is this
-                        if gen is None:
-                            continue
-                        v = chr(ord('A')-1+gen) if gen>0 else ''
-                        which_trajs = [v+get_traj_from_calc(tp)]
-                        which_trajs += [v+'Q']
-                        test_task.traj_prefix = f'{{solu}}_{targets[target]}_{meth}{pref(tp)}/'
-                        for w in which_trajs:
-                            test_task.which_trajs = [w]
-                            traj_suffix = '' if w==tp[-1].upper() else '_'+w[-1]
-                            test_task.traj_links[w] = f'{{solu}}_{mltraj_target}_{meth}{pref(tp)}_mlclus/{{solu}}_{targets[target]}_{w[-1]}_{truth}_{suff(tp)}.traj'
-                            new_test_tasks[f"{targets[target]}_{meth}{t}{rs}_mltraj_{meth}{tp}{rs}"+traj_suffix] = deepcopy(test_task)
+            # Now set up tasks for testing against ground truth results sampled from a specific set of trajectory data
+            for tp in train_calcs:
+                test_task.traj_links = {}
+                test_task.which_trajs = []
+                if separate_valid:
+                    test_task.traj_links_valid = test_task.traj_links
+                    test_task.which_trajs_valid = test_task.which_trajs
+                else:
+                    test_task.traj_links_valid = None
+                    test_task.which_trajs_valid = None
+                only_gen = get_gen_from_calc(tp)
+                add_iterating_trajectories(test_task,seeds,t,iter_dir_suffixes,targets,target,meth,truth,only_gen=only_gen)
+                for rs in rand_seed:
+                    test_task.wrapper.train_args['seed'] = rand_seed[rs]
+                    test_task.calc_suffix = f'{meth}{t}{rs}'
+                    test_task.plotfile = f'{{solu}}_{{solv}}_{test_task.calc_suffix}_mltraj_{meth}{tp}.png'
+                    new_test_tasks[f"{targets[target]}_{meth}{t}{rs}_mltraj_{meth}{tp}"] = deepcopy(test_task)
     return new_test_tasks
 
 
 # In[12]:
 
 
-def create_spectra_tasks(spectra_task,train_calcs,targets,rand_seed,meth,corr_traj=False):
+def create_spectra_tasks(spectra_task,train_calcs,targets,rand_seed,meth,ntraj,corr_traj=False):
     """
     Returns a dictionary of Spectra tasks, based on an input prototype task supplied by
     the user, for all the required Spectra tasks for an Active Learning task.
@@ -406,6 +420,7 @@ def create_spectra_tasks(spectra_task,train_calcs,targets,rand_seed,meth,corr_tr
     new_spectra_tasks = {}
     for target in targets:
         targstr = targets[target]
+        targstrp = "gs" if targstr=="es1" else "es1"
         for t in train_calcs:
             all_trajs = []
             all_corr_trajs = [] if corr_traj else None
@@ -414,18 +429,18 @@ def create_spectra_tasks(spectra_task,train_calcs,targets,rand_seed,meth,corr_tr
             spectra_task.verbosity = 'normal'
             if spectra_task.wrapper is not None:
                 spectra_task.wrapper.task = spectra_task.mode.upper()
-                spectra_task.wrapper.rootname = f'{{solu}}_{targstr}_spec'
-                spectra_task.wrapper.input_filename = f'{{solu}}_{targstr}_spec_input'
+                spectra_task.wrapper.rootname = f'{{solu}}_{{solv}}_{targstr}_spec'
+                spectra_task.wrapper.input_filename = f'{{solu}}_{{solv}}_{targstr}_spec_input'
             spectra_task.exc_suffix = f'{targstr}_{meth}{pref(t)}_mldyn'
-            spectra_task.output = f'{{solu}}_{spectra_task.exc_suffix}_spectrum.png'
+            spectra_task.output = f'{{solu}}_{{solv}}_{spectra_task.exc_suffix}_spectrum.png'
             tdir = '.'
-            rs = 'a'
-            for w in get_trajectory_list(1):
-                all_trajs.append([f"{tdir}/{{solu}}_{targstr}_{w}_{meth}{t}{rs}_specdyn.traj"])
+            rslist = list(rand_seed)
+            for iw,w in enumerate(get_trajectory_list(ntraj)):
+                rs = rslist[iw]
+                all_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_specdyn_recalc.traj", 
+                                  f"{tdir}/{{solu}}_{{solv}}_{targstrp}_{w}_{meth}{t}{rs}_specdyn_recalc.traj"])
                 if corr_traj:
-                    all_corr_trajs.append([f"{tdir}/{{solu}}_{targstr}_{w}_{meth}{t}{rs}_nosolu.traj"])
-                if spectra_task.wrapper is not None:
-                    spectra_task.wrapper.num_trajs += 1
+                    all_corr_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_nosolu.traj"])
             spectra_task.trajectory = all_trajs
             spectra_task.correction_trajectory = all_corr_trajs
             new_spectra_tasks[f'{targstr}_{meth}{t}_specdyn'] = deepcopy(spectra_task)

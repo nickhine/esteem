@@ -535,6 +535,10 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
         except FileExistsError:
             print(f"# Possible mid-air collision between jobs - directory {wdir} exists")
     chdir(wdir)
+    
+    # If we are running a wrapper that calculates all targets at once, set all_targets appropriately
+    if hasattr(wrapper,'load'): # temporary way of detecting ML calculators - should be improved
+        all_targets = [all_targets]
 
     # Loop over and recalculate each trajectory point
     for i in input_traj_range:
@@ -633,43 +637,70 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
             cont = True # After first excitation, assume subsequently can restart
             prevtarg = targ
             # Prepare formatted strings for positions, forces and dipole
-            pos = frame.positions
-            pos_str = f'[ {pos[0,0]:10.6f} {pos[0,1]:10.6f} {pos[0,2]:10.6f} ]'
-            if calc_forces:
-                if forces.ndim==3:
-                    forces = np.mean(forces,axis=0)
-                force_str = f'[ {forces[0,0]:12.9f} {forces[0,1]:12.9f} {forces[0,2]:12.9f} ]'
-            else:
-                force_str = ''
-            if calc_dipole:
-                if dipole.ndim==3:
-                    dipole = np.mean(dipole,axis=0)[0]
-                elif dipole.ndim==2 and dipole.shape[-1]==3:
-                    dipole = np.mean(dipole,axis=0)
-                dip_str = f'[ {dipole[0]:10.6f} {dipole[1]:10.6f} {dipole[2]:10.6f} ]'
-            if isinstance(energy,np.ndarray):
-                energy = np.mean(energy)
-            freq_str = ''
-            # Write line to stdout
-            print(f'{iout:04} {targ:2} {energy:16.8f} {len(frame):5} {pos_str} {force_str} {dip_str}')
+            formatted_output(iout,targ,len(frame),frame.positions,energy,forces,dipole,calc_forces,calc_dipole)
             # Supply keyword dipole explicitly to ensure it gets written or fails
-            if outtraj[targ] is not None:
-                if vibfreq_kernel:
-                    frame.info = {}
-                    frame.info['freqs'] = freqs
-                    frame.info['modes'] = modes
-                    frame.info['intensities'] = intensities
-                if isinstance(frame.calc,list):
-                    frame.calc = frame.calc[-1]
-                if True: #if success:
-                    outtraj[targ].write(frame)
+            if isinstance(targ,list):
+                for it,tg in enumerate(targ):
+                    frame_targ = frame.copy()
+                    frame_targ.calc = frame.calc[it]
+                    outtraj[it].write(frame_targ)
+            else:
+                if outtraj[targ] is not None:
+                    if vibfreq_kernel:
+                        frame.info = {}
+                        frame.info['freqs'] = freqs
+                        frame.info['modes'] = modes
+                        frame.info['intensities'] = intensities
+                    if isinstance(frame.calc,list):
+                        frame.calc = frame.calc[-1]
+                    if True: #if success:
+                        outtraj[targ].write(frame)
 
-    # Return to base directory and close trajectories
+    # Return to base directory
     chdir(origdir)
+    # Close trajectories
+    if isinstance(targ,list):
+        all_targets = all_targets[0] # undo embedding in outer list
     for targ in all_targets:
         if outtraj[targ] is not None:
             outtraj[targ].close()
 
+def formatted_output(iout,targ,natoms,pos,energy,forces,dipole,calc_forces,calc_dipole):
+    pos_str = f'[ {pos[0,0]:10.6f} {pos[0,1]:10.6f} {pos[0,2]:10.6f} ]'
+    if calc_forces:
+        if not isinstance(targ,list):
+            if forces.ndim==3:
+                forces = np.mean(forces,axis=0)
+            force_str = f'[ {forces[0,0]:12.9f} {forces[0,1]:12.9f} {forces[0,2]:12.9f} ]'
+        else:
+            force_str = ''
+            for itarg,tg in enumerate(targ):
+                force_str += f'[ {forces[itarg,0,0]:6.3f} {forces[itarg,0,1]:6.3f} {forces[itarg,0,2]:6.3f} ]'
+    else:
+        force_str = ''
+    if calc_dipole:
+        if not isinstance(targ,list):
+            if dipole.ndim==3:
+                dipole = np.mean(dipole,axis=0)[0]
+            elif dipole.ndim==2 and dipole.shape[-1]==3:
+                dipole = np.mean(dipole,axis=0)
+            dip_str = f'[ {dipole[0]:10.6f} {dipole[1]:10.6f} {dipole[2]:10.6f} ]'
+        else:
+            dip_str = ''
+            for itarg,tg in enumerate(targ):
+                dip_str += f'[ {dipole[itarg,0]:6.3f} {dipole[itarg,1]:6.3f} {dipole[itarg,2]:6.3f} ]'
+    if isinstance(targ,list):
+        energy_str = ''
+        for itarg,tg in enumerate(targ):
+            energy_str += f'{energy[itarg]:14.6f}'
+    else:
+        if isinstance(energy,np.ndarray):
+            energy = np.mean(energy)
+        energy_str = f'{energy:16.8f}'
+    freq_str = ''
+    # Write line to stdout
+    print(f'{iout:04} {targ} {energy_str} {natoms:5} {pos_str} {force_str} {dip_str}')
+    return
 
 def cycle_restarts(seed,traj_label,traj_suffix,prevtarg,currtarg,prevstep,currstep,db_ext):
     """

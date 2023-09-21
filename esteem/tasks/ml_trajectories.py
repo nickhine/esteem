@@ -164,6 +164,7 @@ class MLTrajTask:
         parser.add_argument('--nequil','-e',default=10,type=int,help='Number of discarded equilibration snapshots before data is recorded')
         parser.add_argument('--which_trajs','-w',default=None,type=str,help='Which of the separate trajectories are to be run in this task')
         parser.add_argument('--carve_trajectory_radius','-R',default=None,type=float,help='Radius around solute to carve trajectory at')
+        parser.add_argument('--carve_trajectory_max_atoms','-m',default=None,type=float,help='Max atoms when carving trajectory')
         parser.add_argument('--recalculate_carved_traj','-J',default=False,type=bool,help='Use snap_wrapper (if present, wrapper if not) to recalculate energies and forces after carving')
         parser.add_argument('--constraints','-c',default=None,type=str,help='Constraints (ASE constraints class)')
         parser.add_argument('--dynamics','-d',default=None,type=str,help='Dynamics (ASE Dynamics class)')

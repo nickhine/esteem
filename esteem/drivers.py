@@ -680,7 +680,10 @@ def clusters_driver(all_solutes,all_solvents,seed,task,make_sbatch=None,dryrun=F
                 if not (path.isfile(f'{clus_path}/{trajlink}') or path.islink(f'{clus_path}/{trajlink}')):
                     chdir(clus_path)
                     print(f'# Creating link from ../{trajfile[mds]} to {trajlink}')
-                    symlink('../'+trajfile[mds],trajlink)
+                    try:
+                        symlink('../'+trajfile[mds],trajlink)
+                    except FileExistsError:
+                        print(f"# Possible mid-air collision between jobs - link {trajlink} exists")
                     chdir(orig_path)
 
             # Copy the geometries of the solute and solvent to the excitations directory
@@ -1030,7 +1033,10 @@ def make_traj_links(mltrain_task,traj_links,train_dir,prefix,all_solutes,all_sol
             if not path.isfile('../'+traj_link) and not path.islink('../'+traj_link):
                 raise Exception(f'# File to link to not found for trajectory {traj}: {traj_link}')
             if not path.isfile('../'+trajnames[traj]) and not path.islink('../'+trajnames[traj]):
-                symlink('../'+traj_link,'../'+trajnames[traj])
+                try:
+                    symlink('../'+traj_link,'../'+trajnames[traj])
+                except FileExistsError:
+                    print(f"# Possible mid-air collision between jobs - link ../{trajnames[traj]} exists")
     chdir(origdir)
 
 def mltrain_driver(mltrain_task,all_solutes={},all_solvents={}):
@@ -1255,7 +1261,11 @@ def mltest_driver(mltest,all_solutes,all_solvents):
                             remove(trajnames[traj])
                     if not path.isfile(trajnames[traj]) and not path.islink(trajnames[traj]):
                         print(f'# Making link to: ../{traj_link} called {trajnames[traj]} in {getcwd()}')
-                        symlink('../'+traj_link,trajnames[traj])
+                        try:
+                            symlink('../'+traj_link,trajnames[traj])
+                        except FileExistsError:
+                            print(f"# Possible mid-air collision between jobs - link {trajnames[traj]} exists")
+                            
 
             # switch back to starting directory
             if mltest.traj_prefix != "" and mltest.traj_prefix is not None:
@@ -1324,6 +1334,7 @@ def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False):
                 makedirs(traj_dir)
             except FileExistsError:
                 print(f"# Possible mid-air collision between jobs - directory {traj_dir} exists")
+        print(f'# Changing directory to {traj_dir}')
         chdir(traj_dir)
 
     # Check if we need to create a symlink to or merge the initial trajectories file
@@ -1333,7 +1344,10 @@ def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False):
             traj_link = sub_solu_solv_names(mltraj.md_init_traj_link,mltraj.seed,all_solutes,all_solvents)
             if not path.isfile(init_traj) and not path.islink(init_traj):
                 print(f"# Creating symlink: {init_traj} -> ../{traj_link} ")
-                symlink('../'+traj_link,init_traj)
+                try:
+                    symlink('../'+traj_link,init_traj)
+                except FileExistsError:
+                    print(f"# Possible mid-air collision between jobs - link {init_traj} exists")
         else:
             all_traj_links = ['../'+sub_solu_solv_names(traj_link,mltraj.seed,all_solutes,all_solvents) for traj_link in mltraj.md_init_traj_link]
             if task_id is not None:
@@ -1397,6 +1411,7 @@ def mltraj_cleanup(mltraj):
     for ct.which_traj in mltraj.which_trajs:
         ct.min_snapshots = 0;
         ct.max_snapshots = mltraj.nsnap
+        ct.max_atoms = mltraj.carve_trajectory_max_atoms
         ct.carved_suffix = f"{mltraj.traj_suffix}_carved"
         ct.md_suffix = f"{targstr(ct.which_target)}_{ct.which_traj}_{mltraj.traj_suffix}"
         solvstr = f'_{ct.solvent}' if ct.solvent is not None else ''
@@ -1645,6 +1660,8 @@ def spectra_driver(all_solutes,all_solvents,task,warp_params=None,cluster_spectr
     all_pairs = list(itertools.product(all_solvents.items(),all_solutes.items()))
     all_paths = []
     for (solvent,_),(solute,_) in all_pairs:
+        if solute in all_solvents:
+            continue
         if isinstance(task.exc_suffix,dict):
             if solvent is not None:
                 exc_path = f'{solute}_{solvent}_{exc_suffix[solute]}'
@@ -1658,9 +1675,14 @@ def spectra_driver(all_solutes,all_solvents,task,warp_params=None,cluster_spectr
         all_paths.append(exc_path)
     base_path = path.basename(getcwd())
     orig_output = task.output
+    orig_files = task.files
+    orig_dir = getcwd()
 
     # Now plot explicit solvent spectrum
     for i,((solvent,fullsolvent),(solute,fullsolute)) in enumerate(all_pairs):
+
+        if solute in all_solvents:
+            continue
 
         # Find cluster spectra path names 
         exc_suffix = task.exc_suffix
@@ -1677,7 +1699,7 @@ def spectra_driver(all_solutes,all_solvents,task,warp_params=None,cluster_spectr
         if base_path in all_paths and base_path!=exc_path:
             continue
 
-        if base_path not in all_paths:
+        if base_path not in all_paths and task.files is None:
             if not path.exists(exc_path):
                 print(f'\nSkipping Spectra for: {solusolvstr}')
                 print(f'Directory {exc_path} not found')
@@ -1689,7 +1711,9 @@ def spectra_driver(all_solutes,all_solvents,task,warp_params=None,cluster_spectr
 
         # List files matching pattern:
         if task.files is not None:
-            task.files = sub_solu_solv_names(task.files,f'{solute}_{solvent}',all_solutes,all_solvents)
+            task.files = []
+            for f in orig_files:
+                task.files.append(sub_solu_solv_names(f,f'{solute}_{solvent}',all_solutes,all_solvents))
             if '*' in task.files:
                 task.files = glob.glob(task.files)
             if task.renorm == -1:
@@ -1708,7 +1732,7 @@ def spectra_driver(all_solutes,all_solvents,task,warp_params=None,cluster_spectr
                     found_solute = True
                     continue
             if found_solute:
-                chdir('..')
+                chdir(orig_dir)
                 continue
             print('Cluster files to process: ',len(task.files),task.files)
                 
@@ -1739,15 +1763,20 @@ def spectra_driver(all_solutes,all_solvents,task,warp_params=None,cluster_spectr
         if isinstance(task.line_colours,list):
             rgb = task.line_colours[i]
 
-        task.output = sub_solu_solv_names(orig_output,f'{solute}_{solvent}',all_solutes,all_solvents)
+        if orig_output is not None:
+            task.output = sub_solu_solv_names(orig_output,f'{solute}_{solvent}',all_solutes,all_solvents)
         
         cluster_spectrum,spec,c_fig,c_ax,_,_ = task.run(c_fig,c_ax,
               plotlabel=f'{fullsolute} in {fullsolvent}',rgb=rgb)
         cluster_spectra.append(cluster_spectrum)
         
+        if 'png' in task.output:
+            outdat = task.output.replace('png','dat')
+            np.savetxt(outdat,cluster_spectrum)
+        
         # Return to parent directory if we are looping over dirs
         if base_path not in all_paths:
-            chdir('..')
+            chdir(orig_dir)
 
 
     return cluster_spectra,c_fig,c_ax
