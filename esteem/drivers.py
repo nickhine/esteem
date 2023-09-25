@@ -15,7 +15,7 @@ These inputs will consist of solutes, solvents or pairs of solutes and solvent, 
 
 # In[ ]:
 
-import numpy as np
+
 import argparse
 from esteem import parallel
 from esteem.trajectories import get_trajectory_list
