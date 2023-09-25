@@ -332,7 +332,7 @@ def create_mltraj_tasks(mltraj_task,train_calcs,targets,rand_seed,meth,md_wrappe
                     mltraj_task.snap_wrapper = snap_wrapper
                     if two_targets:
                         calc_suffix = mltraj_task.calc_suffix
-                        taskname = taskname + '_spec'
+                        taskname = f'{taskname}_{traj_suffix}'
                         targ = [0,1] if target==0 else [1,0]
                     else:
                         taskname = taskname + f'x{len(rand_seed)}'
