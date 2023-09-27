@@ -76,8 +76,9 @@ class MLTrajTask:
             calc_params['calc_prefix'] = f'../{self.calc_prefix}'
 
             model[traj_label] = None
-            if self.continuation:   
-                continuation_trajfile = f"{self.seed}_{targstr(self.target)}_{traj_label}_{self.traj_suffix.split('_')[0]}.traj"
+            if self.continuation:
+                continuation_trajfile = f"{self.seed}_{targstr(self.target)}_{traj_label}_specdyn.traj"   
+                #continuation_trajfile = f"{self.seed}_{targstr(self.target)}_{traj_label}_{self.traj_suffix.split('_')[0]}.traj"
                 if os.path.exists(continuation_trajfile):
                     continuation_traj = Trajectory(continuation_trajfile)
                     continuation_len[traj_label] = len(continuation_traj)
