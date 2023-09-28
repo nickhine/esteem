@@ -78,9 +78,7 @@ class MLTrajTask:
             model[traj_label] = None
             if self.continuation:
                 continuation_trajfile = f"{self.seed}_{targstr(self.target)}_{traj_label}_{self.calc_suffix}_{self.traj_suffix.split('_')[0]}.traj"
-                #continuation_trajfile = f"{self.seed}_{targstr(self.target)}_{traj_label}_specdyn.traj"
-                print('this is the file Im looking for', continuation_trajfile)
-                #continuation_trajfile = f"{self.seed}_{targstr(self.target)}_{traj_label}_{self.traj_suffix.split('_')[0]}.traj"
+                print('this is the file Im looking for',f"{self.traj_suffix}" )
                 if os.path.exists(continuation_trajfile):
                     continuation_traj = Trajectory(continuation_trajfile)
                     continuation_len[traj_label] = len(continuation_traj)
@@ -125,7 +123,7 @@ class MLTrajTask:
         calc_params['calc_prefix'] = f'../../{self.calc_prefix}'
         for traj_label in which_trajs:
             # Pass in routine to actually run MD into generic Snapshot MD driver
-            generate_md_trajectory(model[traj_label],self.seed,self.target,traj_label,self.traj_suffix,
+            generate_md_trajectory(model[traj_label],self.seed,self.target,traj_label,f"{self.calc_suffix}_{self.traj_suffix.split('_')[0]}",
                                    wrapper=self.wrapper,count_snaps=self.nsnap,count_equil=self.nequil,
                                    md_steps=self.md_steps,md_timestep=self.md_timestep,
                                    md_friction=self.md_friction,store_full_traj=self.store_full_traj,
