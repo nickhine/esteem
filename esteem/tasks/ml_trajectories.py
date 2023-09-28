@@ -122,7 +122,7 @@ class MLTrajTask:
         calc_params['calc_prefix'] = f'../../{self.calc_prefix}'
         for traj_label in which_trajs:
             # Pass in routine to actually run MD into generic Snapshot MD driver
-            generate_md_trajectory(model[traj_label],self.seed,self.target,traj_label,f"{self.calc_suffix}_{self.traj_suffix.split('_')[0]",
+            generate_md_trajectory(model[traj_label],self.seed,self.target,traj_label,f"{self.calc_suffix}_{self.traj_suffix.split('_')[0]}",
                                    wrapper=self.wrapper,count_snaps=self.nsnap,count_equil=self.nequil,
                                    md_steps=self.md_steps,md_timestep=self.md_timestep,
                                    md_friction=self.md_friction,store_full_traj=self.store_full_traj,
