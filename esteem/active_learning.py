@@ -342,7 +342,7 @@ def create_mltraj_tasks(mltraj_task,train_calcs,targets,rand_seed,meth,md_wrappe
                                                     'calc_dir_suffix':mltraj_task.calc_dir_suffix,
                                                     'calc_suffix':calc_suffix,
                                                     'calc_seed':mltraj_task.calc_seed}
-                mltraj_task.traj_suffix = f'{mltraj_task.calc_suffix}_{traj_suffix}'
+                mltraj_task.traj_suffix = f'{traj_suffix}'
                 new_mltraj_tasks[taskname] = deepcopy(mltraj_task)
     return new_mltraj_tasks
 
