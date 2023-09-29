@@ -1423,14 +1423,14 @@ def mltraj_cleanup(mltraj):
         #remove(f'{ct.solute}_{ct.solvent}_{ct.md_suffix}.traj')
         if mltraj.recalculate_carved_traj:
             ct.wrapper = mltraj.snap_wrapper
-            ct.output = f"{mltraj.calc_suffix}_{mltraj.traj_suffix}_recalc"
+            ct.output = f"{mltraj.traj_suffix}_recalc"
             ct.calc_params = mltraj.snap_calc_params
             ct.target = mltraj.snap_calc_params['target']
             ct.nroots = mltraj.target
             traj_recalc_file = f'{ct.solute}{solvstr}_{targstr(ct.which_target)}_{ct.which_traj}_{ct.output}.traj'
             if path.exists(traj_recalc_file) and path.getsize(traj_recalc_file)>0:
                 print(f'# Skipping recalculating clusters in postprocessing - {traj_recalc_file} already present')
-            else: 
+            else:
                 ct.run()
         if mltraj.store_full_traj:
             # Remove equilibration trajectory data
