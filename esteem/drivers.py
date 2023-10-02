@@ -1412,7 +1412,7 @@ def mltraj_cleanup(mltraj):
         ct.min_snapshots = 0;
         ct.max_snapshots = mltraj.nsnap
         ct.max_atoms = mltraj.carve_trajectory_max_atoms
-        ct.carved_suffix = f"{mltraj.traj_suffix}_carved"
+        ct.carved_suffix = f"{mltraj.traj_suffix}_{mltraj.carved_suffix}"
         ct.md_suffix = f"{targstr(ct.which_target)}_{ct.which_traj}_{mltraj.traj_suffix}"
         solvstr = f'_{ct.solvent}' if ct.solvent is not None else ''
         traj_carved_file = f'{ct.solute}{solvstr}_{targstr(ct.which_target)}_{ct.which_traj}_{ct.carved_suffix}.traj'
