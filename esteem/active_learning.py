@@ -336,8 +336,11 @@ def create_mltraj_tasks(mltraj_task,train_calcs,targets,rand_seed,meth,md_wrappe
                     mltraj_task.snap_wrapper = snap_wrapper
                     if two_targets:
                         calc_suffix = mltraj_task.calc_suffix
-                        taskname = taskname + mltraj_task.traj_suffix + mltraj_task.carved_suffix
+                        taskname = f"{taskname}_{traj_suffix}_{mltraj_task.carved_suffix}"
                         targ = [0,1] if target==0 else [1,0]
+                        print(f"taskname = {taskname}")
+                        print(f"traj_suff = {mltraj_task.traj_suffix}")
+                        print(f"carved_suff = {mltraj_task.carved_suffix}")
                     else:
                         taskname = taskname + f'x{len(rand_seed)}'
                         calc_suffix = {f'{meth}{t}{rs}':rseed for (rs,rseed) in rand_seed.items()}
