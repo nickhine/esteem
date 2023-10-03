@@ -1,2 +1,0 @@
-#!/bin/bash
-rm ~/esteem/esteem/__pycache__/*; rm ~/esteem/esteem/tasks/__pycache__/*; rm ~/esteem/esteem/wrappers/__pycache__/*
