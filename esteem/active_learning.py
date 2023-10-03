@@ -309,9 +309,6 @@ def create_mltraj_tasks(mltraj_task,train_calcs,targets,rand_seed,meth,md_wrappe
     Takes lists of calculators, targets, random seeds, and strings stating the ML method
     and wrappers for the MD itself and for the "committee" MD
     """
-
-    #########################
-    #########################
     
     new_mltraj_tasks = {}
     if mltraj_task.calc_seed is None:
