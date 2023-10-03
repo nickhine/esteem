@@ -1423,7 +1423,7 @@ def mltraj_cleanup(mltraj):
         #remove(f'{ct.solute}_{ct.solvent}_{ct.md_suffix}.traj')
         if mltraj.recalculate_carved_traj:
             ct.wrapper = mltraj.snap_wrapper
-            ct.output = f"{mltraj.traj_suffix}_recalc"
+            ct.output = f"{mltraj.traj_suffix}_recalc_{mltraj.carved_suffix}"
             ct.calc_params = mltraj.snap_calc_params
             ct.target = mltraj.snap_calc_params['target']
             ct.nroots = mltraj.target
