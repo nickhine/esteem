@@ -425,7 +425,7 @@ def create_spectra_tasks(spectra_task,train_calcs,targets,rand_seed,meth,ntraj,t
     for target in targets:
         targstr = targets[target]
         targstrp = "gs" if targstr=="es1" else "es1"
-        csfx = f"_{spectra_task.carved_suffix}" if spectra_task.carved_suffix is not None and spectra_task.carved_suffix != "" else ""            
+        csfx = f"_{spectra_task.carved_suffix}" if spectra_task.carved_suffix is not None and spectra_task.carved_suffix != "" else "_carved"            
         for t in train_calcs:
             all_trajs = []
             all_corr_trajs = [] if corr_traj else None
