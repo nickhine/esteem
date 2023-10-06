@@ -23,6 +23,7 @@ class SpectraTask:
         self.script_settings = None
         self.task_command = 'spectra'
         args = self.make_parser().parse_args("")
+        self.carved_suffix = None
         for arg in vars(args):
             setattr(self,arg,getattr(args,arg))
     #from amp import Ampc
@@ -390,7 +391,10 @@ class SpectraTask:
         if (rgb == np.array((-1.0,-1.0,-1.0))).all():
             rgb = RGB_colour(stick_spectrum,self)
         
+        filename = f"abs_spec_{self.carved_suffix}.csv"
+        np.savetxt(filename, broad_spectrum)
         # Plot the spectrum
+
         if True:
             spec_plot, fig, ax = self.plot(broad_spectrum,fig,ax,rgb,label=plotlabel,linestyle=linestyle)
         else:
