@@ -414,7 +414,7 @@ def create_mltest_tasks(test_task,train_calcs,seeds,targets,rand_seed,truth,meth
 # In[12]:
 
 
-def create_spectra_tasks(spectra_task,train_calcs,targets,rand_seed,meth,ntraj,corr_traj=False):
+def create_spectra_tasks(spectra_task,train_calcs,targets,rand_seed,meth,ntraj,traj_suffix='specdyn',corr_traj=False):
     """
     Returns a dictionary of Spectra tasks, based on an input prototype task supplied by
     the user, for all the required Spectra tasks for an Active Learning task.
@@ -442,13 +442,13 @@ def create_spectra_tasks(spectra_task,train_calcs,targets,rand_seed,meth,ntraj,c
             rslist = list(rand_seed)
             for iw,w in enumerate(get_trajectory_list(ntraj)):
                 rs = rslist[iw]
-                all_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_specdyn_recalc{csfx}.traj", 
-                                  f"{tdir}/{{solu}}_{{solv}}_{targstrp}_{w}_{meth}{t}{rs}_specdyn_recalc{csfx}.traj"])
+                all_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc{csfx}.traj", 
+                                  f"{tdir}/{{solu}}_{{solv}}_{targstrp}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc{csfx}.traj"])
                 if corr_traj:
                     all_corr_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_nosolu{csfx}.traj"])
             spectra_task.trajectory = all_trajs
             spectra_task.correction_trajectory = all_corr_trajs
-            new_spectra_tasks[f'{targstr}_{meth}{t}_specdyn{csfx}'] = deepcopy(spectra_task)
+            new_spectra_tasks[f'{targstr}_{meth}{t}_{traj_suffix}{csfx}'] = deepcopy(spectra_task)
     csfx=''
             
     return new_spectra_tasks
