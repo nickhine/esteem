@@ -36,6 +36,7 @@ class MLTrajTask:
         self.snap_calc_params = None
         self.script_settings = None
         self.task_command = 'mltraj'
+        self.carved_suffix = None
         args = self.make_parser().parse_args("")
         for arg in vars(args):
             setattr(self,arg,getattr(args,arg))

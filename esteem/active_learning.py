@@ -333,8 +333,11 @@ def create_mltraj_tasks(mltraj_task,train_calcs,targets,rand_seed,meth,md_wrappe
                     mltraj_task.snap_wrapper = snap_wrapper
                     if two_targets:
                         calc_suffix = mltraj_task.calc_suffix
-                        taskname = f"{taskname}_{traj_suffix}_{mltraj_task.carved_suffix}"
                         targ = [0,1] if target==0 else [1,0]
+                        if mltraj_task.carved_suffix is not None and mltraj_task.carved_suffix!='':
+                            taskname = f"{taskname}_{traj_suffix}_{mltraj_task.carved_suffix}"
+                        else:
+                            taskname = f"{taskname}_{traj_suffix}"                        
                     else:
                         taskname = taskname + f'x{len(rand_seed)}'
                         calc_suffix = {f'{meth}{t}{rs}':rseed for (rs,rseed) in rand_seed.items()}
