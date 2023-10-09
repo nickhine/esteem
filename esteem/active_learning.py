@@ -425,7 +425,7 @@ def create_spectra_tasks(spectra_task,train_calcs,targets,rand_seed,meth,ntraj,t
     for target in targets:
         targstr = targets[target]
         targstrp = "gs" if targstr=="es1" else "es1"
-        csfx = f"_{spectra_task.carved_suffix}" if spectra_task.carved_suffix is not None and spectra_task.carved_suffix != "" else "_carved"            
+        spectra_task.carved_suffix = spectra_task.carved_suffix if spectra_task.carved_suffix is not None and spectra_task.carved_suffix != "" else "carved"            
         for t in train_calcs:
             all_trajs = []
             all_corr_trajs = [] if corr_traj else None
@@ -434,22 +434,21 @@ def create_spectra_tasks(spectra_task,train_calcs,targets,rand_seed,meth,ntraj,t
             spectra_task.verbosity = 'normal'
             if spectra_task.wrapper is not None:
                 spectra_task.wrapper.task = spectra_task.mode.upper()
-                spectra_task.wrapper.rootname = f'{{solu}}_{{solv}}_{targstr}{csfx}_spec'
-                spectra_task.wrapper.input_filename = f'{{solu}}_{{solv}}_{targstr}_spec{csfx}_input'
+                spectra_task.wrapper.rootname = f'{{solu}}_{{solv}}_{targstr}_{spectra_task.carved_suffix}_spec'
+                spectra_task.wrapper.input_filename = f'{{solu}}_{{solv}}_{targstr}_spec_{spectra_task.carved_suffix}_input'
             spectra_task.exc_suffix = f'{targstr}_{meth}{pref(t)}_mldyn'
-            spectra_task.output = f'{{solu}}_{{solv}}_{spectra_task.exc_suffix}{csfx}_spectrum.png'
+            spectra_task.output = f'{{solu}}_{{solv}}_{spectra_task.exc_suffix}_{spectra_task.carved_suffix}_spectrum.png'
             tdir = '.'
             rslist = list(rand_seed)
             for iw,w in enumerate(get_trajectory_list(ntraj)):
                 rs = rslist[iw]
-                all_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc{csfx}.traj", 
-                                  f"{tdir}/{{solu}}_{{solv}}_{targstrp}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc{csfx}.traj"])
+                all_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc_{spectra_task.carved_suffix}.traj", 
+                                  f"{tdir}/{{solu}}_{{solv}}_{targstrp}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc_{spectra_task.carved_suffix}.traj"])
                 if corr_traj:
-                    all_corr_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_nosolu{csfx}.traj"])
+                    all_corr_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_nosolu_{spectra_task.carved_suffix}.traj"])
             spectra_task.trajectory = all_trajs
             spectra_task.correction_trajectory = all_corr_trajs
-            new_spectra_tasks[f'{targstr}_{meth}{t}_{traj_suffix}{csfx}'] = deepcopy(spectra_task)
-    csfx=''
+            new_spectra_tasks[f'{targstr}_{meth}{t}_{traj_suffix}_{spectra_task.carved_suffix}'] = deepcopy(spectra_task)
             
     return new_spectra_tasks
 

@@ -1412,8 +1412,8 @@ def mltraj_cleanup(mltraj):
         ct.min_snapshots = 0;
         ct.max_snapshots = mltraj.nsnap
         ct.max_atoms = mltraj.carve_trajectory_max_atoms
-        csfx = f'_{mltraj.carved_suffix}' if mltraj.carved_suffix is not None and mltraj.carved_suffix else '_carved'
-        ct.carved_suffix = f"{mltraj.traj_suffix}{csfx}"
+        mltraj.carved_suffix = mltraj.carved_suffix if mltraj.carved_suffix is not None and mltraj.carved_suffix else 'carved'
+        ct.carved_suffix = f"{mltraj.traj_suffix}_{mltraj.carved_suffix}"
         ct.md_suffix = f"{targstr(ct.which_target)}_{ct.which_traj}_{mltraj.traj_suffix}"
         solvstr = f'_{ct.solvent}' if ct.solvent is not None else ''
         traj_carved_file = f'{ct.solute}{solvstr}_{targstr(ct.which_target)}_{ct.which_traj}_{ct.carved_suffix}.traj'
@@ -1424,7 +1424,7 @@ def mltraj_cleanup(mltraj):
         #remove(f'{ct.solute}_{ct.solvent}_{ct.md_suffix}.traj')
         if mltraj.recalculate_carved_traj:
             ct.wrapper = mltraj.snap_wrapper
-            ct.output = f"{mltraj.traj_suffix}_recalc{csfx}"
+            ct.output = f"{mltraj.traj_suffix}_recalc_{mltraj.carved_suffix}"
             ct.calc_params = mltraj.snap_calc_params
             ct.target = mltraj.snap_calc_params['target']
             ct.nroots = mltraj.target
@@ -1433,7 +1433,6 @@ def mltraj_cleanup(mltraj):
                 print(f'# Skipping recalculating clusters in postprocessing - {traj_recalc_file} already present')
             else:
                 ct.run()
-        csfx = ''
         if mltraj.store_full_traj:
             # Remove equilibration trajectory data
             eq_dir = f"{mltraj.traj_suffix}_equil"
