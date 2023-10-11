@@ -248,44 +248,51 @@ class ClustersTask:
                         input_traj_range = range(self.min_snapshots+self.task_id,self.min_snapshots+self.task_id+1)
                         output_traj_offset = -self.min_snapshots
             # Now run through the trajectory, calculating singlepoint energy for each frame
-            recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input_suffix,
-                                   self.wrapper,calc_params=calc_params,
-                                   input_traj_range=input_traj_range,input_traj_label=input_traj_label,
-                                   output_traj_offset=output_traj_offset,
-                                   charge=charge,solvent=self.impsolv,calc_forces=self.calc_forces,
-                                   geom_opt_kernel=self.geom_opt_kernel,vibfreq_kernel=self.vibfreq_kernel)
-            # If we are processing whole trajectory, do sanity checking of result now
-            if self.task_id is None and self.ref_mol_dir is not None:
-                ref_solu, ref_solv = get_solu_solv_names(seed)
-                for targ in target[0:]:
-                    if targ==0:
-                        ref_solu_t = ref_solu
-                    else:
-                        ref_solu_t = f'{ref_solu}_{targstr(targ)}'
-                    ref_mol_dir = self.ref_mol_dir
-                    ref_mol_dir = ref_mol_dir.replace("{target}",targstr(targ))
-                    ref_mol_dir = ref_mol_dir.replace("{ref_solv}",ref_solv)
-                    ref_solu_dir = f'../{ref_mol_dir}'
-                    ref_mol_dir = self.ref_mol_dir
-                    ref_mol_dir = ref_mol_dir.replace("{target}","gs")
-                    ref_mol_dir = ref_mol_dir.replace("{ref_solv}",ref_solv)
-                    ref_solv_dir = f'../{ref_mol_dir}'
-                    calc_params['target'] = targ
-                    trajname = f"{seed}_{targstr(targ)}_{traj_label}_{traj_suffix}.traj"
-                    fails = sanity_check(trajname, self.wrapper, calc_params, ref_solu_dir, ref_solu_t,
-                                         ref_solv_dir, ref_solv)
-            if self.repeat_without_solute:
+            from os import path
+            traj_recalc_file = f'{self.solute}{solvstr}_{targstr(self.which_target)}_{self.which_traj}_{self.output}.traj'
+            if not (path.exists(traj_recalc_file) and path.getsize(traj_recalc_file)>0):
+                recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input_suffix,
+                                       self.wrapper,calc_params=calc_params,
+                                       input_traj_range=input_traj_range,input_traj_label=input_traj_label,
+                                       output_traj_offset=output_traj_offset,
+                                       charge=charge,solvent=self.impsolv,calc_forces=self.calc_forces,
+                                       geom_opt_kernel=self.geom_opt_kernel,vibfreq_kernel=self.vibfreq_kernel)
+                            # If we are processing whole trajectory, do sanity checking of result now
+                if self.task_id is None and self.ref_mol_dir is not None:
+                    ref_solu, ref_solv = get_solu_solv_names(seed)
+                    for targ in target[0:]:
+                        if targ==0:
+                            ref_solu_t = ref_solu
+                        else:
+                            ref_solu_t = f'{ref_solu}_{targstr(targ)}'
+                        ref_mol_dir = self.ref_mol_dir
+                        ref_mol_dir = ref_mol_dir.replace("{target}",targstr(targ))
+                        ref_mol_dir = ref_mol_dir.replace("{ref_solv}",ref_solv)
+                        ref_solu_dir = f'../{ref_mol_dir}'
+                        ref_mol_dir = self.ref_mol_dir
+                        ref_mol_dir = ref_mol_dir.replace("{target}","gs")
+                        ref_mol_dir = ref_mol_dir.replace("{ref_solv}",ref_solv)
+                        ref_solv_dir = f'../{ref_mol_dir}'
+                        calc_params['target'] = targ
+                        trajname = f"{seed}_{targstr(targ)}_{traj_label}_{traj_suffix}.traj"
+                        print(f'Testing trajlabel = {traj_label}')
+                        fails = sanity_check(trajname, self.wrapper, calc_params, ref_solu_dir, ref_solu_t,
+                                            ref_solv_dir, ref_solv)
+            else:
+                print('Correctly recognised recalc file exists')
+            traj_recalc_file_nosolu = f'{self.solute}{solvstr}_{targstr(self.which_target)}_{self.which_traj}_{self.output}_nosolu.traj' 
+            if self.repeat_without_solute and not (path.exists(traj_recalc_file_nosolu) and path.getsize(traj_recalc_file_nosolu)>0):
                 print('#\n# Repeating calculation with solute removed\n#')
                 traj_suffix = f'{self.output}_nosolu'
                 if self.task_id is not None:
                     input_suffix = f'{self.carved_suffix}_nosolu_{self.task_id:04}'
                 else:
                     input_suffix = f'{self.carved_suffix}_nosolu'
+                print('get to second recalc')
                 traj_carved_nosolu_file = self.remove_solute(traj_carved,self.solute,self.solvent,seed,traj_label,traj_suffix)
                 # Now run through the trajectory, calculating singlepoint energy for each frame
-                recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input_suffix,
-                                       self.wrapper,calc_params=calc_params,
-                                       input_traj_range=input_traj_range,output_traj_offset=output_traj_offset,
+                recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input_suffix, self.wrapper,calc_params=calc_params,
+                                       input_traj_range=input_traj_range,input_traj_label=input_traj_label,output_traj_offset=output_traj_offset,
                                        charge=0,solvent=self.impsolv,calc_forces=self.calc_forces,
                                        geom_opt_kernel=False,vibfreq_kernel=False)
                 # Always remove nosolu traj carved, as it is very quick to recreate it if needed
@@ -405,12 +412,12 @@ class ClustersTask:
 
         which_targstr = targstr(self.which_target)
         if task_id is not None:
-            traj_nosolu_name = f'{soluseed}_{solvseed}_{which_targstr}_{self.which_traj}_carved_nosolu_{task_id:04}.traj'
+            traj_nosolu_name = f'{soluseed}_{solvseed}_{which_targstr}_{self.which_traj}_{self.carved_suffix}_nosolu_{task_id:04}.traj'
             traj_min = 0
             traj_max = 1
             traj_carved = traj_carved[traj_min:traj_max]
         else:
-            traj_nosolu_name = f'{soluseed}_{solvseed}_{which_targstr}_{self.which_traj}_carved_nosolu.traj'
+            traj_nosolu_name = f'{soluseed}_{solvseed}_{which_targstr}_{self.which_traj}_{self.carved_suffix}_nosolu.traj'
             task_id = 0
         traj_nosolu = Trajectory(traj_nosolu_name,"w")
         nat_solu = len(read(soluseed+".xyz"))

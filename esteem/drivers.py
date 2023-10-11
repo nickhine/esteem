@@ -1406,6 +1406,9 @@ def mltraj_cleanup(mltraj):
     from esteem.trajectories import get_trajectory_list,targstr
 
     ct = ClustersTask()
+    if hasattr(mltraj, 'corr_traj'):
+        ct.repeat_without_solute = True
+        print('hasattribute')
     ct.solute,ct.solvent = get_solu_solv_names(mltraj.seed)
     ct.which_target = mltraj.target
     for ct.which_traj in mltraj.which_trajs:
@@ -1431,8 +1434,14 @@ def mltraj_cleanup(mltraj):
             traj_recalc_file = f'{ct.solute}{solvstr}_{targstr(ct.which_target)}_{ct.which_traj}_{ct.output}.traj'
             if path.exists(traj_recalc_file) and path.getsize(traj_recalc_file)>0:
                 print(f'# Skipping recalculating clusters in postprocessing - {traj_recalc_file} already present')
+                traj_recalc_file_nosolu = f'{ct.solute}{solvstr}_{targstr(ct.which_target)}_{ct.which_traj}_{ct.output}_nosolu.traj'
+                if hasattr(mltraj, 'corr_traj') and not (path.exists(traj_recalc_file_nosolu) and path.getsize(traj_recalc_file_nosolu)>0):
+                    print('redoing without solvent')
+                    ct.run()
             else:
                 ct.run()
+
+
         if mltraj.store_full_traj:
             # Remove equilibration trajectory data
             eq_dir = f"{mltraj.traj_suffix}_equil"
