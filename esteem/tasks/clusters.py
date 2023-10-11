@@ -275,11 +275,8 @@ class ClustersTask:
                         ref_solv_dir = f'../{ref_mol_dir}'
                         calc_params['target'] = targ
                         trajname = f"{seed}_{targstr(targ)}_{traj_label}_{traj_suffix}.traj"
-                        print(f'Testing trajlabel = {traj_label}')
                         fails = sanity_check(trajname, self.wrapper, calc_params, ref_solu_dir, ref_solu_t,
                                             ref_solv_dir, ref_solv)
-            else:
-                print('Correctly recognised recalc file exists')
             traj_recalc_file_nosolu = f'{self.solute}{solvstr}_{targstr(self.which_target)}_{self.which_traj}_{self.output}_nosolu.traj' 
             if self.repeat_without_solute and not (path.exists(traj_recalc_file_nosolu) and path.getsize(traj_recalc_file_nosolu)>0):
                 print('#\n# Repeating calculation with solute removed\n#')
@@ -288,11 +285,10 @@ class ClustersTask:
                     input_suffix = f'{self.carved_suffix}_nosolu_{self.task_id:04}'
                 else:
                     input_suffix = f'{self.carved_suffix}_nosolu'
-                print('get to second recalc')
                 traj_carved_nosolu_file = self.remove_solute(traj_carved,self.solute,self.solvent,seed,traj_label,traj_suffix)
                 # Now run through the trajectory, calculating singlepoint energy for each frame
                 recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input_suffix, self.wrapper,calc_params=calc_params,
-                                       input_traj_range=input_traj_range,input_traj_label=input_traj_label,output_traj_offset=output_traj_offset,
+                                       input_traj_range=input_traj_range,output_traj_offset=output_traj_offset,
                                        charge=0,solvent=self.impsolv,calc_forces=self.calc_forces,
                                        geom_opt_kernel=False,vibfreq_kernel=False)
                 # Always remove nosolu traj carved, as it is very quick to recreate it if needed

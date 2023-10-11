@@ -391,8 +391,6 @@ class SpectraTask:
         if (rgb == np.array((-1.0,-1.0,-1.0))).all():
             rgb = RGB_colour(stick_spectrum,self)
         
-        filename = f"abs_spec_{self.carved_suffix}.csv"
-        np.savetxt(filename, broad_spectrum, delimiter=',')
         # Plot the spectrum
 
         if True:
