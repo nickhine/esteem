@@ -445,7 +445,7 @@ def create_spectra_tasks(spectra_task,train_calcs,targets,rand_seed,meth,ntraj,t
                 all_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc_{spectra_task.carved_suffix}.traj", 
                                   f"{tdir}/{{solu}}_{{solv}}_{targstrp}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc_{spectra_task.carved_suffix}.traj"])
                 if corr_traj:
-                    all_corr_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_nosolu_{spectra_task.carved_suffix}.traj"])
+                    all_corr_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc_{spectra_task.carved_suffix}_nosolu.traj"])
             spectra_task.trajectory = all_trajs
             spectra_task.correction_trajectory = all_corr_trajs
             new_spectra_tasks[f'{targstr}_{meth}{t}_{traj_suffix}_{spectra_task.carved_suffix}'] = deepcopy(spectra_task)
