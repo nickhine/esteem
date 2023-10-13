@@ -1032,6 +1032,10 @@ def make_traj_links(mltrain_task,traj_links,train_dir,prefix,all_solutes,all_sol
             # Check the link destination exists, and if so make the link
             if not path.isfile('../'+traj_link) and not path.islink('../'+traj_link):
                 raise Exception(f'# File to link to not found for trajectory {traj}: {traj_link}')
+            if path.islink('../'+trajnames[traj]):
+                if (readlink('../'+trajnames[traj])!='../'+traj_link):
+                    print(f'# Removing pre-existing link to ../{readlink(trajnames[traj])}')
+                    remove('../'+trajnames[traj])
             if not path.isfile('../'+trajnames[traj]) and not path.islink('../'+trajnames[traj]):
                 try:
                     symlink('../'+traj_link,'../'+trajnames[traj])
