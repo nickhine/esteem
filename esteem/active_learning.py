@@ -309,6 +309,7 @@ def create_mltraj_tasks(mltraj_task,train_calcs,targets,rand_seed,meth,md_wrappe
     Takes lists of calculators, targets, random seeds, and strings stating the ML method
     and wrappers for the MD itself and for the "committee" MD
     """
+    
     new_mltraj_tasks = {}
     if mltraj_task.calc_seed is None:
         mltraj_task.calc_seed = f"{{solu}}" #_{{solv}}"
@@ -332,7 +333,7 @@ def create_mltraj_tasks(mltraj_task,train_calcs,targets,rand_seed,meth,md_wrappe
                     mltraj_task.snap_wrapper = snap_wrapper
                     if two_targets:
                         calc_suffix = mltraj_task.calc_suffix
-                        taskname = taskname + '_spec'
+                        taskname = f"{taskname}_{traj_suffix}_{mltraj_task.carved_suffix}"
                         targ = [0,1] if target==0 else [1,0]
                     else:
                         taskname = taskname + f'x{len(rand_seed)}'
