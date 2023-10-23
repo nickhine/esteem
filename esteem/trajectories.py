@@ -641,8 +641,15 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
             # Supply keyword dipole explicitly to ensure it gets written or fails
             if isinstance(targ,list):
                 for it,tg in enumerate(targ):
+                    len_en = len(energy)
+                    len_en_targ = int(len_en/len(targ))
+                    i0 = it*len_en_targ
+                    i1 = (it+1)*len_en_targ
                     frame_targ = frame.copy()
                     frame_targ.calc = frame.calc[it]
+                    frame_targ.calc.results["energy"] = energy[i0:i1]
+                    frame_targ.calc.results["forces"] = forces[i0:i1]
+                    frame_targ.calc.results["dipole"] = dipole[i0:i1]
                     outtraj[it].write(frame_targ)
             else:
                 if outtraj[targ] is not None:

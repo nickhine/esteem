@@ -991,6 +991,7 @@ def qmd_driver(qmdtraj,all_solutes,all_solvents):
 def make_traj_links(mltrain_task,traj_links,train_dir,prefix,all_solutes,all_solvents):
     
     from ase.io import Trajectory
+    from os import readlink, remove
     
     origdir = getcwd()
     # switch to the training directory, so links are made there
@@ -1032,6 +1033,12 @@ def make_traj_links(mltrain_task,traj_links,train_dir,prefix,all_solutes,all_sol
             # Check the link destination exists, and if so make the link
             if not path.isfile('../'+traj_link) and not path.islink('../'+traj_link):
                 raise Exception(f'# File to link to not found for trajectory {traj}: {traj_link}')
+            if path.islink('../'+trajnames[traj]):
+                if (readlink('../'+trajnames[traj])!='../'+traj_link):
+                    currlink=readlink('../'+trajnames[traj])
+                    print(f'# Removing pre-existing link from ../{trajnames[traj]} to {currlink}')
+                    remove('../'+trajnames[traj])
+                    print(f'# Replacing with new link to ../{traj_link}')
             if not path.isfile('../'+trajnames[traj]) and not path.islink('../'+trajnames[traj]):
                 try:
                     symlink('../'+traj_link,'../'+trajnames[traj])
