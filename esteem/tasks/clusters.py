@@ -908,7 +908,7 @@ def get_ref_mol_energy(wrapper,ref_mol,solv,calc_params,ref_mol_xyz,ref_mol_dir,
         print(f'# Reading reference molecule from {ref_mol_xyz}')
     ref_mol_model = read(ref_mol_xyz)
     ref_mol_calc_dir = f'{ref_mol_dir}/geom/{ref_mol}'
-    ref_mol_seed = f'{ref_mol}_{solv}'
+    ref_mol_seed = f'{ref_mol}_{solv}' if solv is not None else ref_mol
     if not silent:
         print(f'# Reading reference molecule calculation from {ref_mol_calc_dir}/{ref_mol_seed}')
     orig_dir = getcwd()
