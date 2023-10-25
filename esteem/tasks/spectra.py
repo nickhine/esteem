@@ -23,7 +23,6 @@ class SpectraTask:
         self.script_settings = None
         self.task_command = 'spectra'
         args = self.make_parser().parse_args("")
-        self.carved_suffix = None
         for arg in vars(args):
             setattr(self,arg,getattr(args,arg))
     #from amp import Ampc
@@ -392,6 +391,7 @@ class SpectraTask:
             rgb = RGB_colour(stick_spectrum,self)
         
         # Plot the spectrum
+        np.savetxt(f'spectrum_{self.carved_suffix}.csv', broad_spectrum, delimiter=",")
 
         if True:
             spec_plot, fig, ax = self.plot(broad_spectrum,fig,ax,rgb,label=plotlabel,linestyle=linestyle)
@@ -425,6 +425,7 @@ class SpectraTask:
         parser.add_argument('--verbosity','-V',default='normal',type=str,help='Level of output')
         parser.add_argument('--illuminant','-I',default='D65_illuminant.txt',type=str,help='Spectrum of illuminant for calculating RGB colour')
         parser.add_argument('--XYZresponse','-X',default='XYZ_response.txt',type=str,help='Response spectrum X, Y and Z functions for calculating RGB colour')
+        parser.add_argument('--carved_suffix',default=None,type=str,help='Suffix of spectra output files corresponding to the size of clusters used in calculations')
 
         # For use in Drivers only, for setting up spectral warping and colouring plots
         parser.add_argument('--exc_suffix','-e',default="exc",nargs='?',type=str,help='Suffix of excitation calculation directories')
