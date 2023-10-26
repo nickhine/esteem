@@ -178,7 +178,7 @@ class SpectraTask:
                                 e1 = e1[-1]
                                 if corr_traj[0] is not None and (isinstance(e1c,list) or isinstance(e1c,np.ndarray)):
                                     e1c = e1c[-1]
-                            ediff = e1 - e0 + e1c - e0c
+                            ediff = e1 - e0 - e1c + e0c
                             # Swap sign of energy difference, if emission calculation is requested
                             if self.mode=='emission':
                                 ediff = -ediff
