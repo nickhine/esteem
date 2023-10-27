@@ -391,8 +391,6 @@ class SpectraTask:
             rgb = RGB_colour(stick_spectrum,self)
         
         # Plot the spectrum
-        np.savetxt(f'spectrum_{self.carved_suffix}.csv', broad_spectrum, delimiter=",")
-
         if True:
             spec_plot, fig, ax = self.plot(broad_spectrum,fig,ax,rgb,label=plotlabel,linestyle=linestyle)
         else:
