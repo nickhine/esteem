@@ -456,7 +456,8 @@ def create_spectra_tasks(spectra_task,train_calcs,targets,rand_seed,meth,ntraj,t
                 if corr_traj:
                     all_corr_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc_{spectra_task.carved_suffix}_nosolu.traj",
                         f"{tdir}/{{solu}}_{{solv}}_{targstrp}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc_{spectra_task.carved_suffix}_nosolu.traj"])
-                #if corr_traj:
+               #CARLOs
+               #if corr_traj:
                     #all_corr_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstrp}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc_{spectra_task.carved_suffix}_nosolu.traj",
                         #f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc_{spectra_task.carved_suffix}_nosolu.traj"])
             spectra_task.trajectory = all_trajs
