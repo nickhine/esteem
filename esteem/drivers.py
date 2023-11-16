@@ -743,9 +743,13 @@ def clusters_driver(all_solutes,all_solvents,seed,task,make_sbatch=None,dryrun=F
                 task.impsolv = solvent
             # If we provided a dictionary for the radius, find the specific entry that we need
             if isinstance(task.radius,dict):
-                if solvent in task.radius:
+                solu_solv = f'{solute}_{solvent}'
+                if solu_solv in task.radius:
+                    task.radius = task.radius[solu_solv]
+                elif solvent in task.radius:
                     task.radius = task.radius[solvent]
                 else:
+                    print(task.radius)
                     raise Exception(f"task.radius is a dictionary but contains no entry for solvent '{solvent}'")
             if hasattr(task,'calc_seed'):
                 if task.calc_seed is not None:
@@ -1401,10 +1405,13 @@ def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False):
     if mltraj.carve_trajectory_radius is not None:
         # If we provided a dictionary for the radius, find the specific entry that we need
         if isinstance(mltraj.carve_trajectory_radius,dict):
-            if solv in mltraj.carve_trajectory_radius:
+            solu_solv = f'{solu}_{solv}'
+            if solu_solv in mltraj.carve_trajectory_radius:
+                mltraj.carve_trajectory_radius = mltraj.carve_trajectory_radius[solu_solv]
+            elif solv in mltraj.carve_trajectory_radius:
                 mltraj.carve_trajectory_radius = mltraj.carve_trajectory_radius[solv]
             else:
-                raise Exception(f"mltraj.carve_trajectory_radius is a dictionary but contains no entry for solvent '{solv}'")
+                raise Exception(f"mltraj.carve_trajectory_radius is a dictionary but contains no entry for solvent '{solv}' or specific solute-solvent combination '{solu}_{solv}'")
         mltraj_cleanup(mltraj)
 
 def mltraj_cleanup(mltraj):

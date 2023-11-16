@@ -346,7 +346,6 @@ class ClustersTask:
         from os import path
 
         # Determine trajectory names and open trajectory
-        solvent_radius = solvent_radius[-1] if isinstance(solvent_radius, list) else solvent_radius
         input_traj = self.get_input_traj(self.solute,self.solvent,self.md_suffix)
         which_targstr = targstr(self.which_target)
         
