@@ -339,7 +339,7 @@ def create_mltraj_tasks(mltraj_task,train_calcs,targets,rand_seed,meth,md_wrappe
                         else:
                             taskname = f"{taskname}_{traj_suffix}"                        
                     else:
-                        taskname = taskname + f'x{len(rand_seed)}'
+                        taskname = taskname + f'x{len(rand_seed)}_{traj_suffix}_{mltraj_task.carved_suffix}'
                         calc_suffix = {f'{meth}{t}{rs}':rseed for (rs,rseed) in rand_seed.items()}
                     mltraj_task.snap_calc_params = {'target':targ,
                                                     'calc_prefix':'../../',
