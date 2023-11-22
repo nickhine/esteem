@@ -83,7 +83,8 @@ def create_clusters_tasks(task,train_calcs,seed,traj_suffix,md_suffix,
                 task.exc_dir_suffix = f'{targets[target]}_{meth}{pref(t)}_{traj_suffix}'
                 task.output = f'{truth}_{suff(tp)}'
                 task.carved_suffix = f'carved_{suff(tp)}'
-                task.selected_suffix = f'selected_{suff(tp)}'
+                #task.carved_suffix = f'{task.carved_suffixtask.carved_suffix}_{suff(tp)}'
+                task.selected_suffix = f'selected_{suff(tp)}' if task.second_selxn_suffix is None else f'selected_{suff(tp)}_{task.second_selxn_suffix}'
                 task.script_settings['logdir'] = task.output
                 wlist = [get_traj_from_calc(tp)]
                 wlist += ['Q']
@@ -141,7 +142,13 @@ def add_trajectories(task,seeds,calc,traj_suffixes,dir_suffixes,ntraj,targets,ta
                 fullsuffix = f"{targstr1}_{traj_suffix}"
             else:
                 fullsuffix = truth
-            for seed in seeds:
+                # handle case where seeds is a dictionary, and keys are target,suffix tuples
+            if (isinstance(seeds,dict)):
+               seeds_list = seeds[targstr1,traj_suffix]
+            else:
+               seeds_list = seeds
+            # Loop over seeds
+            for seed in seeds_list:
                 all_keys = get_keys(task)
                 targstr2 = targstr
                 if seed=='{solv}_{solv}' and targstr2=='es1':
@@ -210,7 +217,13 @@ def add_iterating_trajectories(task,seeds,calc,iter_dir_suffixes,targets,target,
             targstrp = targets[targetp]
             # Loop over all dir suffixes and seeds
             for dir_suffix in iter_dir_suffixes:
-                for seed in seeds:
+                # handle case where seeds is a dictionary, and keys are target,suffix tuples
+                if (isinstance(seeds,dict)):
+                   seeds_list = seeds[targstr1,dir_suffix]
+                else:
+                   seeds_list = seeds
+                #Loop over seeds
+                for seed in seeds_list:###Nick originally had for seed in seeds (check)
                     # temporary hack - will need a better way to skip this
                     if (seed=='{solv}_{solv}' and targstrp=='es1'):
                         continue

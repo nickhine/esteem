@@ -115,6 +115,7 @@ class ClustersTask:
             delete_traj_carved_file = True
         else:
             input_suffix = f'{self.carved_suffix}'
+            print('input_suffix =', input_suffix)
             delete_traj_carved_file = False
 
         # Check if the carved trajectory already exists

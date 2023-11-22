@@ -1420,8 +1420,7 @@ def mltraj_cleanup(mltraj):
     from esteem.trajectories import get_trajectory_list,targstr
 
     ct = ClustersTask()
-    if hasattr(mltraj, 'corr_traj'):
-        ct.repeat_without_solute = True
+    ct.repeat_without_solute = True if mltraj.corr_traj else False
     ct.solute,ct.solvent = get_solu_solv_names(mltraj.seed)
     ct.which_target = mltraj.target
     for ct.which_traj in mltraj.which_trajs:
