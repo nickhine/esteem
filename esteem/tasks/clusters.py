@@ -122,6 +122,7 @@ class ClustersTask:
         which_targstr = targstr(self.which_target)
         solvstr = f'_{self.solvent}' if self.solvent is not None else ''
         traj_carved_file = f'{self.solute}{solvstr}_{which_targstr}_{self.which_traj}_{input_suffix}.traj'
+        print('###traj_carved_file =', traj_carved_file)
         # In the case where we have carved a trajectory already, skip the rest
         if os.path.exists(traj_carved_file) and self.radius is not None:
             if os.path.getsize(traj_carved_file)>0:
@@ -251,6 +252,10 @@ class ClustersTask:
             # Now run through the trajectory, calculating singlepoint energy for each frame
             from os import path
             traj_recalc_file = f'{self.solute}{solvstr}_{targstr(self.which_target)}_{self.which_traj}_{self.output}.traj'
+            traj_recalc_file = f'{traj_recalc_file}_{self.second_suffix}' if self.second_suffix is not None else traj_recalc_file
+            print('traj_recalc_file =', traj_recalc_file)
+            traj_suffix=f'{traj_suffix}_{self.second_suffix}' if self.second_suffix is not None else traj_suffix
+            print(traj_suffix)
             if not (path.exists(traj_recalc_file) and path.getsize(traj_recalc_file)>0):
                 recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input_suffix,
                                        self.wrapper,calc_params=calc_params,
@@ -592,6 +597,7 @@ class ClustersTask:
         parser.add_argument('--selected_suffix','-U',default="selected",nargs='?',type=str,help=SUPPRESS)
         parser.add_argument('--exc_suffix','-e',default="exc",nargs='?',type=str,help=SUPPRESS)
         parser.add_argument('--ref_mol_dir','-l',default="{target}_PBE0",type=str,help='Location of output of solutes run from which to find reference energies')
+        parser.add_argument('--second_suffix', '-x',default=None,type=str,help= 'Secondary suffix allowing the use of new carved trajectories in clusters after the initial procedure')  
         # Wrapper Dependent
         parser.add_argument('--calc_params','-q',default={},nargs='?',type=str,help=SUPPRESS)
         parser.add_argument('--calc_seed','-Z',default=None,type=str,help='Seed for the calculator')

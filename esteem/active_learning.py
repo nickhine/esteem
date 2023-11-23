@@ -82,9 +82,8 @@ def create_clusters_tasks(task,train_calcs,seed,traj_suffix,md_suffix,
                 task.exc_suffix = f'{targets[target]}_{meth}{t}'
                 task.exc_dir_suffix = f'{targets[target]}_{meth}{pref(t)}_{traj_suffix}'
                 task.output = f'{truth}_{suff(tp)}'
-                task.carved_suffix = f'carved_{suff(tp)}'
-                #task.carved_suffix = f'{task.carved_suffixtask.carved_suffix}_{suff(tp)}'
-                task.selected_suffix = f'selected_{suff(tp)}' if task.second_selxn_suffix is None else f'selected_{suff(tp)}_{task.second_selxn_suffix}'
+                task.carved_suffix = f'carved_{suff(tp)}' if task.second_suffix is None else f'carved_{suff(tp)}_{task.second_suffix}'
+                task.selected_suffix = f'selected_{suff(tp)}' if task.second_suffix is None else f'selected_{suff(tp)}_{task.second_suffix}'
                 task.script_settings['logdir'] = task.output
                 wlist = [get_traj_from_calc(tp)]
                 wlist += ['Q']
