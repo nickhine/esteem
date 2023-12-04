@@ -168,6 +168,8 @@ class MLTrajTask:
         parser.add_argument('--recalculate_carved_traj','-J',default=False,type=bool,help='Use snap_wrapper (if present, wrapper if not) to recalculate energies and forces after carving')
         parser.add_argument('--constraints','-c',default=None,type=str,help='Constraints (ASE constraints class)')
         parser.add_argument('--dynamics','-d',default=None,type=str,help='Dynamics (ASE Dynamics class)')
+        parser.add_argument('--carved_suffix',default=None,type=str,help='Suffix of mltraj output files corresponding to the size of carved clusters')
+        parser.add_argument('--corr_traj', default=False, type=bool, help='Boolean specifying whether to carve and recalculate correction trajectories')
 
         return parser
 

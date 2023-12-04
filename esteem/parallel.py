@@ -180,6 +180,8 @@ def get_default_script_settings(wrapper):
                                    set_pseudo_suffix="_NCP17_PBE_OTF.usp")
         if isinstance(wrapper,PhysNetWrapper):
             script_settings = deepcopy(avon_1gpu)
+        if isinstance(wrapper,MACEWrapper):
+            script_settings = deepcopy(avon_1gpu)
         if isinstance(wrapper,ORCAWrapper):
             script_settings = deepcopy(avon_1node_gnu)
             script_settings['declarations'] = script_settings['declarations'] + bash_loop_declarations

@@ -82,8 +82,8 @@ def create_clusters_tasks(task,train_calcs,seed,traj_suffix,md_suffix,
                 task.exc_suffix = f'{targets[target]}_{meth}{t}'
                 task.exc_dir_suffix = f'{targets[target]}_{meth}{pref(t)}_{traj_suffix}'
                 task.output = f'{truth}_{suff(tp)}'
-                task.carved_suffix = f'carved_{suff(tp)}'
-                task.selected_suffix = f'selected_{suff(tp)}'
+                task.carved_suffix = f'carved_{suff(tp)}' if task.second_suffix is None else f'carved_{suff(tp)}_{task.second_suffix}'
+                task.selected_suffix = f'selected_{suff(tp)}' if task.second_suffix is None else f'selected_{suff(tp)}_{task.second_suffix}'
                 task.script_settings['logdir'] = task.output
                 wlist = [get_traj_from_calc(tp)]
                 wlist += ['Q']
@@ -141,7 +141,13 @@ def add_trajectories(task,seeds,calc,traj_suffixes,dir_suffixes,ntraj,targets,ta
                 fullsuffix = f"{targstr1}_{traj_suffix}"
             else:
                 fullsuffix = truth
-            for seed in seeds:
+                # handle case where seeds is a dictionary, and keys are target,suffix tuples
+            if (isinstance(seeds,dict)):
+               seeds_list = seeds[targstr1,traj_suffix]
+            else:
+               seeds_list = seeds
+            # Loop over seeds
+            for seed in seeds_list:
                 all_keys = get_keys(task)
                 targstr2 = targstr
                 if seed=='{solv}_{solv}' and targstr2=='es1':
@@ -169,7 +175,7 @@ def add_trajectories(task,seeds,calc,traj_suffixes,dir_suffixes,ntraj,targets,ta
                         print('# Please ensure no overlap with other targets:')
                         print(task.which_trajs)
 
-def add_iterating_trajectories(task,seeds,calc,iter_dir_suffixes,targets,target,meth,truth,only_gen=None):
+def add_iterating_trajectories(task,seeds,calc,iter_dir_suffixes,targets,target,meth,truth,second_suffix=None,only_gen=None):
     """
     Adds iterating trajectories
     """
@@ -210,7 +216,13 @@ def add_iterating_trajectories(task,seeds,calc,iter_dir_suffixes,targets,target,
             targstrp = targets[targetp]
             # Loop over all dir suffixes and seeds
             for dir_suffix in iter_dir_suffixes:
-                for seed in seeds:
+                # handle case where seeds is a dictionary, and keys are target,suffix tuples
+                if (isinstance(seeds,dict)):
+                   seeds_list = seeds[targstr,dir_suffix]   ###edited
+                else:
+                   seeds_list = seeds
+                #Loop over seeds
+                for seed in seeds_list:###Nick originally had for seed in seeds (check)
                     # temporary hack - will need a better way to skip this
                     if (seed=='{solv}_{solv}' and targstrp=='es1'):
                         continue
@@ -227,7 +239,9 @@ def add_iterating_trajectories(task,seeds,calc,iter_dir_suffixes,targets,target,
                         traj_char = chr(ord(last_static_traj_char)+offset)
                         # Find the directory and filename for this trajectory
                         traj_link_dir = f"{seed}_{targstrp}_{meth}{pref(calcp)}_{dir_suffix}"
-                        traj_link_file = f"{seed}_{targstr2}_{traj_type_char}_{traj_suffix}.traj"
+                        traj_link_dir = f"{seed}_{targstrp}_{meth}{pref(calcp)}_{iter_dir_suffixes[0]}" if second_suffix != None and seed=='{solv}_{solv}' else traj_link_dir
+                        traj_link_file_pref = f"{seed}_{targstr2}_{traj_type_char}_{traj_suffix}"
+                        traj_link_file = f'{traj_link_file_pref}_{second_suffix}.traj' if second_suffix != None and seed=='{solv}_{solv}' else f'{traj_link_file_pref}.traj'
                         # Add it to the list of links to make
                         # and to the list of trajectory characters to link
                         traj_dest = f"{traj_link_dir}/{traj_link_file}"
@@ -247,7 +261,7 @@ def add_iterating_trajectories(task,seeds,calc,iter_dir_suffixes,targets,target,
                 
 def create_mltrain_tasks(train_task,train_calcs,seeds,targets,rand_seed,meth,truth,
                          traj_suffixes=[],dir_suffixes={},ntraj={},
-                         iter_dir_suffixes=[],delta_epochs=200,separate_valid=False):
+                         iter_dir_suffixes=[],delta_epochs=200,second_suffix=None,separate_valid=False):
     """
     Returns a dictionary of MLTrain tasks, based on an input prototype task supplied by
     the user, for all the required MLTrain tasks for an Active Learning task.
@@ -281,7 +295,7 @@ def create_mltrain_tasks(train_task,train_calcs,seeds,targets,rand_seed,meth,tru
             # Then add "static" configurations, that do not increase with AL generation
             add_trajectories(train_task,seeds,t,traj_suffixes,dir_suffixes,ntraj,targets,target,truth)
             # For generations > 0, we now add chosen subset trajectories for active learning
-            add_iterating_trajectories(train_task,seeds,t,iter_dir_suffixes,targets,target,meth,truth)
+            add_iterating_trajectories(train_task,seeds,t,iter_dir_suffixes,targets,target,meth,truth,second_suffix)
             # extra epochs for each generation
             if 'max_num_epochs' in train_task.wrapper.train_args:  # MACE specific
                 gen = get_gen_from_calc(t)
@@ -292,7 +306,7 @@ def create_mltrain_tasks(train_task,train_calcs,seeds,targets,rand_seed,meth,tru
             for rs in rand_seed:
                 # Seed-specific info
                 train_task.wrapper.train_args['seed'] = rand_seed[rs] # MACE specific
-                train_task.calc_suffix = f"{meth}{t}{rs}"
+                train_task.calc_suffix = f"{meth}{t}{rs}" if second_suffix is None else f"{meth}{t}{rs}_{second_suffix}"
                 new_mltrain_tasks[targets[target]+'_'+train_task.calc_suffix] = deepcopy(train_task)
     return new_mltrain_tasks
 
@@ -333,10 +347,13 @@ def create_mltraj_tasks(mltraj_task,train_calcs,targets,rand_seed,meth,md_wrappe
                     mltraj_task.snap_wrapper = snap_wrapper
                     if two_targets:
                         calc_suffix = mltraj_task.calc_suffix
-                        taskname = f"{taskname}_{traj_suffix}_{mltraj_task.carved_suffix}"
                         targ = [0,1] if target==0 else [1,0]
+                        if mltraj_task.carved_suffix is not None and mltraj_task.carved_suffix!='':
+                            taskname = f"{taskname}_{traj_suffix}_{mltraj_task.carved_suffix}"
+                        else:
+                            taskname = f"{taskname}_{traj_suffix}"                        
                     else:
-                        taskname = taskname + f'x{len(rand_seed)}'
+                        taskname = taskname + f'x{len(rand_seed)}_{traj_suffix}_{mltraj_task.carved_suffix}'
                         calc_suffix = {f'{meth}{t}{rs}':rseed for (rs,rseed) in rand_seed.items()}
                     mltraj_task.snap_calc_params = {'target':targ,
                                                     'calc_prefix':'../../',
@@ -411,7 +428,7 @@ def create_mltest_tasks(test_task,train_calcs,seeds,targets,rand_seed,truth,meth
 # In[12]:
 
 
-def create_spectra_tasks(spectra_task,train_calcs,targets,rand_seed,meth,ntraj,corr_traj=False):
+def create_spectra_tasks(spectra_task,train_calcs,targets,rand_seed,meth,ntraj,traj_suffix='specdyn',corr_traj=False):
     """
     Returns a dictionary of Spectra tasks, based on an input prototype task supplied by
     the user, for all the required Spectra tasks for an Active Learning task.
@@ -422,6 +439,8 @@ def create_spectra_tasks(spectra_task,train_calcs,targets,rand_seed,meth,ntraj,c
     for target in targets:
         targstr = targets[target]
         targstrp = "gs" if targstr=="es1" else "es1"
+        spectra_task.carved_suffix = spectra_task.carved_suffix if spectra_task.carved_suffix is not None and spectra_task.carved_suffix != "" else "carved"
+        #spectra_task.carved_suffix = f"{spectra_task.carved_suffix}_nosolu" if corr_traj else spectra_task.carved_suffix
         for t in train_calcs:
             all_trajs = []
             all_corr_trajs = [] if corr_traj else None
@@ -430,21 +449,34 @@ def create_spectra_tasks(spectra_task,train_calcs,targets,rand_seed,meth,ntraj,c
             spectra_task.verbosity = 'normal'
             if spectra_task.wrapper is not None:
                 spectra_task.wrapper.task = spectra_task.mode.upper()
-                spectra_task.wrapper.rootname = f'{{solu}}_{{solv}}_{targstr}_spec'
-                spectra_task.wrapper.input_filename = f'{{solu}}_{{solv}}_{targstr}_spec_input'
+                if corr_traj:
+                    spectra_task.wrapper.rootname = f'{{solu}}_{{solv}}_{targstr}_{spectra_task.carved_suffix}_nosolu_spec'
+                    spectra_task.wrapper.input_filename = f'{{solu}}_{{solv}}_{targstr}_spec_{spectra_task.carved_suffix}_nosolu_input'
+                else:
+                    spectra_task.wrapper.rootname = f'{{solu}}_{{solv}}_{targstr}_{spectra_task.carved_suffix}_spec'
+                    spectra_task.wrapper.input_filename = f'{{solu}}_{{solv}}_{targstr}_spec_{spectra_task.carved_suffix}_input'
             spectra_task.exc_suffix = f'{targstr}_{meth}{pref(t)}_mldyn'
-            spectra_task.output = f'{{solu}}_{{solv}}_{spectra_task.exc_suffix}_spectrum.png'
+            if corr_traj:
+                spectra_task.output = f'{{solu}}_{{solv}}_{spectra_task.exc_suffix}_{spectra_task.carved_suffix}_nosolu_spectrum.png'
+            else:
+                spectra_task.output = f'{{solu}}_{{solv}}_{spectra_task.exc_suffix}_{spectra_task.carved_suffix}_spectrum.png'
+
             tdir = '.'
             rslist = list(rand_seed)
             for iw,w in enumerate(get_trajectory_list(ntraj)):
                 rs = rslist[iw]
-                all_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_specdyn_recalc.traj", 
-                                  f"{tdir}/{{solu}}_{{solv}}_{targstrp}_{w}_{meth}{t}{rs}_specdyn_recalc.traj"])
+                all_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc_{spectra_task.carved_suffix}.traj", 
+                                  f"{tdir}/{{solu}}_{{solv}}_{targstrp}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc_{spectra_task.carved_suffix}.traj"])
                 if corr_traj:
-                    all_corr_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_nosolu.traj"])
+                    all_corr_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc_{spectra_task.carved_suffix}_nosolu.traj",
+                        f"{tdir}/{{solu}}_{{solv}}_{targstrp}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc_{spectra_task.carved_suffix}_nosolu.traj"])
+               #CARLOs
+               #if corr_traj:
+                    #all_corr_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstrp}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc_{spectra_task.carved_suffix}_nosolu.traj",
+                        #f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_{traj_suffix}_recalc_{spectra_task.carved_suffix}_nosolu.traj"])
             spectra_task.trajectory = all_trajs
             spectra_task.correction_trajectory = all_corr_trajs
-            new_spectra_tasks[f'{targstr}_{meth}{t}_specdyn'] = deepcopy(spectra_task)
+            new_spectra_tasks[f'{targstr}_{meth}{t}_{traj_suffix}_{spectra_task.carved_suffix}'] = deepcopy(spectra_task)
             
     return new_spectra_tasks
 

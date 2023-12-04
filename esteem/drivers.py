@@ -743,9 +743,13 @@ def clusters_driver(all_solutes,all_solvents,seed,task,make_sbatch=None,dryrun=F
                 task.impsolv = solvent
             # If we provided a dictionary for the radius, find the specific entry that we need
             if isinstance(task.radius,dict):
-                if solvent in task.radius:
+                solu_solv = f'{solute}_{solvent}'
+                if solu_solv in task.radius:
+                    task.radius = task.radius[solu_solv]
+                elif solvent in task.radius:
                     task.radius = task.radius[solvent]
                 else:
+                    print(task.radius)
                     raise Exception(f"task.radius is a dictionary but contains no entry for solvent '{solvent}'")
             if hasattr(task,'calc_seed'):
                 if task.calc_seed is not None:
@@ -1401,10 +1405,13 @@ def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False):
     if mltraj.carve_trajectory_radius is not None:
         # If we provided a dictionary for the radius, find the specific entry that we need
         if isinstance(mltraj.carve_trajectory_radius,dict):
-            if solv in mltraj.carve_trajectory_radius:
+            solu_solv = f'{solu}_{solv}'
+            if solu_solv in mltraj.carve_trajectory_radius:
+                mltraj.carve_trajectory_radius = mltraj.carve_trajectory_radius[solu_solv]
+            elif solv in mltraj.carve_trajectory_radius:
                 mltraj.carve_trajectory_radius = mltraj.carve_trajectory_radius[solv]
             else:
-                raise Exception(f"mltraj.carve_trajectory_radius is a dictionary but contains no entry for solvent '{solv}'")
+                raise Exception(f"mltraj.carve_trajectory_radius is a dictionary but contains no entry for solvent '{solv}' or specific solute-solvent combination '{solu}_{solv}'")
         mltraj_cleanup(mltraj)
 
 def mltraj_cleanup(mltraj):
@@ -1413,12 +1420,14 @@ def mltraj_cleanup(mltraj):
     from esteem.trajectories import get_trajectory_list,targstr
 
     ct = ClustersTask()
+    ct.repeat_without_solute = True if mltraj.corr_traj else False
     ct.solute,ct.solvent = get_solu_solv_names(mltraj.seed)
     ct.which_target = mltraj.target
     for ct.which_traj in mltraj.which_trajs:
         ct.min_snapshots = 0;
         ct.max_snapshots = mltraj.nsnap
         ct.max_atoms = mltraj.carve_trajectory_max_atoms
+        mltraj.carved_suffix = mltraj.carved_suffix if mltraj.carved_suffix is not None and mltraj.carved_suffix else 'carved'
         ct.carved_suffix = f"{mltraj.traj_suffix}_{mltraj.carved_suffix}"
         ct.md_suffix = f"{targstr(ct.which_target)}_{ct.which_traj}_{mltraj.traj_suffix}"
         solvstr = f'_{ct.solvent}' if ct.solvent is not None else ''
@@ -1437,6 +1446,9 @@ def mltraj_cleanup(mltraj):
             traj_recalc_file = f'{ct.solute}{solvstr}_{targstr(ct.which_target)}_{ct.which_traj}_{ct.output}.traj'
             if path.exists(traj_recalc_file) and path.getsize(traj_recalc_file)>0:
                 print(f'# Skipping recalculating clusters in postprocessing - {traj_recalc_file} already present')
+                traj_recalc_file_nosolu = f'{ct.solute}{solvstr}_{targstr(ct.which_target)}_{ct.which_traj}_{ct.output}_nosolu.traj'
+                if hasattr(mltraj, 'corr_traj') and not (path.exists(traj_recalc_file_nosolu) and path.getsize(traj_recalc_file_nosolu)>0):
+                    ct.run()
             else:
                 ct.run()
         if mltraj.store_full_traj:

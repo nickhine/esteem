@@ -178,10 +178,12 @@ class SpectraTask:
                                 e1 = e1[-1]
                                 if corr_traj[0] is not None and (isinstance(e1c,list) or isinstance(e1c,np.ndarray)):
                                     e1c = e1c[-1]
-                            ediff = e1 - e0 + e1c - e0c
+                            ediff = e1 - e0 - e1c + e0c
+                            #CARLO's
+                            #ediff = e1-e0+e1c-e0c
                             # Swap sign of energy difference, if emission calculation is requested
-                            if self.mode=='emission':
-                                ediff = -ediff
+                            #if self.mode=='emission':
+                               # ediff = -ediff #COMMENTED OUT BEFORE COMMIT 04.12.23
                             # Print all results, if set to high verbosity
                             if self.verbosity=='high':
                                 print(j,wavelength_eV_conv/ediff,ediff,e1,e0,e1c,e0c,e1c-e0c)
@@ -423,6 +425,7 @@ class SpectraTask:
         parser.add_argument('--verbosity','-V',default='normal',type=str,help='Level of output')
         parser.add_argument('--illuminant','-I',default='D65_illuminant.txt',type=str,help='Spectrum of illuminant for calculating RGB colour')
         parser.add_argument('--XYZresponse','-X',default='XYZ_response.txt',type=str,help='Response spectrum X, Y and Z functions for calculating RGB colour')
+        parser.add_argument('--carved_suffix',default=None,type=str,help='Suffix of spectra output files corresponding to the size of clusters used in calculations')
 
         # For use in Drivers only, for setting up spectral warping and colouring plots
         parser.add_argument('--exc_suffix','-e',default="exc",nargs='?',type=str,help='Suffix of excitation calculation directories')
