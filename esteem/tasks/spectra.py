@@ -182,8 +182,8 @@ class SpectraTask:
                             #CARLO's
                             #ediff = e1-e0+e1c-e0c
                             # Swap sign of energy difference, if emission calculation is requested
-                            if self.mode=='emission':
-                                ediff = -ediff
+                            #if self.mode=='emission':
+                               # ediff = -ediff #COMMENTED OUT BEFORE COMMIT 04.12.23
                             # Print all results, if set to high verbosity
                             if self.verbosity=='high':
                                 print(j,wavelength_eV_conv/ediff,ediff,e1,e0,e1c,e0c,e1c-e0c)

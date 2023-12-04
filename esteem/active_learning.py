@@ -175,7 +175,7 @@ def add_trajectories(task,seeds,calc,traj_suffixes,dir_suffixes,ntraj,targets,ta
                         print('# Please ensure no overlap with other targets:')
                         print(task.which_trajs)
 
-def add_iterating_trajectories(task,seeds,calc,iter_dir_suffixes,targets,target,meth,truth,only_gen=None):
+def add_iterating_trajectories(task,seeds,calc,iter_dir_suffixes,targets,target,meth,truth,second_suffix=None,only_gen=None):
     """
     Adds iterating trajectories
     """
@@ -218,7 +218,7 @@ def add_iterating_trajectories(task,seeds,calc,iter_dir_suffixes,targets,target,
             for dir_suffix in iter_dir_suffixes:
                 # handle case where seeds is a dictionary, and keys are target,suffix tuples
                 if (isinstance(seeds,dict)):
-                   seeds_list = seeds[targstr1,dir_suffix]
+                   seeds_list = seeds[targstr,dir_suffix]   ###edited
                 else:
                    seeds_list = seeds
                 #Loop over seeds
@@ -239,7 +239,9 @@ def add_iterating_trajectories(task,seeds,calc,iter_dir_suffixes,targets,target,
                         traj_char = chr(ord(last_static_traj_char)+offset)
                         # Find the directory and filename for this trajectory
                         traj_link_dir = f"{seed}_{targstrp}_{meth}{pref(calcp)}_{dir_suffix}"
-                        traj_link_file = f"{seed}_{targstr2}_{traj_type_char}_{traj_suffix}.traj"
+                        traj_link_dir = f"{seed}_{targstrp}_{meth}{pref(calcp)}_{iter_dir_suffixes[0]}" if second_suffix != None and seed=='{solv}_{solv}' else traj_link_dir
+                        traj_link_file_pref = f"{seed}_{targstr2}_{traj_type_char}_{traj_suffix}"
+                        traj_link_file = f'{traj_link_file_pref}_{second_suffix}.traj' if second_suffix != None and seed=='{solv}_{solv}' else f'{traj_link_file_pref}.traj'
                         # Add it to the list of links to make
                         # and to the list of trajectory characters to link
                         traj_dest = f"{traj_link_dir}/{traj_link_file}"
@@ -259,7 +261,7 @@ def add_iterating_trajectories(task,seeds,calc,iter_dir_suffixes,targets,target,
                 
 def create_mltrain_tasks(train_task,train_calcs,seeds,targets,rand_seed,meth,truth,
                          traj_suffixes=[],dir_suffixes={},ntraj={},
-                         iter_dir_suffixes=[],delta_epochs=200,separate_valid=False):
+                         iter_dir_suffixes=[],delta_epochs=200,second_suffix=None,separate_valid=False):
     """
     Returns a dictionary of MLTrain tasks, based on an input prototype task supplied by
     the user, for all the required MLTrain tasks for an Active Learning task.
@@ -293,7 +295,7 @@ def create_mltrain_tasks(train_task,train_calcs,seeds,targets,rand_seed,meth,tru
             # Then add "static" configurations, that do not increase with AL generation
             add_trajectories(train_task,seeds,t,traj_suffixes,dir_suffixes,ntraj,targets,target,truth)
             # For generations > 0, we now add chosen subset trajectories for active learning
-            add_iterating_trajectories(train_task,seeds,t,iter_dir_suffixes,targets,target,meth,truth)
+            add_iterating_trajectories(train_task,seeds,t,iter_dir_suffixes,targets,target,meth,truth,second_suffix)
             # extra epochs for each generation
             if 'max_num_epochs' in train_task.wrapper.train_args:  # MACE specific
                 gen = get_gen_from_calc(t)
@@ -304,7 +306,7 @@ def create_mltrain_tasks(train_task,train_calcs,seeds,targets,rand_seed,meth,tru
             for rs in rand_seed:
                 # Seed-specific info
                 train_task.wrapper.train_args['seed'] = rand_seed[rs] # MACE specific
-                train_task.calc_suffix = f"{meth}{t}{rs}"
+                train_task.calc_suffix = f"{meth}{t}{rs}" if second_suffix is None else f"{meth}{t}{rs}_{second_suffix}"
                 new_mltrain_tasks[targets[target]+'_'+train_task.calc_suffix] = deepcopy(train_task)
     return new_mltrain_tasks
 

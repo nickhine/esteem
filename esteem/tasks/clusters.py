@@ -115,7 +115,6 @@ class ClustersTask:
             delete_traj_carved_file = True
         else:
             input_suffix = f'{self.carved_suffix}'
-            print('input_suffix =', input_suffix)
             delete_traj_carved_file = False
 
         # Check if the carved trajectory already exists
@@ -251,9 +250,8 @@ class ClustersTask:
                         output_traj_offset = -self.min_snapshots
             # Now run through the trajectory, calculating singlepoint energy for each frame
             from os import path
-            traj_recalc_file = f'{self.solute}{solvstr}_{targstr(self.which_target)}_{self.which_traj}_{self.output}.traj'
-            traj_recalc_file = f'{traj_recalc_file}_{self.second_suffix}' if self.second_suffix is not None else traj_recalc_file
-            print('traj_recalc_file =', traj_recalc_file)
+            traj_recalc_file_pref = f'{self.solute}{solvstr}_{targstr(self.which_target)}_{self.which_traj}_{self.output}'
+            traj_recalc_file = f'{traj_recalc_file_pref}_{self.second_suffix}.traj' if self.second_suffix is not None else f'{traj_recalc_file_pref}.traj'
             traj_suffix=f'{traj_suffix}_{self.second_suffix}' if self.second_suffix is not None else traj_suffix
             print(traj_suffix)
             if not (path.exists(traj_recalc_file) and path.getsize(traj_recalc_file)>0):
