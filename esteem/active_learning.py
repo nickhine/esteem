@@ -12,10 +12,23 @@ To use, create a prototype for each, and lists of calculators, targets, random s
 and call then call each of the create_* routines to return lists of tasks to
 pass to drivers.main()
 """
-
-
 from esteem.trajectories import get_trajectory_list
 from copy import deepcopy
+from esteem.tasks.clusters import ClustersTask
+from esteem.tasks.ml_training import MLTrainingTask
+from esteem.tasks.ml_testing import MLTestingTask
+from esteem.tasks.ml_trajectories import MLTrajTask
+from esteem.tasks.spectra import SpectraTask
+
+class ActiveLearningDriver:
+    """
+    Active Learning Driver class
+    """
+    
+    def __init__(self) -> None:
+        pass
+
+    # TODO: Implement the Active Learning Driver class
 
 # Mapping of trajectory labels to subset selection methods (can be overridden if needed)
 traj_to_ssm_map = {'S':'E','U':'U','T':'D','R':'R','Q':'R'}
@@ -47,7 +60,6 @@ def pref(calc):
 
 def suff(calc):
     return calc[4:]
-from esteem.tasks.clusters import ClustersTask
 
 def create_clusters_tasks(task:ClustersTask,train_calcs,seed,traj_suffix,md_suffix,
                           md_dir_suffix,targets,rand_seed,meth,truth):
@@ -191,7 +203,6 @@ def add_iterating_trajectories(task,seeds,calc,iter_dir_suffixes,targets,target,
     """
     Adds iterating trajectories
     """
-    from esteem.tasks.ml_testing import MLTestingTask
     gen = get_gen_from_calc(calc)
     genstart = 0
     genend = gen
@@ -288,7 +299,6 @@ def add_iterating_trajectories(task,seeds,calc,iter_dir_suffixes,targets,target,
                             #print(f'adding: {targstr}_{calc}.traj_links[{gen_char+traj_char}] = {traj_dest} for {key} {task.which_trajs_test}')
                         offset = offset + 1
 
-from esteem.tasks.ml_training import MLTrainingTask
 def create_mltrain_tasks(train_task:MLTrainingTask,train_calcs,seeds,targets,rand_seed,meth,truth,
                          traj_suffixes=[],dir_suffixes={},ntraj={},
                          iter_dir_suffixes=[],delta_epochs=200,separate_valid=False):
@@ -343,7 +353,6 @@ def create_mltrain_tasks(train_task:MLTrainingTask,train_calcs,seeds,targets,ran
                 new_mltrain_tasks[targets[target]+'_'+train_task.calc_suffix] = deepcopy(train_task)
     return new_mltrain_tasks
 
-from esteem.tasks.ml_trajectories import MLTrajTask
 def create_mltraj_tasks(mltraj_task:MLTrajTask,train_calcs,targets,rand_seed,meth,md_wrapper,
                         traj_suffix='mldyn',snap_wrapper=None,two_targets=False):
     """
@@ -394,7 +403,6 @@ def create_mltraj_tasks(mltraj_task:MLTrajTask,train_calcs,targets,rand_seed,met
                 new_mltraj_tasks[taskname] = deepcopy(mltraj_task)
     return new_mltraj_tasks
 
-from esteem.tasks.ml_testing import MLTestingTask
 def create_mltest_tasks(test_task:MLTestingTask,train_calcs,seeds,targets,rand_seed,truth,meth,
                         traj_suffixes={},dir_suffixes={},iter_dir_suffixes={},ntraj={},separate_valid=False):
     """
@@ -452,7 +460,6 @@ def create_mltest_tasks(test_task:MLTestingTask,train_calcs,seeds,targets,rand_s
                     new_test_tasks[f"{targets[target]}_{meth}{t}{rs}_mltraj_{meth}{tp}"] = deepcopy(test_task)
     return new_test_tasks
 
-from esteem.tasks.spectra import SpectraTask
 def create_spectra_tasks(spectra_task:SpectraTask,train_calcs,targets,rand_seed,meth,ntraj,traj_suffix='specdyn',corr_traj=False):
     """
     Returns a dictionary of Spectra tasks, based on an input prototype task supplied by

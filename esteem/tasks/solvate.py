@@ -23,7 +23,6 @@
 
 from os import path
 from ase.io import read
-from ase.io.trajectory import Trajectory
 from ase import Atoms
 
 def counterion_charge(counterions):
@@ -198,7 +197,9 @@ class SolvateTask:
             density = self.init_density*units.kg*0.001/(units.m*0.01)**3
             self.boxsize = (mass/density)**(1/3)
             print(self.boxsize)
-        pd = 1.2; bs = self.boxsize; rg=bs/4
+        pd = 1.2
+        bs = self.boxsize
+        rg=bs/4
         for i,seed in enumerate([self.solute, self.solvent]):
             # Load molecular structure from .xyz file
             component = mda.Universe(f'{seed}.xyz')
@@ -236,7 +237,7 @@ class SolvateTask:
             self.setup_cell()
         else:
             from esteem.wrappers.amber import AmberWrapper
-            if type(self.wrapper)!=AmberWrapper:
+            if not isinstance(self.wrapper,AmberWrapper):
                 orig_wrapper = self.wrapper
                 self.wrapper = AmberWrapper()
                 self.setup_amber()
@@ -313,7 +314,7 @@ class SolvateTask:
             # we do not do this for AmberWrappers - minimising from the periodic initial
             # structure is not recommended as it leads to densely "stacked" configurations
             from esteem.wrappers.amber import AmberWrapper
-            if type(self.wrapper)!=AmberWrapper:
+            if not isinstance(self.wrapper,AmberWrapper):
                 self.wrapper.geom_opt(minimised,solvatedseed,calc_params,driver_tol='veryloose')
                 write(f'minimised.{ext}',minimised)
 
@@ -366,8 +367,6 @@ class SolvateTask:
 
     def make_parser(self):
 
-        import argparse
-    
         main_help = ('Generates Solvated MD trajectory files. There are five \n'+
                      'phases to the calculation: Setup, Heating, Density \n'+
                      'Equilibration, Equilibration and Snapshot Generation \n.'+
@@ -421,15 +420,13 @@ def get_parser():
 if __name__ == '__main__':
     # Parse command line values
     from esteem.wrappers import amber
-    args = make_parser().parse_args()
+    args = self.make_parser().parse_args()
     print(args)
     solv = SolvateTask()
     solv.wrapper = amber.AmberWrapper()
     solv.wrapper.setup()
     solv.run()
 
-
-# In[ ]:
 
 
 

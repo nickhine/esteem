@@ -28,17 +28,17 @@ class SpectraTask:
 
         if self.inputformat is None and self.trajectory is not None:
             self.inputformat = 'traj'
-        elif hasattr(self.inputformat,'read_excitations'):
-            read_excitations = self.inputformat.read_excitations
+        #elif hasattr(self.inputformat,'read_excitations'):
+        #    read_excitations = self.inputformat.read_excitations
         elif self.inputformat.lower()=="precalculated":
             all_excitations = np.zeros((0,2))
-            read_excitations = self.read_precalculated
+            #read_excitations = self.read_precalculated
         elif self.inputformat.lower()=="traj":
             if self.files != [] and self.files is not None:
                 raise Exception("Cannot specify traj and set files simultaneously")
             if self.trajectory is None:
                 raise Exception("Must specify trajectories if inputformat==traj")
-            if type(self.trajectory)!=list:
+            if not isinstance(self.trajectory,list):
                 raise Exception("Must specify trajectories as list if inputformat==traj")
 
         # Load pre-calculated vibronic transitions, if supplied 
@@ -137,7 +137,8 @@ class SpectraTask:
                                     e1c = corr_traj[i+1][j].get_potential_energy()
                                     assert len(corr_traj[0][j])==len(corr_traj[i+1][j])
                             else:
-                                e1c = 0.0; e0c = 0.0
+                                e1c = 0.0
+                                e0c = 0.0
                             # Account for calculators which return an array of values
                             if isinstance(e0,list) or isinstance(e0,np.ndarray):
                                 e0 = e0[0]
@@ -202,7 +203,7 @@ class SpectraTask:
                             vibronic_excitations.append(s_vibronic)
                     all_excitations.append(vibronic_excitations)
                 else:
-                    if type(all_excitations)==np.ndarray:
+                    if not isinstance(all_excitations,np.ndarray):
                         all_excitations = np.append(all_excitations,stick_spectrum,axis=0)
                     else:
                         all_excitations.append(stick_spectrum)
@@ -397,7 +398,7 @@ class SpectraTask:
         return parser
 
     def validate_args(self):
-        default_args = make_parser().parse_args("")
+        default_args = self.make_parser().parse_args("")
         for arg in vars(self):
             if arg not in default_args:
                 raise Exception(f"Unrecognised argument '{arg}'")
@@ -432,7 +433,7 @@ def find_spectral_warp_params(args,dest_spectrum,origin_spectrum,arrow1_pos=None
             Also sets arrow1_pos, arrow2_pos for use in spectral warp plots.
         """
 
-        if args.warp_scheme == None:
+        if args.warp_scheme is None:
             return
 
         hc = wavelength_eV_conv
@@ -543,8 +544,12 @@ def find_spectral_warp_params(args,dest_spectrum,origin_spectrum,arrow1_pos=None
 
             # Ensure omega1o < omega2o, swap if not.
             if (omega1o > omega2o):
-                tmp = omega2o; omega2o = omega1o; omega1o = tmp
-                tmp = beta2; beta2 = beta1; beta1 = tmp
+                tmp = omega2o
+                omega2o = omega1o
+                omega1o = tmp
+                tmp = beta2
+                beta2 = beta1
+                beta1 = tmp
 
             print(f'Spectral warp beta1, beta2, omega1, omega2 params from origin to dest = {beta1} {beta2} {omega1o} {omega2o} eV')
 
