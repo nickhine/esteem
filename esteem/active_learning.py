@@ -17,6 +17,7 @@ from copy import deepcopy
 from esteem.tasks.solutes import SolutesTask
 from esteem.tasks.solvate import SolvateTask
 from esteem.tasks.clusters import ClustersTask
+from esteem.tasks.qmd_trajectories import QMDTrajTask
 from esteem.tasks.ml_training import MLTrainingTask
 from esteem.tasks.ml_testing import MLTestingTask
 from esteem.tasks.ml_trajectories import MLTrajTask
@@ -28,6 +29,7 @@ class ActiveLearningDriver:
     """
     
     def __init__(self) -> None:
+        # Lists of actual tasks to run
         self.all_solutes_tasks = {}
         self.all_solvate_tasks = {}
         self.all_clusters_tasks = {}
@@ -36,6 +38,27 @@ class ActiveLearningDriver:
         self.all_mltest_tasks = {}
         self.all_qmd_tasks = {}
         self.all_spectra_tasks = {}
+        # Prototype tasks
+        self.solutes_task = SolutesTask()
+        self.solvate_task = SolvateTask()
+        self.clusters_task = ClustersTask()
+        self.mltrain_task = MLTrainingTask()
+        self.mltraj_task = MLTrajTask()
+        self.mltest_task = MLTestingTask()
+        self.qmd_task = QMDTrajTask()
+        self.spectra_task = SpectraTask()
+        # Defaults for member variables
+        self.train_calcs = []
+        self.rand_seed = {}
+        self.targets = {}
+        self.funcs = []
+        self.basis_sets = []
+        self.seed = "{solu}_{solv}"
+        self.traj_suffix = "mlclus"
+        self.md_suffix = "mldyn_recalc"
+        self.md_dir_suffix = "mldyn"
+
+
 
     # TODO: Implement the Active Learning Driver class
 
@@ -70,13 +93,22 @@ class ActiveLearningDriver:
     def suff(self,calc):
         return calc[4:]
     
-    def create_solutes_tasks(self,targets,funcs,basis_sets,wrapper):
-        self.solutes_task = SolutesTask()
-        self.solutes_task.wrapper = wrapper
+    def create_solutes_tasks(self,targets=None,funcs=None,basis_sets=None,task_suffix=""):
+        if targets is None:
+            targets = self.targets
+        if funcs is None:
+            funcs = self.funcs
+        if basis_sets is None:
+            basis_sets = self.basis_sets
         for basis in basis_sets:
             for func in funcs:
                 for target in targets:
-                    prefix = f'{targets[target]}_{func}'
+                    prefix = f'{targets[target]}'
+                    prefix += f'_{func}'
+                    if len(basis_sets)>1:
+                        prefix += f'_{basis}'
+                    if task_suffix!="":
+                        prefix += f'_{task_suffix}'
                     self.solutes_task.disp = True if 'D3BJ' not in func else False
                     self.solutes_task.func = func
                     self.solutes_task.basis = basis
@@ -84,16 +116,38 @@ class ActiveLearningDriver:
                     self.solutes_task.directory = prefix
                     self.all_solutes_tasks[prefix] = deepcopy(self.solutes_task)
 
-    def create_clusters_tasks(self,task:ClustersTask,train_calcs,seed,traj_suffix,md_suffix,
-                            md_dir_suffix,targets,rand_seed,meth,truth):
+    def create_clusters_tasks(self,task=None,train_calcs=None,seed=None,traj_suffix=None,md_suffix=None,
+                            md_dir_suffix=None,targets=None,rand_seed=None,meth=None,truth=None):
         """
-        Returns a dictionary of clusters tasks, based on an input prototype task supplied by
+        Sets up a dictionary of clusters tasks, based on an input prototype task supplied by
         the user, for all the required clusters tasks for an Active Learning task.
         
         Takes lists of calculators, targets, random seeds, and strings stating the ML method
         and the ground truth method
         """
 
+        # Inherit default values from class
+        if task is None:
+            task = self.clusters_task
+        if train_calcs is None:
+            train_calcs = self.train_calcs
+        if seed is None:
+            seed = self.seed
+        if traj_suffix is None:
+            traj_suffix = self.traj_suffix
+        if md_suffix is None:
+            md_suffix = self.md_suffix
+        if md_dir_suffix is None:
+            md_dir_suffix = self.md_dir_suffix
+        if targets is None:
+            targets = self.targets
+        if rand_seed is None:
+            rand_seed = self.rand_seed
+        if meth is None:
+            meth = self.meth
+        if truth is None:
+            truth = self.truth
+        
         # By default, the trajectory for validation is the same size as the main traj
         init_min_snapshots = task.min_snapshots
         init_max_snapshots = task.max_snapshots
@@ -139,8 +193,7 @@ class ActiveLearningDriver:
                         traj_char = '_'+w #'' if w==t[-1].upper() else '_'+w
                         new_clusters_tasks[task.exc_suffix+traj_char] = deepcopy(task)
                     task.subset_selection_method = None
-        return new_clusters_tasks
-
+        self.all_clusters_tasks.update(new_clusters_tasks)
 
     def get_keys(self,task):
         all_keys = ['train']
