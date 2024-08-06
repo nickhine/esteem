@@ -32,9 +32,7 @@ class MLTestingTask:
             if isinstance(which_trajs,dict):
                 which_trajs_dict = which_trajs
                 which_trajs = []
-                for w in which_trajs_dict:
-                    for v in which_trajs_dict[w]:
-                        which_trajs.append(v)
+                which_trajs = list(which_trajs_dict)
             for trajname in which_trajs:
                 if trajname not in all_trajs:
                     raise Exception("Invalid trajectory name: ",trajname)

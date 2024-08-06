@@ -400,6 +400,9 @@ def find_initial_geometry(seed,geom_opt_func=None,calc_params={},which_traj=None
         seed_state_str = f"{seed}_{targstr(targ)}"
     else: 
         seed_state_str = seed
+    rand_seed = which_traj
+    if 'calc_suffix' in calc_params:
+        rand_seed += calc_params['calc_suffix']
 
     xyzfile_opt = seed_state_str+'.xyz'
     model_init = None
@@ -417,9 +420,9 @@ def find_initial_geometry(seed,geom_opt_func=None,calc_params={},which_traj=None
                 i = traj_list.index(which_traj)
                 print(f'# MD starting positions taken from snapshot {i} based on traj index {i} of {ntraj}==length')
             else:
-                random.seed(which_traj)
+                random.seed(rand_seed)
                 i = random.randrange(len(traj))
-                print(f'# MD starting positions taken from snapshot {i} based on random seed {which_traj}')
+                print(f'# MD starting positions taken from snapshot {i} based on random seed {rand_seed}')
             model_init = traj[i]
             optimised = True
         except:
@@ -477,7 +480,7 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
     input_traj = f"{seed}_{targstr(input_target)}_{input_traj_label}_{input_suffix}.traj"
     if not path.isfile(input_traj):
         raise Exception("Input trajectory not found: ",input_traj)
-    print(f"# Reading from input trajectory {input_traj}")
+    print(f"# Reading from input trajectory {input_traj} {input_traj_range}")
     intraj = Trajectory(input_traj)
 
     if isinstance(target,list):
@@ -680,7 +683,7 @@ def formatted_output(iout,targ,natoms,pos,energy,forces,dipole,calc_forces,calc_
     if isinstance(targ,list):
         energy_str = ''
         for itarg,tg in enumerate(targ):
-            energy_str += f'{energy[itarg]:14.6f}'
+            energy_str += f'{energy[itarg]:16.8f}'
     else:
         if isinstance(energy,np.ndarray):
             energy = np.mean(energy)
@@ -732,20 +735,42 @@ def get_trajectory_list(ntraj):
     return (list(string.ascii_uppercase)+extras)[0:ntraj]
 
 # Merge trajectories (if generated separately)
-def merge_traj(trajnames,trajfile):
+def merge_traj(trajnames,trajfile,trajfile_valid=None,valid_fraction=0.0,split_seed=123):
     """
     Merges a list of trajectories supplied as a list of filenames,
     and writes the result to another trajectory supplied as a filename
     """
+    assert 0.0 <= valid_fraction < 1.0
 
     fulltraj = Trajectory(trajfile,'w')
+    if trajfile_valid is not None:
+        fulltraj_valid = Trajectory(trajfile_valid,'w')
 
     for tr in trajnames:
         read_traj = Trajectory(tr)
-        for frames in read_traj:
-            fulltraj.write(frames)
+        size = len(read_traj)
+        indices = list(range(size))
+        train_size = size
+        if valid_fraction > 0.0:
+            train_size = size - int(valid_fraction * size)
+            valid_size = int(valid_fraction * size)
+            seed = str(split_seed) + tr
+            print(seed)
+            int_seed = abs(hash(seed))
+            rng = np.random.default_rng(int_seed)
+            rng.shuffle(indices)
+            print(f"# {size} frames of {tr} to be split into {train_size} training and {valid_size} validation using seed {int_seed}")
 
+        for i in indices[:train_size]:
+            fulltraj.write(read_traj[i])
+        for i in indices[train_size:]:
+            fulltraj_valid.write(read_traj[i])
     print("# Merged ",len(fulltraj)," frames: trajectory written to ",trajfile)
+    fulltraj.close()
+    if trajfile_valid is not None:
+        print("# Merged ",len(fulltraj_valid)," frames: trajectory written to ",trajfile_valid)
+        fulltraj_valid.close()
+
 
 # Difference of two trajectories (generated separately)
 def diff_traj(itrajfile,jtrajfile,outtrajfile):

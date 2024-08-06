@@ -117,7 +117,8 @@ class ActiveLearningDriver:
                     self.all_solutes_tasks[prefix] = deepcopy(self.solutes_task)
 
     def create_clusters_tasks(self,task=None,train_calcs=None,seed=None,traj_suffix=None,md_suffix=None,
-                            md_dir_suffix=None,targets=None,rand_seed=None,meth=None,truth=None):
+                            md_dir_suffix=None,targets=None,rand_seed=None,meth=None,truth=None,
+                            separate_valid=False):
         """
         Sets up a dictionary of clusters tasks, based on an input prototype task supplied by
         the user, for all the required clusters tasks for an Active Learning task.
@@ -152,10 +153,11 @@ class ActiveLearningDriver:
         init_min_snapshots = task.min_snapshots
         init_max_snapshots = task.max_snapshots
         # It can be overridden by setting valid_snapshots
-        if task.valid_snapshots is not None:
-            valid_snapshots = task.valid_snapshots
-        else:
-            valid_snapshots = task.max_snapshots - task.min_snapshots
+        if separate_valid:
+            if task.valid_snapshots is not None:
+                valid_snapshots = task.valid_snapshots
+            else:
+                valid_snapshots = task.max_snapshots - task.min_snapshots
         # Define empty dictionary for new tasks
         new_clusters_tasks = {}
         # Loop over calculators and trajectory targets
@@ -171,7 +173,8 @@ class ActiveLearningDriver:
                     task.selected_suffix = f'selected_{self.suff(tp)}'
                     task.script_settings['logdir'] = task.output
                     wlist = [self.get_traj_from_calc(tp)]
-                    wlist += ['Q']
+                    if separate_valid:
+                        wlist += ['Q']
                     wplist = get_trajectory_list(len(rand_seed))
                     rslist = list(rand_seed)
                     for iw,w in enumerate(wlist):
@@ -181,7 +184,7 @@ class ActiveLearningDriver:
                             task.max_snapshots = init_max_snapshots
                             task.subset_selection_method = self.get_ssm_from_traj(w)
                             task.subset_selection_which_traj = w
-                        else: # for the validation/testing trajectories, offset the snapshots
+                        elif separate_valid: # for the validation/testing trajectories, offset the snapshots
                             task.min_snapshots = task.max_snapshots
                             task.max_snapshots = task.max_snapshots + valid_snapshots
                         task.md_prefix = f'{seed}_{targets[target]}_{meth}{self.pref(tp)}_{md_dir_suffix}'
@@ -348,31 +351,31 @@ class ActiveLearningDriver:
                             traj_dest = f"{traj_link_dir}/{traj_link_file}"
                             if key=='train':
                                 task.traj_links[gen_char+traj_char] = traj_dest
-                                new_trajs = [f'{gen_char+traj_char}']
+                                new_traj = f'{gen_char+traj_char}'
                                 if isinstance(task.which_trajs,list):
-                                    task.which_trajs += new_trajs
+                                    task.which_trajs += [new_traj]
                                 else:
-                                    task.which_trajs.update({jtraj:jtraj for jtraj in new_trajs})
-                                    task.ref_mol_seed_dict.update({jtraj:seed for jtraj in new_trajs})
-                                #print(f'adding: {targstr}_{calc}.traj_links[{gen_char+traj_char}] = {traj_dest} for {key} {task.which_trajs}')
+                                    task.which_trajs[new_traj] = new_traj
+                                    task.ref_mol_seed_dict[new_traj] = seed
+                                #print(f'adding for {calc}: {targstr}_{calc}.traj_links[{gen_char+traj_char}] = {traj_dest} for {key} {task.which_trajs}')
                             elif key=='valid':
                                 task.traj_links_valid[gen_char+traj_char] = traj_dest
-                                new_trajs = [f'{gen_char}{traj_char}']
+                                new_traj = f'{gen_char}{traj_char}'
                                 if isinstance(task.which_trajs_valid,list):
-                                    task.which_trajs_valid += new_trajs
+                                    task.which_trajs_valid += [new_traj]
                                 else:
-                                    task.which_trajs_valid.update({jtraj:jtraj for jtraj in new_trajs})
-                                    task.ref_mol_seed_dict.update({jtraj:seed for jtraj in new_trajs})
-                                #print(f'adding: {targstr}_{calc}.traj_links[{gen_char+traj_char}] = {traj_dest} for {key} {task.which_trajs_valid}')
+                                    task.which_trajs_valid[new_traj] = new_traj
+                                    task.ref_mol_seed_dict[new_traj] = seed
+                                #print(f'adding for {calc}: {targstr}_{calc}.traj_links[{gen_char+traj_char}] = {traj_dest} for {key} {task.which_trajs_valid}')
                             elif key=='test':
                                 task.traj_links_test[gen_char+traj_char] = traj_dest
-                                new_trajs = [f'{gen_char}{traj_char}']
+                                new_traj = f'{gen_char}{traj_char}'
                                 if isinstance(task.which_trajs_test,list):
-                                    task.which_trajs_test += new_trajs
+                                    task.which_trajs_test += [new_traj]
                                 else:
-                                    task.which_trajs_test.update({jtraj:jtraj for jtraj in new_trajs})
-                                    task.ref_mol_seed_dict.update({jtraj:seed for jtraj in new_trajs})
-                                #print(f'adding: {targstr}_{calc}.traj_links[{gen_char+traj_char}] = {traj_dest} for {key} {task.which_trajs_test}')
+                                    task.which_trajs_test[new_traj] = new_traj
+                                    task.ref_mol_seed_dict[new_traj] = seed
+                                #print(f'adding for {calc}: {targstr}_{calc}.traj_links[{gen_char+traj_char}] = {traj_dest} for {key} {task.which_trajs_test}')
                             offset = offset + 1
 
     def create_mltrain_tasks(self,train_task:MLTrainingTask,train_calcs,seeds,targets,rand_seed,meth,truth,
@@ -424,6 +427,7 @@ class ActiveLearningDriver:
                 # Save this calculator to the list for each seed
                 for rs in rand_seed:
                     # Seed-specific info
+                    train_task.rand_seed = rand_seed[rs]
                     train_task.wrapper.train_args['seed'] = rand_seed[rs] # MACE specific
                     train_task.calc_suffix = f"{meth}{t}{rs}"
                     new_mltrain_tasks[targets[target]+'_'+train_task.calc_suffix] = deepcopy(train_task)

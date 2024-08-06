@@ -1253,6 +1253,7 @@ def mltest_driver(mltest,all_solutes,all_solvents):
             print(f'# Creating symlinks to trajectories')
             for traj in which_trajs:
                 if traj not in mltest.traj_links:
+                    print('traj not found in mltest.traj_links:',traj)
                     continue
 
                 # If there are multiple links that must be set up to assemble this trajectory,
@@ -1304,7 +1305,7 @@ def mltest_driver(mltest,all_solutes,all_solvents):
                 ref_mol_seed = mltest.ref_mol_seed_dict[t]
                 mltest.seed = sub_solu_solv_names(ref_mol_seed,mltest.calc_seed,all_solutes,all_solvents)
                 print(f'\n# Reference molecule seed set to {mltest.seed}')
-            mltest.which_trajs = traj_dict[t]
+            mltest.which_trajs = [traj_dict[t]]
             plotfile = seed_state_str + '_' + mltest.calc_suffix + '_' + str(t) + '.png'
             mltest.plotfile = sub_solu_solv_names(plotfile,mltest.calc_seed,all_solutes,all_solvents)
             print(f"# Plotfile set to {mltest.plotfile}")
@@ -1408,6 +1409,13 @@ def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False,setup_only=
             else:
                 print(f'# Geometry {geomfile_in} not found to copy')
 
+    # Retrieve solute-specific constraint from dictionary if needed
+    if isinstance(mltraj.constraints,dict):
+        if solute in mltraj.constraints:
+            mltraj.constraints = mltraj.constraints[solutes]
+        else:
+            raise Exception(f"# Error: constraints is a dictionary but contains no entry for solute '{solute}'")
+
     # Set default value of calc_seed if not otherwise set
     if mltraj.calc_seed is None:
         mltraj.calc_seed = mltraj.seed
@@ -1462,20 +1470,24 @@ def mltraj_cleanup(mltraj):
             ct.target = mltraj.snap_calc_params['target']
             ct.nroots = mltraj.target
             ct.ref_mol_dir = mltraj.ref_mol_dir
-            traj_recalc_file = f'{ct.solute}{solvstr}_{targstr(ct.which_target)}_{ct.which_traj}_{ct.output}.traj'
             all_results_present = True
-            all_results_present = (all_results_present and 
-                                   path.exists(traj_recalc_file) and 
-                                   path.getsize(traj_recalc_file)>0)
-            all_traj_recalc_files = traj_recalc_file
-            if mltraj.corr_traj:
-                all_traj_recalc_files = all_traj_recalc_files + f'and {traj_recalc_file_nosolu}'
-                all_results_present = (all_results_present and 
-                                       (path.exists(traj_recalc_file_nosolu) and 
-                                        path.getsize(traj_recalc_file_nosolu)>0))
+            all_traj_recalc_files = {}
+            for targ in ct.target:
+                traj_recalc_file = f'{ct.solute}{solvstr}_{targstr(targ)}_{ct.which_traj}_{ct.output}.traj'
+                file_present = (path.exists(traj_recalc_file) and
+                                path.getsize(traj_recalc_file)>0)
+                all_traj_recalc_files[traj_recalc_file] = file_present
+                all_results_present = (all_results_present and file_present)
+                if mltraj.corr_traj:
+                    traj_recalc_file_nosolu = f'{ct.solute}{solvstr}_{targstr(targ)}_{ct.which_traj}_{ct.output}_nosolu.traj'
+                    file_present = (path.exists(traj_recalc_file_nosolu) and
+                                    path.getsize(traj_recalc_file_nosolu)>0)
+                    all_traj_recalc_files[traj_recalc_file_nosolu] = file_present
+                    all_results_present = (all_results_present and file_present)
             if all_results_present:
-                print(f'# Skipping recalculating clusters in postprocessing - {all_traj_recalc_files} already present')
+                print(f'# Skipping recalculating clusters in postprocessing - {list(all_traj_recalc_files)} already present')
             else:
+                print(f'# Recalculating clusters - not all files present: {all_traj_recalc_files}')
                 ct.run()
         if mltraj.store_full_traj:
             # Remove equilibration trajectory data

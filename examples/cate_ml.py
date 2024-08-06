@@ -63,7 +63,7 @@ solvate_task.md_geom_prefix = f"gs_{solutes_task.func}"
 solvate_task.nsteps = 2000
 solvate_task.nsnaps = 500
 solvate_task.script_settings = parallel.get_default_script_settings(solvate_task.wrapper)
-solvate_task.boxsize = 15
+solvate_task.boxsize = {'cycl': 18,'meth': 15}
 solvate_task.ewaldcut = 9.0
 all_solvate_tasks = {'md': solvate_task}
 
@@ -95,15 +95,15 @@ for rad in rads:
     solv_rad[rad]['meth_meth'] = rad+1.0
     solv_rad[rad]['cycl_cycl'] = rad+0.5
     # Set up task as per size above
-    for traj in ['A','B']:
-        clusters_task.max_atoms = 111
-        clusters_task.max_snapshots = 90 if traj=='A' else 100
-        clusters_task.min_snapshots = 0 if traj=='A' else 90
-        clusters_task.radius = solv_rad[rad]
-        clusters_task.which_traj = traj
-        suffix = f'solvR{rad}'
-        clusters_task.exc_suffix = f"{suffix}"
-        all_clusters_tasks[f"{suffix}_{traj}"] = deepcopy(clusters_task)
+    clusters_task.max_atoms = 111
+    clusters_task.subset_selection_method = "R"
+    clusters_task.subset_selection_nmax = 100
+    clusters_task.radius = solv_rad[rad]
+    traj = 'A'
+    clusters_task.which_traj = traj
+    suffix = f'solvR{rad}'
+    clusters_task.exc_suffix = f"{suffix}"
+    all_clusters_tasks[f"{suffix}_{traj}"] = deepcopy(clusters_task)
 
 # Set up tasks for clusters runs for each Active Learning iteration
 meth=""
@@ -119,14 +119,11 @@ clusters_task.radius = None
 clusters_task.subset_selection_nmax = 100
 clusters_task.subset_selection_min_spacing = 20
 clusters_task.subset_selection_bias_beta = 5000
-clusters_task.max_snapshots = 90
-clusters_task.min_snapshots = 0
-clusters_task.valid_snapshots = 10
 active_clusters_tasks = create_clusters_tasks(clusters_task,train_calcs=train_calcs,
                                               seed=seed,traj_suffix=traj_suffix,
                                               md_suffix=md_suffix,md_dir_suffix=md_dir_suffix,
                                               targets=targets,rand_seed=rand_seed,
-                                              meth="",truth="orca")
+                                              meth="",truth="orca",separate_valid=False)
 all_clusters_tasks.update(active_clusters_tasks)
 
 # Set up tasks for ML Training
@@ -149,7 +146,7 @@ all_mltrain_tasks = create_mltrain_tasks(mltrain_task,train_calcs=train_calcs,
                                      meth="",truth=truth,traj_suffixes=traj_suffixes,
                                      dir_suffixes=dir_suffixes,ntraj=ntraj,
                                      iter_dir_suffixes=iter_dir_suffixes,
-                                     delta_epochs=500,separate_valid=True)
+                                     delta_epochs=500,separate_valid=False)
 
 # Set up tasks for Trajectories with ML calculators
 mltraj_task.wrapper = MACEWrapper()
@@ -174,6 +171,18 @@ all_mltraj_tasks = create_mltraj_tasks(mltraj_task,train_calcs=train_calcs,targe
                     rand_seed=rand_seed,meth="",traj_suffix='mldyn',
                     md_wrapper=mltraj_task.wrapper,snap_wrapper=mltraj_task.snap_wrapper,
                     two_targets=False)
+# Now add tasks for spectroscopy (more equilibration, longer runs, larger clusters, corrections)
+mltraj_task.carve_trajectory_radius = solv_rad[rads[1]]
+mltraj_task.carve_trajectory_max_atoms = 1000
+mltraj_task.corr_traj = True
+mltraj_task.md_steps = 2
+mltraj_task.nequil = 500
+mltraj_task.nsnap = 50000
+spectra_mltraj_tasks = create_mltraj_tasks(mltraj_task,train_calcs=train_calcs,targets=targets,
+                    rand_seed=rand_seed,meth="",traj_suffix='specdyn',
+                    md_wrapper=mltraj_task.wrapper,snap_wrapper=mltraj_task.snap_wrapper,
+                    two_targets=True)
+all_mltraj_tasks.update(spectra_mltraj_tasks)
 
 # Set up tasks for testing the ML calculators
 mltest_task.wrapper = MACEWrapper()
@@ -185,7 +194,7 @@ all_mltest_tasks = create_mltest_tasks(mltest_task,train_calcs=train_calcs,seeds
                                        targets=targets,rand_seed=rand_seed,
                                        truth=truth,meth="",traj_suffixes=traj_suffixes,
                                        dir_suffixes=dir_suffixes,iter_dir_suffixes=iter_dir_suffixes,
-                                       ntraj=ntraj,separate_valid=True)
+                                       ntraj=ntraj,separate_valid=False)
 
 # Set up tasks for plotting spectra
 all_spectra_tasks = {}
@@ -219,7 +228,8 @@ spectra_task.trajectory = [[f"{{solu}}_{{solv}}_gs_A_orca.traj",f"{{solu}}_{{sol
 all_spectra_tasks[spec_method] = deepcopy(spectra_task)
 
 # Add active learning spectra tasks (vertical excitations)
-all_spectra_tasks.update(create_spectra_tasks(spectra_task,train_calcs,targets,rand_seed,meth,len(rand_seed)))
+all_spectra_tasks.update(create_spectra_tasks(spectra_task,train_calcs,targets, 
+         rand_seed,meth,ntraj=len(rand_seed),traj_suffix='specdyn_recalc_carved',corr_traj=True))
 
 # Invoke main driver
 drivers.main(all_solutes,all_solvents,

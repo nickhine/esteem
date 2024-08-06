@@ -97,7 +97,7 @@ fi
 # perform initial clusters tasks
 if true; then
   # run mlclus to set up directory and symlinks for clusters run
-  for SP in ${SALL[@]}; do # loop over seeds
+  for SP in $SA; do # only need one seed as setup runs for all
       echo Clusters Setup for $SP initial
       for TT in ${TGS[@]}; do # loop over targets
 	  if [ $SP == ${SALL[NS-1]} ] && [ $TT != ${TALL[0]} ]; then continue; fi
@@ -277,10 +277,45 @@ do
   # test the calculators on the assembled trajectory
   echo Testing for Generation $X for $SA calculators
   for TT in ${TALL[@]}; do
+      cd $SA"_"$TT"_"$W"ac_test"
       sbatch --wait --array=$((X*10))-$((X*10+C-1)) $SA"_"$TT"_"$W"ac"$M"_mltest_sub" &
+      cd $origdir
   done
   wait
   if true; then
      exit # quit for now, until previous bits verified to be working and this can be deactivated
   fi
 done
+
+# run mltraj task for spectroscopy with committee of calculators
+if true; then
+  X=$G
+  for SP in ${SALL[@]}; do # loop over seeds
+      if [ $SP == ${SALL[NS-1]}  ]; then continue; fi # skip solvent
+      echo Spectroscopy Trajectories for Generation $X for $SP
+      for TT in ${TALL[@]}; do # loop over targets
+          cd $SP"_"$TT"_"$W"ac_mldyn"
+          # submit a mltraj job for each random seed
+          sbatch --wait --array=$((X*10))-$((X*10+C-1)) $SP"_"$TT"_"$W"ac"$M"_specdyn_sub" &
+	  cd $origdir
+      done
+  done
+  wait
+fi
+# run spectra tasks
+if true; then
+  X=$G
+  for SP in ${SALL[@]}; do # loop over seeds
+      if [ $SP == ${SALL[NS-1]}  ]; then continue; fi # skip solvent
+      echo Spectroscopy Trajectories for Generation $X for $SP
+      for TT in ${TALL[@]}; do # loop over targets
+          cd $SP"_"$TT"_"$W"ac_mldyn"
+          # submit a mltraj job for each random seed
+          sbatch --wait --array=$((X*10)) $SP"_"$TT"_"$W"ac"$M"_spectra_sub" &
+	  cd $origdir
+      done
+  done
+  wait
+fi
+
+echo Job Complete

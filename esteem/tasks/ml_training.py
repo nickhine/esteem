@@ -75,6 +75,14 @@ class MLTrainingTask:
         prefs = [""]
         if self.which_trajs_valid is not None:
             prefs = ["","valid"]
+            separate_valid = True
+        else:
+            separate_valid = False
+            valid_fraction = task.valid_fraction
+            if hasattr(self,'rand_seed'):
+                rand_seed = self.rand_seed
+            else:
+                rand_seed = 123
         for prefix in prefs:
             if False: #'diff' in self.target:
                 which_trajs, trajnames = self.get_trajnames(prefix)
@@ -91,14 +99,21 @@ class MLTrainingTask:
             print(f'# Trajectories to merge: {trajnames}',flush=True)
             if all([os.path.isfile(f) for f in trajnames]):
                 if all([os.path.getsize(f) > 0 for f in trajnames]):
-                    if prefix=="":
-                        trajfile = f'{trajfn}_{prefix}merged_{self.calc_suffix}.traj'
-                        merge_traj(trajnames,trajfile)
-                    if prefix=="valid":
-                        validfile = f'{trajfn}_{prefix}merged_{self.calc_suffix}.traj'
-                        merge_traj(trajnames,validfile)
+                    if separate_valid:
+                        if prefix=="":
+                            trajfile = f'{trajfn}_{prefix}merged_{self.calc_suffix}.traj'
+                            merge_traj(trajnames,trajfile)
+                        if prefix=="valid":
+                            validfile = f'{trajfn}_{prefix}merged_{self.calc_suffix}.traj'
+                            merge_traj(trajnames,validfile)
+                        else:
+                            validfile=None
                     else:
-                        validfile=None
+                        pref = prefix
+                        trajfile = f'{trajfn}_{pref}merged_{self.calc_suffix}.traj'
+                        pref = 'valid'
+                        validfile = f'{trajfn}_{pref}merged_{self.calc_suffix}.traj'
+                        merge_traj(trajnames,trajfile,validfile,valid_fraction,split_seed=rand_seed)
 
                 else:
                     raise Exception('# Empty Trajectory file(s) found: ',
@@ -145,6 +160,7 @@ class MLTrainingTask:
         parser.add_argument('--traj_links_valid','-V',default=None,type=dict,help='Targets for links to create for validation trajectories')
         parser.add_argument('--traj_links_test','-U',default=None,type=dict,help='Targets for links to create for testing trajectories')
         parser.add_argument('--cutoff','-d',default=6.5,type=float,help='Gaussian descriptor cutoff')
+        parser.add_argument('--valid_fraction','-d',default=0.1,type=float,help='Fraction of trajectory to use as validation data')
         '''
         parser.add_argument('--cores','-c',default=1,type=int,help='Number of parallel cores on which to run the training')
         parser.add_argument('--steps','-A',default=None,type=int,help='Annealer steps')
