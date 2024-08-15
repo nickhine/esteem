@@ -378,9 +378,10 @@ class ActiveLearningDriver:
                                 #print(f'adding for {calc}: {targstr}_{calc}.traj_links[{gen_char+traj_char}] = {traj_dest} for {key} {task.which_trajs_test}')
                             offset = offset + 1
 
-    def create_mltrain_tasks(self,train_task:MLTrainingTask,train_calcs,seeds,targets,rand_seed,meth,truth,
-                            traj_suffixes=[],dir_suffixes={},ntraj={},
-                            iter_dir_suffixes=[],delta_epochs=200,separate_valid=False):
+    def create_mltrain_tasks(self,train_task=None,train_calcs=None,seeds=None,
+                             targets=None,rand_seed=None,meth=None,truth=None,
+                             traj_suffixes=None,dir_suffixes=None,ntraj=None,
+                             iter_dir_suffixes=None,delta_epochs=None,separate_valid=False):
         """
         Returns a dictionary of MLTrain tasks, based on an input prototype task supplied by
         the user, for all the required MLTrain tasks for an Active Learning task.
@@ -389,6 +390,31 @@ class ActiveLearningDriver:
         and the ground truth method, and lists of trajectories to use as initial inputs
         (plus the number of trajectories for each target and their location)
         """
+        # Inherit default values from class
+        if train_task is None:
+            train_task = self.mltrain_task
+        if train_calcs is None:
+            train_calcs = self.train_calcs
+        if seeds is None:
+            seeds = self.seeds
+        if targets is None:
+            targets = self.targets
+        if rand_seed is None:
+            rand_seed = self.rand_seed
+        if meth is None:
+            meth = self.meth
+        if truth is None:
+            truth = self.truth
+        if traj_suffixes is None:
+            traj_suffixes = self.traj_suffixes
+        if dir_suffixes is None:
+            dir_suffixes = self.dir_suffixes
+        if iter_dir_suffixes is None:
+            iter_dir_suffixes = self.iter_dir_suffixes
+        if ntraj is None:
+            ntraj = self.ntraj
+        if delta_epochs is None:
+            delta_epochs = self.delta_epochs
 
         new_mltrain_tasks = {}
         if 'max_num_epochs' in train_task.wrapper.train_args:
