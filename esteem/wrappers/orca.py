@@ -42,7 +42,7 @@ class ORCAWrapper():
                 mpi_options="--oversubscribe --mca opal_warn_on_missing_libcuda 0"
             environ["ASE_ORCA_COMMAND"]=f'{orca_cmd} PREFIX.inp "{mpi_options}" >> PREFIX.out 2> PREFIX.err'
         from ase.calculators.orca import OrcaProfile
-        self.orcaprofile=OrcaProfile(command="/storage/nanosim/orca5/")
+        self.orcaprofile=OrcaProfile(command="/storage/nanosim/orca5/orca")
         if maxcore is not None:
             self.maxcore = maxcore
         if nprocs is not None:
