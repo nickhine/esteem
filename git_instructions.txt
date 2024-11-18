@@ -1,0 +1,4 @@
+git remote -v
+git remote add upstream <url>
+git fetch upstream
+git rebase upstream/develop 
