@@ -40,19 +40,51 @@ def get_ssm_from_traj(traj):
     return traj_to_ssm_map[traj]
 
 def get_gen_from_calc(calc):
-    try:
-        return int(calc[6:-1])
-    except:
-        return None
+    if calc[0:2] == '64' or calc[0:2] == '32':
+        try:
+            return int(calc[9:-1])
+        except:
+            return None
+    elif calc[0:3] == '128':
+        try:
+            return int(calc[10:-1])
+        except:
+            return None
+    elif calc[0:3] == 'TES':
+        try:
+            return int(calc[10:-1])
+        except:
+            return None
+    else:
+        try:
+            return int(calc[6:-1])
+        except:
+            return None
 
 def pref(calc):
-    if '_' in calc:
-        return calc.split('_')[0]
+    if calc[0:2] == '64' or calc[0:2] == '32':
+        if '_' in calc:
+            return calc.split('_')[0]
+        else:
+            return calc[3:9]
+    elif calc[0:3] == '128':
+        if '_' in calc:
+            return calc.split('_')[0]
+        else:
+            return calc[4:10]
+    elif calc[0:3] == 'TES':
+        if '_' in calc:
+            return calc.split('_')[0]
+        else:
+            return calc[4:10]
     else:
-        return calc[0:6]
+        if '_' in calc:
+            return calc.split('_')[0]
+        else:
+            return calc[0:6]
 
 def suff(calc):
-    return calc[4:]
+    return calc[-4:]
 
 def create_clusters_tasks(task:ClustersTask,train_calcs,seed,traj_suffix,md_suffix,
                           md_dir_suffix,targets,rand_seed,meth,truth,
@@ -225,7 +257,6 @@ def add_iterating_trajectories(task,seeds,calc,iter_dir_suffixes,targets,target,
     """
     Adds iterating trajectories
     """
-    
     gen = get_gen_from_calc(calc)
     genstart = 0
     genend = gen
@@ -420,6 +451,7 @@ def create_mltrain_tasks(train_task:MLTrainingTask,train_calcs,seeds,targets,ran
                 if isinstance(targstr,dict):
                     targstr = "".join((targstr[p] if p!="diff" else "") for p in targstr)
                 new_mltrain_tasks[targstr+'_'+train_task.calc_suffix] = deepcopy(train_task)
+    print(train_task.traj_links)
     return new_mltrain_tasks
 
 def create_mltraj_tasks(mltraj_task:MLTrajTask,train_calcs,targets,rand_seed,meth,md_wrapper,
