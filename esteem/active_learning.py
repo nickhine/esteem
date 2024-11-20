@@ -451,7 +451,6 @@ def create_mltrain_tasks(train_task:MLTrainingTask,train_calcs,seeds,targets,ran
                 if isinstance(targstr,dict):
                     targstr = "".join((targstr[p] if p!="diff" else "") for p in targstr)
                 new_mltrain_tasks[targstr+'_'+train_task.calc_suffix] = deepcopy(train_task)
-    print(train_task.traj_links)
     return new_mltrain_tasks
 
 def create_mltraj_tasks(mltraj_task:MLTrajTask,train_calcs,targets,rand_seed,meth,md_wrapper,
