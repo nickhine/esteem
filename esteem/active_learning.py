@@ -318,7 +318,7 @@ def add_iterating_trajectories(task,seeds,calc,iter_dir_suffixes,targets,target,
                     traj_seeds = seeds
                 # handle case where seeds is a dictionary, and keys are target,suffix tuples
                 if (isinstance(traj_seeds,dict)):
-                   seeds_list = [traj_seeds[targstr]]
+                    seeds_list = traj_seeds[(str(targstrp),str(dir_suffix))]
                 elif (isinstance(traj_seeds,list)):
                    seeds_list = traj_seeds
                 else:
