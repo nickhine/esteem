@@ -667,7 +667,6 @@ class MACEWrapper():
             if head not in calc_ml.models[0].heads:
                 raise Exception(f"Head {head} not found in MACE calculator heads list: {calc_ml.models[0].heads}")
             model.info["head"] = head
-        
         if isinstance(calc_ml,list):
             e_calc = []
             f_calc = []
@@ -706,7 +705,6 @@ class MACEWrapper():
             res.append(d_calc)
         if calc:
             res.append(calc_ml)
-        model.calc.atoms=None
         return res
 
 
