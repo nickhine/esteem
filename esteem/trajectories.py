@@ -277,9 +277,9 @@ def generate_md_trajectory(model,seed,target,traj_label,traj_suffix,wrapper,
             if path.isfile(steplabel+'.out') or path.isfile(steplabel+'.nwo'):
                 readonly=True
             energy = None; forces = None;
-            calc_params['target'] = targ
+            snap_calc_params['target'] = targ
             if isinstance(all_targets,dict):
-                calc_params['calc_head'] = all_targets[targ]
+                snap_calc_params['calc_head'] = all_targets[targ]
                 model.calc.atoms = None
             calc_forces = True
             calc_dipole = True

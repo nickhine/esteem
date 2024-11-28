@@ -73,8 +73,7 @@ class MLTrajTask:
                 # Find (or relax) initial geometry
                 calc_params['calc_prefix'] = f'../{self.calc_prefix}'
                 if isinstance(self.target,dict):
-                    calc_params['head'] = traj_target
-
+                    calc_params['calc_head'] = self.target[traj_target]
                 model[traj_label] = None
                 if self.continuation:
                     continuation_trajfile = f"{self.seed}_{targstr(self.target)}_{traj_label}_{self.traj_suffix}.traj"
