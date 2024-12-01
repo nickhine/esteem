@@ -80,8 +80,16 @@ def create_clusters_tasks(task:ClustersTask,train_calcs,seed,traj_suffix,md_suff
     for t in train_calcs:
         for tp in [t]:
             for target in targets:
-                task.target = list(targets)
-                task.exc_suffix = f'{targets[target]}_{meth}{t}'
+                targstr = targets[target]
+                if isinstance(targstr,dict):
+                    targstr = "".join((targstr[p] if p!="diff" else "") for p in targstr)
+                if isinstance(targets[target],dict):
+                    task.target = targets[target]
+                    targets_dict = targets[target]
+                else:
+                    task.target = list(targets)
+                    targets_dict = {target:targets[target]}
+                task.exc_suffix = f'{targstr}_{meth}{t}'
                 task.output = f'{truth}_{suff(tp)}'
                 task.carved_suffix = f'carved_{suff(tp)}'
                 task.selected_suffix = f'selected_{suff(tp)}'
@@ -92,11 +100,11 @@ def create_clusters_tasks(task:ClustersTask,train_calcs,seed,traj_suffix,md_suff
                     task.selected_suffix = f'{task.selected_suffix}_{traj_suffix}'
                 if hasattr(task,'exc_dir_suffix'):
                     if task.exc_dir_suffix is None:
-                        task.exc_dir_suffix = f'{targets[target]}_{meth}{pref(t)}_{traj_suffix}'
+                        task.exc_dir_suffix = f'{targstr}_{meth}{pref(t)}_{traj_suffix}'
                     else:
-                        task.exc_dir_suffix = task.exc_dir_suffix.replace('{targ}',targets[target])
+                        task.exc_dir_suffix = task.exc_dir_suffix.replace('{targ}',targstr)
                 else:
-                    task.exc_dir_suffix = f'{targets[target]}_{meth}{pref(t)}_{traj_suffix}'
+                    task.exc_dir_suffix = f'{targstr}_{meth}{pref(t)}_{traj_suffix}'
                 task.script_settings['logdir'] = task.output
                 wlist = [get_traj_from_calc(tp)]
                 if separate_valid:
@@ -116,12 +124,24 @@ def create_clusters_tasks(task:ClustersTask,train_calcs,seed,traj_suffix,md_suff
                         task.min_snapshots = task.max_snapshots
                         task.max_snapshots = task.max_snapshots + valid_snapshots
                     if not hasattr(task,'md_dir_suffix'):
-                        task.md_prefix = f'{seed}_{targets[target]}_{meth}{pref(tp)}_{md_dir_suffix}'
+                        task.md_prefix = f'{seed}_{targstr}_{meth}{pref(tp)}_{md_dir_suffix}'
                     else:
-                        task.md_prefix = f'{seed}_{targets[target]}_{task.md_dir_suffix}'
-                    task.md_suffix = [f'{targets[target]}_{wp}_{meth}{tp}{rslist[i]}_{md_suffix}' for i,wp in enumerate(wplist)]
+                        task.md_prefix = f'{seed}_{targstr}_{task.md_dir_suffix}'
+                    task.md_suffix = []
+                    # loop over random seeds defining committee calcs
+                    for irs,rs in enumerate(rslist):
+                        # loop over targets if targets[target] is dict
+                        for itarg,targets_dict_key in enumerate(targets_dict.keys()):
+                            if targets_dict_key=='diff':
+                                continue
+                            # find target of this MD trajectory
+                            targstrp = targets_dict[targets_dict_key]
+                            wp = chr(ord('A')+irs+itarg*len(rslist))
+                            # make suffix for the MD trajectory and append to list
+                            mdsuff = f'{targstrp}_{wp}_{meth}{tp}{rs}_{md_suffix}'
+                            task.md_suffix.append(mdsuff)
                     # Collapse list if it just contains one entry
-                    if len(wplist)==1:
+                    if len(task.md_suffix)==1:
                         task.md_suffix = task.md_suffix[0]
                     task.which_traj = w
                     traj_char = '_'+w #'' if w==t[-1].upper() else '_'+w
