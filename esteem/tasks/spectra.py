@@ -99,6 +99,7 @@ class SpectraTask:
                             # Get energy for this excitation from first trajectory
                             e0 = traj[0][j].get_potential_energy()
                             e1 = None
+                            #print(f'read e0={e0} len(traj)={len(traj)} len(traj[0])={len(traj[0])}')
                             if isinstance(e0,list) or isinstance(e0,np.ndarray):
                                 if len(e0)>1:
                                     e1 = e0[i+1]
@@ -111,7 +112,7 @@ class SpectraTask:
                                 except:
                                     # If there is no corresponding excitation in one
                                     # of the roots, carry on anyway
-                                    continue
+                                    pass
                             # If we have supplied a wrapper for calculating vibronic transitions,
                             # use it now (or load its results if it has run already)
                             if hasattr(self.wrapper,'xml_filename'):
@@ -136,8 +137,11 @@ class SpectraTask:
                                         e1c = e0c[i+1]
                                         e0c = e0c[0]
                                 if e1c is None:
-                                    e1c = corr_traj[i+1][j].get_potential_energy()
-                                    assert len(corr_traj[0][j])==len(corr_traj[i+1][j])
+                                    try:
+                                        e1c = corr_traj[i+1][j].get_potential_energy()
+                                        assert len(corr_traj[0][j])==len(corr_traj[i+1][j])
+                                    except:
+                                        pass
                             else:
                                 e1c = 0.0; e0c = 0.0
                             # Account for calculators which return an array of values
@@ -150,7 +154,10 @@ class SpectraTask:
                                 if corr_traj[0] is not None and (isinstance(e1c,list) or isinstance(e1c,np.ndarray)):
                                     e1c = e1c[-1]
                             #ediff = e1 - e0 + e1c - e0c
-                            ediff = e1 - e0 - e1c + e0c
+                            if e1 is not None:
+                                ediff = e1 - e0 - e1c + e0c
+                            else:
+                                ediff = abs(e0 + e0c)
                             # Swap sign of energy difference, if emission calculation is requested
                             if self.mode=='emission':
                                 ediff = -ediff

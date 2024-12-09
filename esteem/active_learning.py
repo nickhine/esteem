@@ -586,7 +586,8 @@ def create_mltest_tasks(test_task:MLTestingTask,train_calcs,seeds,targets,rand_s
                     new_test_tasks[f"{targstr}_{meth}{t}{rs}_mltraj_{meth}{tp}"] = deepcopy(test_task)
     return new_test_tasks
 
-def create_spectra_tasks(spectra_task:SpectraTask,train_calcs,targets,rand_seed,meth,ntraj,traj_suffix='specdyn_recalc',corr_traj=False,task_suffix=None):
+def create_spectra_tasks(spectra_task:SpectraTask,train_calcs,targets,rand_seed,meth,
+                         traj_suffix='specdyn_recalc',corr_traj=False,diff_traj=False,task_suffix=None):
     """
     Returns a dictionary of Spectra tasks, based on an input prototype task supplied by
     the user, for all the required Spectra tasks for an Active Learning task.
@@ -598,35 +599,59 @@ def create_spectra_tasks(spectra_task:SpectraTask,train_calcs,targets,rand_seed,
     # Loop over target states
     for target in targets:
         targstr = targets[target]
-        targstrp = "gs" if targstr=="es1" else "es1"
+        if isinstance(targstr,dict):
+            targstr = "".join((targstr[p] if p!="diff" else "") for p in targstr)
+            targets_dict = targets[target]
+        else:
+            targets_dict = {target:targets[target]}
         # Loop over calculators
         for t in train_calcs:
-            all_trajs = []
-            all_corr_trajs = [] if corr_traj else None
-            spectra_task.vibration_trajectory = None
-            spectra_task.mode = "absorption" if targstr=="gs" else "emission"
-            spectra_task.verbosity = 'normal'
-            # Set parameters for wrapper
-            if spectra_task.wrapper is not None:
-                spectra_task.wrapper.task = spectra_task.mode.upper()
-                spectra_task.wrapper.rootname = f'{{solu}}_{{solv}}_{targstr}_spec'
-                spectra_task.wrapper.input_filename = f'{{solu}}_{{solv}}_{targstr}_spec_input'
-            spectra_task.exc_suffix = f'{targstr}_{meth}{pref(t)}_mldyn'
-            spectra_task.output = f'{{solu}}_{{solv}}_{targstr}_{meth}{t}_{task_suffix}.png'
-            tdir = '.'
-            rslist = list(rand_seed) # ['a','b','c'...]
-            # Loop over trajectories to process
-            for iw,w in enumerate(get_trajectory_list(ntraj)):
-                rs = rslist[iw]
-                # Add normal and correction trajectories (gs and es for each entry)
-                all_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_{traj_suffix}.traj", 
-                                  f"{tdir}/{{solu}}_{{solv}}_{targstrp}_{w}_{meth}{t}{rs}_{traj_suffix}.traj"])
-                if corr_traj:
-                    all_corr_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{targstr}_{w}_{meth}{t}{rs}_{traj_suffix}_nosolu.traj",
-                                           f"{tdir}/{{solu}}_{{solv}}_{targstrp}_{w}_{meth}{t}{rs}_{traj_suffix}_nosolu.traj"])
-            spectra_task.trajectory = all_trajs
-            spectra_task.correction_trajectory = all_corr_trajs
-            new_spectra_tasks[f'{targstr}_{meth}{t}_{task_suffix}'] = deepcopy(spectra_task)
+            for itarg,traj_target in enumerate(targets_dict):
+                if traj_target=='diff':
+                    continue
+                # Find the initial and final target strings
+                traj_targstr = targets_dict[traj_target]
+                traj_targstrp = "gs" if traj_targstr=="es1" else "es1"
+                all_trajs = []
+                all_corr_trajs = [] if corr_traj else None
+                spectra_task.vibration_trajectory = None
+                spectra_task.mode = "absorption" if traj_targstr=="gs" else "emission"
+                spectra_task.verbosity = 'normal'
+                # Set directory where trajectories will be found
+                if hasattr(spectra_task,'exc_dir_suffix'):
+                    exc_dir_suffix = spectra_task.exc_dir_suffix
+                else:
+                    exc_dir_suffix = 'mldyn'
+                spectra_task.exc_suffix = f'{targstr}_{meth}{pref(t)}_{exc_dir_suffix}'
+                # Set parameters for wrapper
+                if spectra_task.wrapper is not None:
+                    spectra_task.wrapper.task = spectra_task.mode.upper()
+                    spectra_task.wrapper.rootname = f'{{solu}}_{{solv}}_{traj_targstr}_spec'
+                    spectra_task.wrapper.input_filename = f'{{solu}}_{{solv}}_{traj_targstr}_spec_input'
+                # Set output plot file
+                spectra_task.output = f'{{solu}}_{{solv}}_{targstr}_{meth}{t}_{task_suffix}.png'
+                tdir = '.'
+                rslist = list(rand_seed) # ['a','b','c'...]
+                # Loop over trajectories to process
+                for irs,rs in enumerate(rslist):
+                    w = chr(ord('A')+irs+itarg*len(rand_seed))
+                    # Add normal and correction trajectories (gs and es for each entry)
+                    if not diff_traj:
+                        trajtargs = [traj_targstr,traj_targstrp]
+                    else:
+                        trajtargs = ['esdiff']
+                    all_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{trajtarg}_{w}_{meth}{t}{rs}_{traj_suffix}.traj"
+                                      for trajtarg in trajtargs])
+                    if corr_traj:
+                        all_corr_trajs.append([f"{tdir}/{{solu}}_{{solv}}_{trajtarg}_{w}_{meth}{t}{rs}_{traj_suffix}_nosolu.traj"
+                                               for trajtarg in trajtargs])
+                spectra_task.trajectory = all_trajs
+                spectra_task.correction_trajectory = all_corr_trajs
+                if isinstance(targets[target],dict):
+                    taskname = f'{targstr}_{traj_targstr}_{meth}{t}_{task_suffix}'
+                else:
+                    taskname = f'{targstr}_{meth}{t}_{task_suffix}'
+                new_spectra_tasks[taskname] = deepcopy(spectra_task)
             
     return new_spectra_tasks
 
