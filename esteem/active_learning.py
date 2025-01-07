@@ -626,8 +626,10 @@ def create_spectra_tasks(spectra_task:SpectraTask,train_calcs,targets,rand_seed,
                 # Set parameters for wrapper
                 if spectra_task.wrapper is not None:
                     spectra_task.wrapper.task = spectra_task.mode.upper()
-                    spectra_task.wrapper.rootname = f'{{solu}}_{{solv}}_{traj_targstr}_spec'
-                    spectra_task.wrapper.input_filename = f'{{solu}}_{{solv}}_{traj_targstr}_spec_input'
+                    if task_suffix is None:
+                        task_suffix = "spec"
+                    spectra_task.wrapper.rootname = f'{{solu}}_{{solv}}_{traj_targstr}_{task_suffix}'
+                    spectra_task.wrapper.input_filename = f'{{solu}}_{{solv}}_{traj_targstr}_{task_suffix}_input'
                 # Set output plot file
                 spectra_task.output = f'{{solu}}_{{solv}}_{targstr}_{meth}{t}_{task_suffix}.png'
                 tdir = '.'
