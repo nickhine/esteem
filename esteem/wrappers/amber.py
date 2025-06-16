@@ -636,9 +636,10 @@ class AmberWrapper():
                      infile=seed+'.in',
                      outfile=seed+'.out',
                      topologyfile=seed+'.prmtop',
-                     incoordfile=seed+'.crd')
+                     incoordfile=seed+'.crd',
+                     outcoordfile=crdfile)
+        calc_am.read_coordinates(model)
         model.calc = calc_am
-        model.calc.read_coordinates(model,crdfile)
         return model
 
     # Set up Amber calculator
@@ -699,10 +700,10 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
                           topologyfile=f'{seed}.prmtop',
                           incoordfile=f'{seed}.crd',
                           outcoordfile='min.rst')
-        model.set_calculator(calc_min)
+        model = calc_min.read_coordinates(f'{seed}.crd.nc')
+        model.calculator= calc_min
         calc_min.write_coordinates(model,f'{seed}.crd')
         print("Pot, Kin Energy after minimisation: ", model.get_potential_energy(), model.get_kinetic_energy())
-        calc_min.read_coordinates(model,f'{seed}.crd.nc')
 
     def heatup(self,model,seed,calc_params={},nsteps=100):
         """Runs a heatup temperature-ramp calculation with the Amber ASE calculator"""
@@ -733,11 +734,11 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
                           incoordfile='min.rst',
                           outcoordfile='heat.rst')
                           #mdcoordfile='heat.mdcrd.nc')
-        model.set_calculator(calc_heat)
-
         calc_heat.write_coordinates(model,'min.rst')
+        model.set_calculator(calc_heat)
         new_pe = model.get_potential_energy()
-        calc_heat.read_coordinates(model,calc_heat.outcoordfile)
+        calc_heat.read_coordinates(model)
+        model.calculator = calc_heat
         calc_heat.write_coordinates(model,'heat.rst')
         new_ke = model.get_kinetic_energy()
         print("Pot, Kin Energy after heating: ", new_pe, new_ke)
@@ -775,7 +776,7 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
         model.set_calculator(calc_dens)
 
         new_pe = model.get_potential_energy()
-        calc_dens.read_coordinates(model,calc_dens.outcoordfile)
+        calc_dens.read_coordinates(model)
         new_ke = model.get_kinetic_energy()
         print("Pot, Kin Energy after density equilibration: ", new_pe, new_ke)
 
@@ -811,7 +812,7 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
         model.set_calculator(calc_equil)
 
         new_pe = model.get_potential_energy()
-        calc_equil.read_coordinates(model,calc_equil.outcoordfile)
+        calc_equil.read_coordinates(model)
         new_ke = model.get_kinetic_energy()
         print("Pot, Kin Energy after equilibration: ", new_pe, new_ke)
         
@@ -859,11 +860,12 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
             
             self.reimage(seed,calc_snap.outcoordfile,f'{seed}.rst_ri.nc')
             calc_snap.results['dipole'] = self.dipole(seed,calc_snap.outcoordfile)
-            calc_snap.read_coordinates(snapout,f'{seed}.rst_ri.nc')
+            calc_snap.outcoordfile = f'{seed}.rst_ri.nc'
+            calc_snap.read_coordinates(snapout)
             traj.write(snapout,**calc_snap.results)
             #write(f'{seed}_snap{step:04}.xyz',snapout)
-
-            calc_snap.read_coordinates(model,calc_snap.outcoordfile)
+            calc_snap.outcoordfile = f'snap{step:04}.rst'
+            calc_snap.read_coordinates(model)
             new_ke = model.get_kinetic_energy()
             new_temp = model.get_temperature()
             print("Pot Energy, Kin Energy, Temp after snapshot",str(step),":",new_pe, new_ke, new_temp)

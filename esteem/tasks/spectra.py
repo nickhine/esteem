@@ -87,6 +87,7 @@ class SpectraTask:
                     max_frames = min(self.max_frames,len(traj[0])-start_frame)
                 else:
                     max_frames = len(traj[0])-start_frame
+                assert (max_frames > 0), "ERROR: Negative max_frames encountered"
                 # Keep going as long as there are at least max_frames left in this trajectory
                 end_frame = start_frame + max_frames
                 while end_frame <= len(traj[0]):

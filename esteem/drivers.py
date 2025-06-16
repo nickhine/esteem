@@ -622,7 +622,6 @@ def clusters_driver(all_solutes,all_solvents,seed,task,make_sbatch=None,dryrun=F
     
     # Iterate over all pairs of solute and solvent, unless in a specific directory already,
     # in which case just run that pair
-    
     # First take "which_traj" off the end of exc_suffix, if it is present
     if hasattr(task,'exc_dir_suffix'):
         exc_dir_suffix = task.exc_dir_suffix
@@ -742,7 +741,7 @@ def clusters_driver(all_solutes,all_solvents,seed,task,make_sbatch=None,dryrun=F
             task.solvent = solvent
             if task.solute == task.solvent:
                 reset_roots = False
-                if type(task.target)!=list:
+                if type(task.target) is not list:
                     if task.nroots > task.target:
                         reset_roots = True
                 else:

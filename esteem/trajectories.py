@@ -17,6 +17,8 @@ def targstr(targ):
         return "gs"
     elif isinstance(targ,dict):
         return "".join((targ[p] if p!="diff" else "") for p in targ)
+    elif isinstance(targ,list) and type(targ[0])==int:
+        return "".join(targstr(t) for t in targ if type(t) is int)
     else:
         return "es"+str(targ)
 
@@ -517,8 +519,6 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
         String labelling trajectory (usually A,B,C..)
     """
     
-    from glob import glob
-    
     if False:
         db_ext = '.db'
     else:
@@ -546,6 +546,7 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
     for targ in all_targets:
         # Check if output trajectory already exists
         output_traj = f"{seed}_{targstr(targ)}_{traj_label}_{traj_suffix}.traj"
+        print('targ,output_traj=',targ,output_traj,target)
         if output_traj_offset>0 or (len(input_traj_range)==1 and output_traj_offset==0):
             if targ==all_targets[0]:
                 print(f"# Not writing to output trajectory as range is subset of trajectory.")
@@ -576,7 +577,7 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
     
     # If we are running a wrapper that calculates all targets at once, set all_targets appropriately
     if hasattr(wrapper,'load'): # temporary way of detecting ML calculators - should be improved
-        if isinstance(all_targets,list):
+        if isinstance(all_targets,list) and not (geom_opt_kernel or vibfreq_kernel):
             all_targets = [all_targets] # add a second list around it so we just pass it in once
 
     # Loop over and recalculate each trajectory point
@@ -584,39 +585,13 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
         frame = intraj[i].copy()
         frame.calc = intraj[i].calc
         iout = i + output_traj_offset
-        try:
-            energy_in, forces_in = (frame.get_potential_energy(),frame.get_forces())
-        except Exception as e:
-            # existing trajectory may have no calculator
-            energy_in = 0; forces_in = np.array([[0,0,0]]*len(frame))
         cont = False
         for targ in all_targets:
             label = f"{seed}_{targstr(targ)}_{traj_label}_{traj_suffix}{iout:04}"
-            # Default to readonly for multiple-frame trajectories
-            readonly = len(input_traj_range)!=1
             # If output files already exist, read them
-            if hasattr(wrapper,'get_completed_file_exts'):
-                completed_files = [path.isfile(label+f) for f in wrapper.get_completed_file_exts()]
-            else:
-                completed_files = [False]
-            if all(completed_files):
-                readonly = True
-            elif readonly and any(completed_files):
-                print(f'# Some files not present for {label} - cleanup may be required')
-                main_outfile = f'{label}{wrapper.get_completed_file_exts()[0]}'
-                try:
-                    print(f'# Final 30 lines of {main_outfile}:')
-                    final_lines = open(main_outfile, "r").readlines()[-30:]
-                    for line in final_lines:
-                        print(line, end="")
-                except:
-                    print(f'# Not found: {main_outfile}')
-                all_files = glob(f"{label}*")
-                print(f'# Removing {label}*: {all_files}')
-                for f in all_files:
-                    remove(f)
-            energy = None;
-            forces = None;
+            readonly = check_completed_and_cleanup(label,wrapper,input_traj_range)
+            energy = None
+            forces = None
             if cont and not readonly:
                 cycle_restarts(seed,traj_label,traj_suffix,prevtarg,targ,iout,iout,db_ext)
             if isinstance(all_targets,dict):
@@ -625,7 +600,7 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
                 if frame.calc is not None:
                     frame.calc.atoms = None
             else:
-                calc_params['target'] = targ
+                calc_params['target'] = [t for t in targ if not isinstance(t,str)] # remove diffs if present
             if geom_opt_kernel or vibfreq_kernel:
                 from ase.constraints import FixAtoms
                 c = FixAtoms(mask=[atom.tag!=1 for atom in frame])
@@ -647,13 +622,16 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
                 intensities = ir.intensities
                 ir.clean()
             # Try to run or read the energy, forces and dipole for this frame
-            success = False
             try:
+                calc_excitations = isinstance(targ,list)
                 results = wrapper.singlepoint(frame,label,calc_params,
                                               solvent=solvent,charge=charge,
                                               forces=calc_forces,dipole=calc_dipole,
+                                              excitations=calc_excitations,
                                               continuation=cont,readonly=readonly)
-                if calc_forces and calc_dipole:
+                if calc_forces and calc_dipole and calc_excitations:
+                    energy, forces, dipole, exc = results
+                elif calc_forces and calc_dipole and not calc_excitations:
                     energy, forces, dipole = results
                 elif calc_forces and not calc_dipole:
                     energy, forces = results
@@ -662,7 +640,6 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
                 if len(frame) != len(forces) and not(hasattr(energy,"__len__")):
                     print(f'# ERROR: length of frame {i} ({len(frame)}) does not match length of forces array ({len(forces)})')
                     raise Exception('Length matching failure')
-                success = True
             except KeyboardInterrupt:
                 # Always exit if Ctrl-C pressed
                 raise Exception('Keyboard Interrupt')
@@ -684,16 +661,21 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
             # Supply keyword dipole explicitly to ensure it gets written or fails
             if isinstance(targ,list):
                 for it,tg in enumerate(targ):
-                    len_en = len(energy)
-                    len_en_targ = int(len_en/len(targ))
-                    i0 = it*len_en_targ
-                    i1 = (it+1)*len_en_targ
-                    frame_targ = frame.copy()
-                    frame_targ.calc = frame.calc[it]
-                    frame_targ.calc.results["energy"] = energy[i0:i1]
-                    frame_targ.calc.results["forces"] = forces[i0:i1]
-                    frame_targ.calc.results["dipole"] = dipole[i0:i1]
-                    outtraj[tg].write(frame_targ)
+                    if outtraj[tg] is not None:
+                        if type(tg) is str and 'diff' in tg:
+                            continue
+                        len_en = len(energy)
+                        len_en_targ = int(len_en/len(targ))
+                        i0 = it*len_en_targ
+                        i1 = (it+1)*len_en_targ
+                        frame_targ = frame.copy()
+                        frame_targ.calc = frame.calc
+                        frame_targ.calc.results["energy"] = energy[i0:i1]
+                        frame_targ.calc.results["forces"] = forces[i0:i1]
+                        frame_targ.calc.results["dipole"] = dipole[i0:i1]
+                        #if (it>0):
+                        #    frame_targ.calc.results["trans_dip"] = exc[i0:i1][0][f"S0_S{it}"][1]
+                        outtraj[tg].write(frame_targ)
             else:
                 if outtraj[targ] is not None:
                     if vibfreq_kernel:
@@ -725,6 +707,8 @@ def formatted_output(iout,targ,natoms,pos,energy,forces,dipole,calc_forces,calc_
         else:
             force_str = ''
             for itarg,tg in enumerate(targ):
+                if type(tg) is str and 'diff' in tg:
+                    continue
                 force_str += f'[ {forces[itarg,0,0]:6.3f} {forces[itarg,0,1]:6.3f} {forces[itarg,0,2]:6.3f} ]'
     else:
         force_str = ''
@@ -738,10 +722,14 @@ def formatted_output(iout,targ,natoms,pos,energy,forces,dipole,calc_forces,calc_
         else:
             dip_str = ''
             for itarg,tg in enumerate(targ):
+                if type(tg) is str and 'diff' in tg:
+                    continue
                 dip_str += f'[ {dipole[itarg,0]:6.3f} {dipole[itarg,1]:6.3f} {dipole[itarg,2]:6.3f} ]'
     if isinstance(targ,list):
         energy_str = ''
         for itarg,tg in enumerate(targ):
+            if type(tg) is str and 'diff' in tg:
+                continue
             energy_str += f'{energy[itarg]:18.8f}'
     else:
         if isinstance(energy,np.ndarray):
@@ -752,6 +740,31 @@ def formatted_output(iout,targ,natoms,pos,energy,forces,dipole,calc_forces,calc_
     targstr = 'D' if targ=="diff" else targ
     print(f'{iout:04} {targstr} {energy_str} {natoms:5} {pos_str} {force_str} {dip_str}')
     return
+
+def check_completed_and_cleanup(label,wrapper,input_traj_range):
+    # Default to readonly for multiple-frame trajectories
+    readonly = len(input_traj_range)!=1
+    if hasattr(wrapper,'get_completed_file_exts'):
+        completed_files = [path.isfile(label+f) for f in wrapper.get_completed_file_exts()]
+    else:
+        completed_files = [False]
+    if all(completed_files):
+        readonly = True
+    elif readonly and any(completed_files):
+        print(f'# Some files not present for {label} - cleanup may be required')
+        main_outfile = f'{label}{wrapper.get_completed_file_exts()[0]}'
+        try:
+            print(f'# Final 30 lines of {main_outfile}:')
+            final_lines = open(main_outfile, "r").readlines()[-30:]
+            for line in final_lines:
+                print(line, end="")
+        except:
+            print(f'# Not found: {main_outfile}')
+        all_files = glob(f"{label}*")
+        print(f'# Removing {label}*: {all_files}')
+        for f in all_files:
+            remove(f)
+    return readonly
 
 def cycle_restarts(seed,traj_label,traj_suffix,prevtarg,currtarg,prevstep,currstep,db_ext):
     """
@@ -819,11 +832,11 @@ def merge_traj(trajnames,trajfile,trajfile_valid=None,valid_fraction=0.0,split_s
             if itraj not in split_seed_dict:
                 seed = str(split_seed) + tr
                 int_seed = int(hashlib.sha1(seed.encode("utf-8")).hexdigest(), 16) % (10 ** 10)
-                print(f'Used string {seed} to generate seed {int_seed}')
+                print(f'# Used string {seed} to generate seed {int_seed}')
                 split_seed_dict[itraj] = int_seed
             else:
                 int_seed = split_seed_dict[itraj]
-                print(f'Retrieved seed {int_seed} from seeds dictionary')
+                print(f'# Retrieved seed {int_seed} from seeds dictionary')
             rng = np.random.default_rng(int_seed)
             rng.shuffle(indices)
             print(f"# {size} frames of {tr} to be split into {train_size} training and {valid_size} validation using seed {int_seed}")

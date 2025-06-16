@@ -114,12 +114,12 @@ class MACEWrapper():
 
         return self.calc
 
-    def traj_to_extxyz(self,trajfile,outfilename):
+    def traj_to_extxyz(self,trajfile,outfilename,use_json=False):
         """
         Converts a ASE Trajectory object to a extxyz format text file
         Adds "REF_" to the data tags so that ASE does not nuke them
 
-        trajfile: str
+        trajfile: str or list
 
         outfilename: str
 
@@ -127,16 +127,30 @@ class MACEWrapper():
 
         from ase.io import Trajectory
         from ase.io.extxyz import write_xyz
+        import json
 
-        traj = Trajectory(trajfile)        
+        if not isinstance(trajfile,list):
+            trajs = [Trajectory(trajfile)]
+        else:
+            trajs = [Trajectory(tr) for tr in trajfile]
+            assert all([len(tr)==len(trajs[0]) for tr in trajs])
         with open(outfilename,"w") as f:
-            for t in traj:
+            for i,t in enumerate(trajs[0]):
                 tp = t.copy()
-                tp.info["REF_energy"] = t.calc.results["energy"]
-                tp.info["REF_dipole"] = t.calc.results["dipole"]
-                tp.arrays["REF_forces"] = t.calc.results["forces"]
+                if not use_json:
+                    tp.info["REF_energy"] = t.calc.results["energy"]
+                    tp.info["REF_dipole"] = t.calc.results["dipole"]
+                    tp.arrays["REF_forces"] = t.calc.results["forces"][0]
+                else:
+                    en = np.array([traj[i].calc.results["energy"] for traj in trajs])
+                    tp.info["REF_energy"] = "_JSON " + json.dumps(en.tolist())
+                    dip = np.stack([traj[i].calc.results["dipole"] for traj in trajs])
+                    tp.info["REF_dipole"] = "_JSON " + json.dumps(dip.tolist()) 
+                    fo = np.stack([traj[i].calc.results["forces"] for traj in trajs])
+                    fo = fo.transpose(1, 0, 2)
+                    tp.info["REF_forces"] = "_JSON " + json.dumps(fo.tolist())
                 write_xyz(f,tp)
-        return outfilename, len(traj)
+        return outfilename, len(trajs[0])
 
     def reset_loss(self,seed,prefix="",suffix="",target=None):
         """
@@ -212,10 +226,18 @@ class MACEWrapper():
             print(f'# Delete this if training is intended to be restarted / extended')
             return
 
+        use_json = False
         if not isinstance(targets_in,dict):
             # if we supplied a single target, convert to a dictionary
             targets = {targets_in:str(targets_in)}
             heads = None
+        elif train_args.model=="ExcitedMACE":
+            targets = targets_in.copy()
+            if "diff" in targets:
+                del targets["diff"]
+            heads = None
+            use_json = True
+            print(targets_in)
         else:
             # if we supplied multiple targets set up heads dictionary
             targets = targets_in
@@ -235,13 +257,20 @@ class MACEWrapper():
         if testfile is not None:
             convtrajfile['test'] = testfile
         for key in convtrajfile:
-            trajfile_dict = convtrajfile[key]
-            for target in targets:
-                targetstr = targets[target]
+            if not use_json:
+                trajfile_dict = convtrajfile[key]
+                targets_loop = targets
+            else:
+                from esteem.trajectories import targstr
+                all_targs = "".join(targstr(t) for t in targets)
+                trajfile_dict = {all_targs: [convtrajfile[key][targets[target]] for target in targets]}
+                targets_loop = {all_targs:all_targs}
+            for target in targets_loop:
+                targetstr = targets_loop[target]
                 trajf = trajfile_dict[targetstr]
                 print(f'# Converting trajectory {trajf} to extxyz format as {key} file for target {targetstr}')
                 extxyzfile = self.calc_filename(seed,target,prefix=dirname+"/",suffix=suffix)+f"_{key}.xyz"
-                extxyzfile, ntraj = self.traj_to_extxyz(trajf,extxyzfile)
+                extxyzfile, ntraj = self.traj_to_extxyz(trajf,extxyzfile,use_json=use_json)
                 print(f'# Wrote {ntraj} frames to {extxyzfile} in extxyz format')
                 extxyzfile = self.calc_filename(seed,target,prefix="",suffix=suffix)+f"_{key}.xyz"
                 if heads is not None:
@@ -430,7 +459,8 @@ class MACEWrapper():
             self.dynamics = self.run_md(snapout,seed+"_snaps",calc_params,nsteps,self.dt,1,self.temp0,dynamics=self.dynamics)
             from esteem.tasks.clusters import reimage_cluster
             snap_reimage = snapout.copy()
-            reimage_cluster(snap_reimage,nat_solv,nat_solu)
+            if snapout.cell.volume > 0.0:
+                reimage_cluster(snap_reimage,nat_solv,nat_solu)
             traj.write(snap_reimage)
             write(f'snap{step:04}.xyz',snap_reimage)
 

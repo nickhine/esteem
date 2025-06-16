@@ -192,7 +192,7 @@ class SolvateTask:
         if self.boxsize is None:
             mass = 0
             for i,seed in enumerate([self.solute, self.solvent]):
-                component = read(f'{seed}.xyz')
+                component = read(f'../{seed}.xyz')
                 number = 1 if i==0 else self.nmol_solvent
                 mass += component.get_masses().sum()*number
             density = self.init_density*units.kg*0.001/(units.m*0.01)**3
@@ -201,7 +201,7 @@ class SolvateTask:
         pd = 1.2; bs = self.boxsize; rg=bs/4
         for i,seed in enumerate([self.solute, self.solvent]):
             # Load molecular structure from .xyz file
-            component = mda.Universe(f'{seed}.xyz')
+            component = mda.Universe(f'../{seed}.xyz')
             if i==0:
                 instructions = [f'inside box {rg} {rg} {rg} {3*rg} {3*rg} {3*rg}'] 
                 number = 1
@@ -309,7 +309,8 @@ class SolvateTask:
 
         solvatedseed = f'{self.solute}_{self.solvent}_solv'
         solvated = read(f'{solvatedseed}.{inp}')
-        solvated.set_pbc([True,True,True])
+        if self.boxsize is not None:
+            solvated.set_pbc([True,True,True])
 
         calc_params = self.calc_params
         e0_am_solu = self.wrapper.singlepoint(solute,self.solute,calc_params)[0]
@@ -352,12 +353,13 @@ class SolvateTask:
         # load heated model, then check if density-equilibration has been done
         # and load coordinates if so
         densityeq = heated.copy()
-        if isfile(f'density.{ext}'):
-            print(f'\nReading from density.{ext}')
-            densityeq = self.wrapper.restore_from_coordinates(densityeq,f'density.{ext}')
-        else:
-            print(f'\nEquilibrating density of model (nsteps={self.ndens})')
-            self.wrapper.densityequil(densityeq,solvatedseed,calc_params=calc_params,nsteps=self.ndens)
+        if self.boxsize is not None:
+            if isfile(f'density.{ext}'):
+                print(f'\nReading from density.{ext}')
+                densityeq = self.wrapper.restore_from_coordinates(densityeq,f'density.{ext}')
+            else:
+                print(f'\nEquilibrating density of model (nsteps={self.ndens})')
+                self.wrapper.densityequil(densityeq,solvatedseed,calc_params=calc_params,nsteps=self.ndens)
 
         # load density-equilibrated model, then check if equilibration has been done
         # and load coordinates if so

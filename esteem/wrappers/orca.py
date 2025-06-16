@@ -187,22 +187,30 @@ class ORCAWrapper():
         #self.scf_block += f"AutoTRAH False\n"
         self.scf_block += f"end\n"
     
+    def load():
+        pass
+
     def _add_solvent(self,calc,solvent):
 
         calc.parameters['orcasimpleinput'] += f" CPCMC({self._cosmo_seed(solvent)})"
         self._add_cpcm_block(calc,solvent)
 
-    def _add_tddft(self,calc,nroots,target=None):
+    def _add_tddft(self,calc,nroots,target=None,all_forces=False):
 
         calc.parameters['orcablocks'] += f"\n%tddft\n  nroots {nroots}\n  tda false"
         if target is not None:
-            calc.parameters['orcablocks'] += f"\n  Iroot {target}\n  end"
-        else:
-            calc.parameters['orcablocks'] += f"\n  end"
+            if isinstance(target,list):
+                targliststr = ",".join([str(t) for t in target])
+                calc.parameters['orcablocks'] += f"\n  irootlist {targliststr}"
+                if all_forces:
+                    calc.parameters['orcablocks'] += f"\n  sgradlist {targliststr}"
+            else:
+                calc.parameters['orcablocks'] += f"\n  iroot {target}"
+        calc.parameters['orcablocks'] += f"\n  end"
 
     def singlepoint(self,model,label,calc_params={},solvent=None,charge=0,spin=0,
                     forces=False,dipole=True,continuation=False,readonly=False,calc=False,
-                    cleanup=True):
+                    excitations=False,cleanup=True):
         """Runs a singlepoint calculation with the ORCA ASE calculator"""
         basis, xc, target, disp = self.unpack_params(calc_params)
         dispstr = 'D3BJ' if disp else ''
@@ -216,27 +224,64 @@ class ORCAWrapper():
         calc_orca.template.outputname = label + ".out"
 
         if (target is not None) and (target != 0):
-            self._add_tddft(calc_orca,target,target)
+            if isinstance(target,list):
+                nroots = max(target)
+                all_forces = True
+            else:
+                nroots = target
+                all_forces = False
+            self._add_tddft(calc_orca,nroots,target,all_forces)
         if solvent is not None:
             self._add_solvent(calc_orca,solvent)
         if self.scf_block is not None:
             calc_orca.parameters['orcablocks'] += self.scf_block
-        model.calc = calc_orca
-        if readonly:
-            calc_orca.atoms = model
-            from ase.calculators.singlepoint import SinglePointCalculator
-            results = calc_orca.template.read_results(calc_orca.directory) # skip calculation
-            calc_orca = SinglePointCalculator(atoms=model,**results)
-            model.calc = calc_orca
+        # run the calculation
         if not readonly:
+            model.calc = calc_orca
             self.move_to_tempdir(label)
-        if forces:
-            f_calc = model.get_forces()
-            e_calc = model.calc.results["energy"]
-        else:
             e_calc = model.get_potential_energy()
-        if dipole:
-            d_calc = model.get_dipole_moment()
+        old_format = False
+        if old_format:
+            if readonly:
+                from ase.calculators.singlepoint import SinglePointCalculator
+                results = calc_orca.template.read_results(calc_orca.directory) # skip calculation
+                calc_orca = SinglePointCalculator(atoms=model,**results)
+                model.calc = calc_orca
+            if forces:
+                f_calc = model.get_forces()
+            if dipole:
+                d_calc = model.get_dipole_moment()
+        else:
+            from ase.io import read
+            if isinstance(target,list):
+                models_read = read(calc_orca.template.outputname,index=":",
+                                   separate_excitations=True,)
+                model_read = models_read[0]
+            else:
+                model_read = read(calc_orca.template.outputname)
+            model.calc = model_read.calc
+            model.positions = model_read.positions
+            if isinstance(target,list):
+                for i in target:
+                    model.calc.atoms = model_read
+                e_calc = np.array([models_read[i].calc.get_potential_energy() for i in target])
+                if forces:
+                    f_calc = np.array([models_read[i].calc.get_forces() for i in target])
+                if dipole:
+                    d_calc = np.array([models_read[i].calc.get_dipole_moment() for i in target])
+                if "excitation_spectrum" in models_read[i].calc.results:
+                    exc_calc = np.array([models_read[i].calc.results['excitation_spectrum'] for i in target])
+                else:
+                    exc_calc = None
+            else:
+                model.calc.atoms = model_read
+                if 'initial_charges' in model.arrays:
+                    del model.arrays['initial_charges']
+                e_calc = model_read.get_potential_energy()
+                if forces:
+                    f_calc = model_read.get_forces()
+                if dipole:
+                    d_calc = model_read.get_dipole_moment()
         if cleanup and not readonly:
             self.cleanup(label)
         if not readonly:
@@ -247,8 +292,10 @@ class ORCAWrapper():
             res.append(f_calc)
         if dipole:
             res.append(d_calc)
+        if excitations and isinstance(target,list):
+            res.append(exc_calc)
         if calc:
-            res.append(calc_orca)
+            res.append(model.calc)
         return res
 
     def geom_opt(self,model_opt,label,calc_params={},driver_tol='default',

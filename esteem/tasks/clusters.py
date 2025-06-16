@@ -126,7 +126,8 @@ class ClustersTask:
         input_traj_label = self.which_traj
         if self.subset_selection_method is not None:
             input_suffix = f'{self.selected_suffix}'
-            input_traj_label = self.subset_selection_which_traj
+            if self.subset_selection_which_traj is not None:
+                input_traj_label = self.subset_selection_which_traj
         traj_carved_file = f'{self.solute}{solvstr}_{which_targstr}_{input_traj_label}_{input_suffix}.traj'
         if self.subset_selection_method is not None:
             # If we did not find a pre-selected subset, reset input to carved suffix and check again
@@ -968,6 +969,7 @@ def get_ref_mol_energy(wrapper,ref_mol,solv,calc_params,ref_mol_xyz,ref_mol_dir,
                 if ref_mol_model.cell.volume == 0.0:
                     from ase.geometry import Cell
                     ref_mol_model.cell = Cell([[40,0,0],[0,40,0],[0,0,40]])
+    print(f'looking for {ref_mol_seed} in {ref_mol_calc_dir}')
     ref_mol_energy,ref_mol_dipole = wrapper.singlepoint(ref_mol_model,
                 ref_mol_seed,calc_params,forces=False,dipole=True,readonly=True)
     chdir(orig_dir)

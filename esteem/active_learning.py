@@ -77,6 +77,9 @@ def create_clusters_tasks(task:ClustersTask,train_calcs,seed,traj_suffix,md_suff
     # Define empty dictionary for new tasks
     new_clusters_tasks = {}
     # Loop over calculators and trajectory targets
+    if not hasattr(task,'exc_dir_suffix'):
+        task.exc_dir_suffix = None
+    orig_exc_dir_suffix = task.exc_dir_suffix
     for t in train_calcs:
         for tp in [t]:
             for target in targets:
@@ -84,10 +87,10 @@ def create_clusters_tasks(task:ClustersTask,train_calcs,seed,traj_suffix,md_suff
                 if isinstance(targstr,dict):
                     targstr = "".join((targstr[p] if p!="diff" else "") for p in targstr)
                 if isinstance(targets[target],dict):
-                    task.target = targets[target]
+                    task.target = [targ for targ in targets[target] if type(targ) is not str]
                     targets_dict = targets[target]
                 else:
-                    task.target = list(targets)
+                    task.target = [targ for targ in targets if type(targ) is not str]
                     targets_dict = {target:targets[target]}
                 task.exc_suffix = f'{targstr}_{meth}{t}'
                 task.output = f'{truth}_{suff(tp)}'
@@ -98,19 +101,14 @@ def create_clusters_tasks(task:ClustersTask,train_calcs,seed,traj_suffix,md_suff
                     task.output = f'{task.output}_{traj_suffix}'
                     task.carved_suffix = f'{task.carved_suffix}_{traj_suffix}'
                     task.selected_suffix = f'{task.selected_suffix}_{traj_suffix}'
-                if hasattr(task,'exc_dir_suffix'):
-                    if task.exc_dir_suffix is None:
-                        task.exc_dir_suffix = f'{targstr}_{meth}{pref(t)}_{traj_suffix}'
-                    else:
-                        task.exc_dir_suffix = task.exc_dir_suffix.replace('{targ}',targstr)
-                else:
+                task.exc_dir_suffix = orig_exc_dir_suffix
+                if task.exc_dir_suffix is None:
                     task.exc_dir_suffix = f'{targstr}_{meth}{pref(t)}_{traj_suffix}'
                 task.script_settings['logdir'] = task.output
                 wlist = [get_traj_from_calc(tp)]
                 if separate_valid:
                     wlist += ['Q']
                 # Make a list of trajectories to find
-                wplist = get_trajectory_list(len(rand_seed))
                 rslist = list(rand_seed)
                 for iw,w in enumerate(wlist):
                     # for the main trajectory, reset the number of snapshots
@@ -144,6 +142,7 @@ def create_clusters_tasks(task:ClustersTask,train_calcs,seed,traj_suffix,md_suff
                     if len(task.md_suffix)==1:
                         task.md_suffix = task.md_suffix[0]
                     task.which_traj = w
+                    task.which_target = target
                     traj_char = '_'+w #'' if w==t[-1].upper() else '_'+w
                     new_clusters_tasks[task.exc_suffix+traj_char] = deepcopy(task)
     return new_clusters_tasks
