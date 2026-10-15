@@ -33,6 +33,7 @@ class ORCAWrapper():
     
     def setup(self,nprocs=None,orca_cmd=None,mpi_options=None,maxcore=None):
         """Sets up the internal variables of the ORCAWrapper class, including run command"""
+        profile_cmd = orca_cmd
         try:
             orca_cmd = environ["ASE_ORCA_COMMAND"]
         except KeyError:
@@ -42,7 +43,12 @@ class ORCAWrapper():
                 mpi_options="--oversubscribe --mca opal_warn_on_missing_libcuda 0"
             environ["ASE_ORCA_COMMAND"]=f'{orca_cmd} PREFIX.inp "{mpi_options}" >> PREFIX.out 2> PREFIX.err'
         from ase.calculators.orca import OrcaProfile
-        self.orcaprofile=OrcaProfile(command="/storage/nanosim/orca5/orca")
+        # Only replace the profile if a command is given, so repeated setup() calls
+        # (eg to change nprocs) do not discard a user-supplied orcaprofile
+        if profile_cmd is not None:
+            self.orcaprofile=OrcaProfile(command=profile_cmd)
+        elif not hasattr(self,'orcaprofile'):
+            self.orcaprofile=OrcaProfile(command="/storage/nanosim/orca5/orca")
         if maxcore is not None:
             self.maxcore = maxcore
         if nprocs is not None:
@@ -410,8 +416,8 @@ class ORCAWrapper():
                          profile=self.orcaprofile,
                          orcablocks=f'%pal nprocs {self.nprocs} end\n%maxcore {self.maxcore}\n',
                          mult = int(2*spin+1), charge=charge)
-        calc_orca.template.inputname = label + ".inp"
-        calc_orca.template.outputname = label + ".out"
+        calc_orca.template.inputname = steplabel + ".inp"
+        calc_orca.template.outputname = steplabel + ".out"
         timecon = 10.0
         random.seed(steplabel)
         randseed = random.randint(0,100000)

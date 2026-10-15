@@ -109,16 +109,19 @@ class SolvateTask:
         if self.solvent not in self.wrapper.known_solvents:
             if not path.exists(self.solvent+".prmtop"):
                 print('Preparing Amber inputs for solvent')
+                # Counterions balance the solute's charge: the solvent itself is neutral
                 if self.solvent == self.solute:
                     offset = 0
+                    solvent_netcharge = netcharge
                 else:
                     offset = 99
+                    solvent_netcharge = 0
                 if self.use_acpype:
                     print('Preparing Amber inputs for solvent using ACPYPE')
-                    self.wrapper.prepare_input_acpype(self.solvent,netcharge=netcharge,offset=offset)
+                    self.wrapper.prepare_input_acpype(self.solvent,netcharge=solvent_netcharge,offset=offset)
                 else:
                     print('Preparing Amber inputs for solvent using antechamber, parmchk and tleap')
-                    self.wrapper.prepare_input(self.solvent,netcharge=netcharge,offset=offset)
+                    self.wrapper.prepare_input(self.solvent,netcharge=solvent_netcharge,offset=offset)
             else:
                 print('Using pre-existing Amber inputs for solvent')
 
