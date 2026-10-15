@@ -87,8 +87,9 @@ def create_clusters_tasks(task:ClustersTask,train_calcs,seed,traj_suffix,md_suff
                 if isinstance(targstr,dict):
                     targstr = "".join((targstr[p] if p!="diff" else "") for p in targstr)
                 if isinstance(targets[target],dict):
-                    task.target = [targ for targ in targets[target] if type(targ) is not str]
+                    task.target = [targ for targ in targets[target]]
                     targets_dict = targets[target]
+                    target = targets[target]
                 else:
                     task.target = [targ for targ in targets if type(targ) is not str]
                     targets_dict = {target:targets[target]}

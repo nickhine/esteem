@@ -19,8 +19,10 @@ def targstr(targ):
         return "".join((targ[p] if p!="diff" else "") for p in targ)
     elif isinstance(targ,list) and type(targ[0])==int:
         return "".join(targstr(t) for t in targ if type(t) is int)
-    else:
+    elif type(targ)==int:
         return "es"+str(targ)
+    else:
+        return str(targ)
 
 def output_header(model,prefix):
     if (model.cell!=0.0).all():
@@ -536,7 +538,7 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
     if isinstance(target,list):
         all_targets = target
     elif isinstance(target,dict):
-        all_targets = target
+        all_targets = list(target.keys())
     else:
         all_targets = [target]
     if input_traj_range is None:
@@ -546,7 +548,6 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
     for targ in all_targets:
         # Check if output trajectory already exists
         output_traj = f"{seed}_{targstr(targ)}_{traj_label}_{traj_suffix}.traj"
-        print('targ,output_traj=',targ,output_traj,target)
         if output_traj_offset>0 or (len(input_traj_range)==1 and output_traj_offset==0):
             if targ==all_targets[0]:
                 print(f"# Not writing to output trajectory as range is subset of trajectory.")
@@ -659,20 +660,34 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
             # Prepare formatted strings for positions, forces and dipole
             formatted_output(iout,targ,len(frame),frame.positions,energy,forces,dipole,calc_forces,calc_dipole)
             # Supply keyword dipole explicitly to ensure it gets written or fails
+            num_states = len([t for t in targ if not isinstance(t,str)])
             if isinstance(targ,list):
                 for it,tg in enumerate(targ):
                     if outtraj[tg] is not None:
-                        if type(tg) is str and 'diff' in tg:
-                            continue
                         len_en = len(energy)
-                        len_en_targ = int(len_en/len(targ))
-                        i0 = it*len_en_targ
-                        i1 = (it+1)*len_en_targ
+                        len_en_targ = int(len_en/num_states)
                         frame_targ = frame.copy()
                         frame_targ.calc = frame.calc
-                        frame_targ.calc.results["energy"] = energy[i0:i1]
-                        frame_targ.calc.results["forces"] = forces[i0:i1]
-                        frame_targ.calc.results["dipole"] = dipole[i0:i1]
+                        if type(tg) is str and 'diff' in tg:
+                            it1 = int(tg[4]) # currently supports only diffXY where X is one digit
+                            it2 = int(tg[5:])
+                            i0 = it1*len_en_targ
+                            i1 = (it1+1)*len_en_targ
+                            frame_targ.calc.results["energy"] = energy[i0:i1]
+                            frame_targ.calc.results["forces"] = forces[i0:i1]
+                            frame_targ.calc.results["dipole"] = dipole[i0:i1]
+                            i0 = it2*len_en_targ
+                            i1 = (it2+1)*len_en_targ
+                            frame_targ.calc.results["energy"] -= energy[i0:i1]
+                            frame_targ.calc.results["forces"] -= forces[i0:i1]
+                            frame_targ.calc.results["dipole"] -= dipole[i0:i1]
+                            frame_targ.calc.results["dipole"] = exc[0][f"S{it1}_S{it2}"][1]
+                        else:
+                            i0 = it*len_en_targ
+                            i1 = (it+1)*len_en_targ
+                            frame_targ.calc.results["energy"] = energy[i0:i1]
+                            frame_targ.calc.results["forces"] = forces[i0:i1]
+                            frame_targ.calc.results["dipole"] = dipole[i0:i1]
                         #if (it>0):
                         #    frame_targ.calc.results["trans_dip"] = exc[i0:i1][0][f"S0_S{it}"][1]
                         outtraj[tg].write(frame_targ)
