@@ -287,7 +287,7 @@ class SolutesTask:
                     # if requested, fall back to the ground-state geometry (Franck-Condon point)
                     if target is None or target == 0 or self.fc_fallback_dir is None:
                         raise
-                    self.fc_fallback(solute,iconf,label,baseseed,out_path,origdir,calc_params,
+                    self.fc_fallback(solute,iconf,label,baseseed,out_path,origdir,wdir,calc_params,
                                      solvent,charge,e)
                 if '' in solute[iconf].info:
                     del solute[iconf].info['']
@@ -297,7 +297,7 @@ class SolutesTask:
             print(f'Writing to {outfile}')
             write(outfile,solute)
 
-    def fc_fallback(self,solute,iconf,label,baseseed,out_path,origdir,calc_params,solvent,charge,error):
+    def fc_fallback(self,solute,iconf,label,baseseed,out_path,origdir,wdir,calc_params,solvent,charge,error):
         """
         Replaces a failed excited-state geometry optimisation with the ground-state optimised
         geometry (the Franck-Condon point) from the same stage of the ground-state Solutes run,
@@ -308,9 +308,18 @@ class SolutesTask:
         result. The output of the failed optimisation is kept as {label}_failed_opt.out.
         """
         from ase.io import read
-        from os import path, rename
+        from os import path, rename, getcwd, chdir
         fc_file = f'{origdir}/{self.fc_fallback_dir}/{out_path}/{baseseed}.xyz'
         print(f'# Excited-state geometry optimisation of {label} failed: {error}')
+        # The failed run may have left us in the wrapper's temporary directory: bring its
+        # files back and return to this optimisation's working directory before continuing
+        work_dir = f'{origdir}/{wdir}'
+        if getcwd() != path.realpath(work_dir) and hasattr(self.wrapper,'return_from_tempdir'):
+            try:
+                self.wrapper.return_from_tempdir(label)
+            except Exception as e2:
+                print(f'# Could not recover files from the temporary directory: {e2}')
+        chdir(work_dir)
         if not path.isfile(fc_file):
             raise Exception(f'# Franck-Condon fallback geometry {fc_file} not found: '
                             f'the ground-state Solutes run must finish this stage first') from error
