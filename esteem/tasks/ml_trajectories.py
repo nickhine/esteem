@@ -134,6 +134,8 @@ class MLTrajTask:
             # Current path will be two levels down from starting path in MD run, so adjust prefix
             calc_params['calc_prefix'] = f'../../{self.calc_prefix}'
             for traj_label,traj_target in zip(which_trajs,self.which_targets):
+                if enough_data[traj_label]:
+                    continue
                 # Pass in routine to actually run MD into generic Snapshot MD driver
                 generate_md_trajectory(model[traj_label],self.seed,traj_target,traj_label,self.traj_suffix,
                                        traj_wrapper=self.wrapper,count_snaps=self.nsnap,count_equil=self.nequil,
@@ -149,11 +151,24 @@ class MLTrajTask:
                 if os.path.exists(output_trajfile):
                     output_traj = Trajectory(output_trajfile)
                     continuation_len[traj_label] = len(output_traj)
-                    if continuation_len[traj_label]>=self.nsnap:
+                    output_traj.close()
+                    print(f'# Output file {output_trajfile} now contains {continuation_len[traj_label]} of {self.nsnap} snapshots.')
+                else:
+                    # aborted during equilibration, before any snapshots were written
+                    continuation_len[traj_label] = 0
+                if continuation_len[traj_label]>=self.nsnap:
+                    enough_data[traj_label] = True
+                else:
+                    # The run was aborted (eg temperature blew up): restart from a different
+                    # initial snapshot, giving up after max_restarts attempts
+                    offsets[traj_label] += 'A'
+                    if len(offsets[traj_label]) > self.max_restarts:
+                        print(f'# Trajectory {traj_label} aborted {len(offsets[traj_label])} times: giving up '
+                              f'with {continuation_len[traj_label]} of {self.nsnap} snapshots')
                         enough_data[traj_label] = True
                     else:
-                        offsets[traj_label] += 'A'
-                    print(f'# Output file {output_trajfile} now contains {continuation_len[traj_label]} of {self.nsnap} snapshots.')
+                        print(f'# Trajectory {traj_label} aborted: restart {len(offsets[traj_label])} of '
+                              f'{self.max_restarts} from a new initial snapshot')
 
 
 
@@ -188,6 +203,7 @@ class MLTrajTask:
         parser.add_argument('--ntraj','-n',default=1,type=int,help='Number of separate trajectories in full ensemble')
         parser.add_argument('--nsnap','-N',default=200,type=int,help='Number of snapshots to record in trajectory')
         parser.add_argument('--nequil','-e',default=10,type=int,help='Number of discarded equilibration snapshots before data is recorded')
+        parser.add_argument('--max_restarts',default=10,type=int,help='Number of times an aborted (eg blown-up) trajectory is restarted from a new initial snapshot before giving up')
         parser.add_argument('--which_trajs','-w',default=None,type=str,help='Which of the separate trajectories are to be run in this task')
         parser.add_argument('--carve_trajectory_radius','-R',default=None,type=float,help='Radius around solute to carve trajectory at')
         parser.add_argument('--carve_trajectory_max_atoms','-m',default=None,type=float,help='Max atoms when carving trajectory')
