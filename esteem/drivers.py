@@ -871,12 +871,12 @@ def atom_energies_driver(atomen):
                 makedirs(atoms_dir)
             except FileExistsError:
                 print(f"# Possible mid-air collision between jobs - directory {atoms_dir} exists")
-        if not path.exists('atoms_dir/{solu}.xyz'):
+        if not path.exists(f'{atoms_dir}/{solu}.xyz'):
             if solv is not None:
                 copyfile(f'{ref_mol_dir}/is_opt_{solv}/{solu}.xyz',f'{atoms_dir}/{solu}.xyz')
             else:
                 copyfile(f'{ref_mol_dir}/opt/{solu}.xyz',f'{atoms_dir}/{solu}.xyz')
-        if not path.exists('atoms_dir/{solv}.xyz'):
+        if not path.exists(f'{atoms_dir}/{solv}.xyz'):
             if solv is not None:
                 copyfile(f'{ref_mol_dir}/is_opt_{solv}/{solv}.xyz',f'{atoms_dir}/{solv}.xyz')
         if not path.isfile(f'{atoms_dir}/{atoms_xyz}') and not path.islink(f'{atoms_dir}/{atoms_xyz}'):

@@ -138,9 +138,9 @@ seeds.append("{solv}_{solv}")        # add solvent in solvent
 traj_suffixes = [truth] # what trajectory suffixes to train on
 dir_suffixes = {truth: "solvR2.5"} # what directory suffixes to append to the seeds to find each trajectory suffix in
 ntraj = {(targets[0],truth):1,(targets[1],truth):0,(targets[2],truth):0} # how many trajectories of each suffix to expect, labelled A, B, C etc
-mltrain_task.wrapper.train_args['max_num_epochs'] = 500
-mltrain_task.wrapper.train_args['swa'] = True
-mltrain_task.wrapper.train_args['start_swa'] = 300
+mltrain_task.wrapper.train_args.max_num_epochs = 500
+mltrain_task.wrapper.train_args.swa = True
+mltrain_task.wrapper.train_args.start_swa = 300
 iter_dir_suffixes = ["mlclus"]
 mltrain_task.ntraj=270
 mltrain_task.geom_prefix = f'gs_{solutes_task.func}/is_opt_{{solv}}'

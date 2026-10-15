@@ -33,6 +33,7 @@ class ORCAWrapper():
     
     def setup(self,nprocs=None,orca_cmd=None,mpi_options=None,maxcore=None):
         """Sets up the internal variables of the ORCAWrapper class, including run command"""
+        profile_cmd = orca_cmd
         try:
             orca_cmd = environ["ASE_ORCA_COMMAND"]
         except KeyError:
@@ -42,7 +43,12 @@ class ORCAWrapper():
                 mpi_options="--oversubscribe --mca opal_warn_on_missing_libcuda 0"
             environ["ASE_ORCA_COMMAND"]=f'{orca_cmd} PREFIX.inp "{mpi_options}" >> PREFIX.out 2> PREFIX.err'
         from ase.calculators.orca import OrcaProfile
-        self.orcaprofile=OrcaProfile(command="/storage/nanosim/orca5/orca")
+        # Only replace the profile if a command is given, so repeated setup() calls
+        # (eg to change nprocs) do not discard a user-supplied orcaprofile
+        if profile_cmd is not None:
+            self.orcaprofile=OrcaProfile(command=profile_cmd)
+        elif not hasattr(self,'orcaprofile'):
+            self.orcaprofile=OrcaProfile(command="/storage/nanosim/orca5/orca")
         if maxcore is not None:
             self.maxcore = maxcore
         if nprocs is not None:
@@ -410,8 +416,8 @@ class ORCAWrapper():
                          profile=self.orcaprofile,
                          orcablocks=f'%pal nprocs {self.nprocs} end\n%maxcore {self.maxcore}\n',
                          mult = int(2*spin+1), charge=charge)
-        calc_orca.template.inputname = label + ".inp"
-        calc_orca.template.outputname = label + ".out"
+        calc_orca.template.inputname = steplabel + ".inp"
+        calc_orca.template.outputname = steplabel + ".out"
         timecon = 10.0
         random.seed(steplabel)
         randseed = random.randint(0,100000)
@@ -435,27 +441,43 @@ end
             calc_orca.set(constraints=constraints)
         if self.scf_block is not None:
             calc_orca.parameters['orcablocks'] += self.scf_block
-        model.calc = calc_orca
+        # ORCA's MD module does not write single-point output that ase.io.orca can
+        # parse, so run ORCA directly and take the positions, energy and forces of the
+        # last MD step from its dumped .engrad file
         if readonly:
             print("Reading results")
-            calc_orca.atoms = model
-            calc_orca.read_results()
-            # these should not trigger re-runs
-            energy = model.get_potential_energy()
-            forces = model.get_forces()
         else:
             self.move_to_tempdir(steplabel)
-            forces = model.get_forces()
-            energy = model.calc.results["energy"]
+            calc_orca.write_inputfiles(model,['energy','forces'])
+            calc_orca.template.execute(calc_orca.directory,calc_orca.profile)
             self.return_from_tempdir(steplabel)
-        model.positions = calc_orca.atoms.positions
-        next_model = model
+        positions, energy, forces = self._read_md_engrad(steplabel)
+        from ase.calculators.singlepoint import SinglePointCalculator
+        model.positions = positions
+        model.calc = SinglePointCalculator(model,energy=energy,forces=forces)
 
         if cleanup and not readonly:
             self.cleanup(steplabel)
 
-        print(superstep,calc_orca.label,energy,forces[0],model.positions[0])
+        print(superstep,steplabel,energy,forces[0],model.positions[0])
         return None
+
+    def _read_md_engrad(self,steplabel):
+        """Reads positions, energy and forces of the last step of an ORCA MD run,
+        from the {steplabel}-stepNNNNNN.engrad files written by 'dump engrad'"""
+        import glob
+        from ase.units import Bohr
+        engrad_files = sorted(glob.glob(f'{steplabel}-step*.engrad'))
+        if len(engrad_files)==0:
+            raise Exception(f'# No MD engrad files found for {steplabel}')
+        with open(engrad_files[-1]) as f:
+            values = [l.split() for l in f if not l.startswith('#') and l.strip()]
+        natoms = int(values[0][0])
+        energy = float(values[1][0])*Hartree
+        gradient = np.array([float(v[0]) for v in values[2:2+3*natoms]]).reshape(natoms,3)
+        forces = -gradient*Hartree/Bohr
+        positions = np.array([[float(x) for x in v[1:4]] for v in values[2+3*natoms:2+4*natoms]])*Bohr
+        return positions, energy, forces
 
     def excitations(self,model,label,calc_params={},nroots=1,solvent=None,charge=0,spin=0,
                     writeonly=False,readonly=False,continuation=False,cleanup=True,
