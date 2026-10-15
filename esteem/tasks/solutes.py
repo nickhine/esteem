@@ -276,7 +276,7 @@ class SolutesTask:
                 if solvent is not None:
                     label = f'{label}_{self.solvstr(solvent)}'
                 try:
-                    geom_opt_func(solute[iconf],label,calc_params,driver_tol,solvent,charge)
+                    geom_opt_func(solute[iconf],label,calc_params,driver_tol,solvent=solvent,charge=charge)
                 except KeyboardInterrupt:
                     raise Exception('Keyboard Interrupt')
                 except SyntaxError:
@@ -399,14 +399,14 @@ class SolutesTask:
                     driver_tol = 'loose'
                     opt = 0
                     try:
-                        energy,_ = singlepoint_func(sol_opt_rota[rota],label,calc_params,charge)
+                        energy,_ = singlepoint_func(sol_opt_rota[rota],label,calc_params,charge=charge)
                         if rota==0:
                             energy_rota.append(energy)
                         if rota>0:
                             if energy<energy_rota[0]+opt_thresh:
                                 opt = 1
                                 energy, forces, positions = geom_opt_func(sol_opt_rota[rota],
-                                                label+"_geom",calc_params,driver_tol,charge)
+                                                label+"_geom",calc_params,driver_tol,charge=charge)
                                 write(label+'.xyz',sol_opt_rota[rota])
                             energy_rota.append(energy)
                         print(rota,':',flip,energy_rota[rota],'opt=',opt)
