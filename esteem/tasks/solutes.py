@@ -282,6 +282,13 @@ class SolutesTask:
                     raise Exception('Keyboard Interrupt')
                 except SyntaxError:
                     raise Exception('Syntax Error')
+                except Exception as e:
+                    # Excited-state relaxation can fail (eg heading for an S1/S0 crossing):
+                    # if requested, fall back to the ground-state geometry (Franck-Condon point)
+                    if target is None or target == 0 or self.fc_fallback_dir is None:
+                        raise
+                    self.fc_fallback(solute,iconf,label,baseseed,out_path,origdir,calc_params,
+                                     solvent,charge,e)
                 if '' in solute[iconf].info:
                     del solute[iconf].info['']
                 write(f'{origdir}/{outfile}',solute[0:iconf+1])
@@ -289,6 +296,33 @@ class SolutesTask:
             chdir(origdir)
             print(f'Writing to {outfile}')
             write(outfile,solute)
+
+    def fc_fallback(self,solute,iconf,label,baseseed,out_path,origdir,calc_params,solvent,charge,error):
+        """
+        Replaces a failed excited-state geometry optimisation with the ground-state optimised
+        geometry (the Franck-Condon point) from the same stage of the ground-state Solutes run,
+        found at {fc_fallback_dir}/{out_path}/{baseseed}.xyz relative to this task's directory.
+
+        A singlepoint for the excited state is then run at that geometry under the same label,
+        so later readers of this calculation (eg reference energies for Clusters) find a valid
+        result. The output of the failed optimisation is kept as {label}_failed_opt.out.
+        """
+        from ase.io import read
+        from os import path, rename
+        fc_file = f'{origdir}/{self.fc_fallback_dir}/{out_path}/{baseseed}.xyz'
+        print(f'# Excited-state geometry optimisation of {label} failed: {error}')
+        if not path.isfile(fc_file):
+            raise Exception(f'# Franck-Condon fallback geometry {fc_file} not found: '
+                            f'the ground-state Solutes run must finish this stage first') from error
+        print(f'# Falling back to the ground-state (Franck-Condon) geometry from {fc_file}')
+        fc_frames = read(fc_file,index=':')
+        solute[iconf].positions = fc_frames[min(iconf,len(fc_frames)-1)].positions
+        for ext in ['.out','.engrad']:
+            if path.isfile(label+ext):
+                rename(label+ext,f'{label}_failed_opt{ext}')
+        self.wrapper.singlepoint(solute[iconf],label,calc_params,solvent=solvent,charge=charge,
+                                 forces=True,dipole=False)
+        solute[iconf].info['fc_fallback'] = True
 
     # Attempt to find best rotamer for each solute
     def find_best_rotas(self,solute_names,in_path,out_path,singlepoint_func,
@@ -746,6 +780,7 @@ class SolutesTask:
         parser.add_argument('--vibrations','-V',default=False,nargs='?',const=True,type=bool,help='If True, Calculate all vibrational frequencies for final level of theory.')
         parser.add_argument('--charges','-Q',default={},nargs='?',type=dict,help='Charges on molecular species. Not for command-line use')
         parser.add_argument('--directory','-D',default=None,nargs='?',type=str,help=argparse.SUPPRESS)
+        parser.add_argument('--fc_fallback_dir',default=None,type=str,help='If set (eg ../gs_PBE0), an excited-state geometry optimisation that fails is replaced by the ground-state geometry (Franck-Condon point) from that Solutes directory')
         parser.add_argument('--calc_params','-Z',default={},nargs='?',type=str,help=argparse.SUPPRESS)
         # Wrapper Dependent
         parser.add_argument('--solvent_settings',default=None,type=str,help='Solvent settings for implicit solvent runs.')
