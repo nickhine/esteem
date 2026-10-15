@@ -117,9 +117,9 @@ class QMDTrajTask:
 
             # Pass in routine to actually run MD into generic Snapshot MD driver
             generate_md_trajectory(model,self.seed,self.target,traj_label,self.traj_suffix,
-                                   wrapper=self.wrapper,count_snaps=self.nsnap,count_equil=self.nequil,
+                                   traj_wrapper=self.wrapper,count_snaps=self.nsnap,count_equil=self.nequil,
                                    md_steps=self.md_steps,md_timestep=self.md_timestep,md_friction=None,
-                                   temp=self.temp,calc_params=calc_params,
+                                   temp=self.temp,traj_calc_params=calc_params,
                                    solvent=self.solvent,charge=charge,constraints=self.constraints,
                                    store_full_traj=True)
 
