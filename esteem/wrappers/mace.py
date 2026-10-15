@@ -35,6 +35,13 @@ class MACEWrapper():
         self.atom_energies = {}
         self.atoms_on_load = None
         self.output = "mace"
+        # Use a MACE foundation model instead of a trained one: (family, model), eg
+        # ('polar', 'polar-1-m') loads mace.calculators.mace_polar('polar-1-m')
+        self.foundation_model = None
+        self.foundation_kwargs = {}
+        # Total charge written to atoms.info['charge'], for charge-aware models (eg MACE-POLAR),
+        # used when the task does not supply one
+        self.charge = 0
 
     def calc_filename(self,seed,target,prefix='',suffix=''):
         if isinstance(target,dict):
@@ -81,6 +88,11 @@ class MACEWrapper():
                                 'calc_suffix': suffix,'calc_seed': seed}
 
         if self.calc is not None: 
+            return self.calc
+        if self.foundation_model is not None:
+            import mace.calculators
+            family, model = self.foundation_model
+            self.calc = getattr(mace.calculators,f'mace_{family}')(model=model,**self.foundation_kwargs)
             return self.calc
         from mace.calculators import MACECalculator
 
@@ -513,6 +525,7 @@ class MACEWrapper():
 
         # Load the MACE Calculator
         calc_ml = self.load(calc_seed,target,prefix=prefix,suffix=suffix,dir_suffix=dir_suffix)
+        model.info['charge'] = charge if charge else self.charge
         if isinstance(target,dict):
             head = calc_params['calc_head']
             self.check_head(calc_ml,head)
@@ -600,6 +613,7 @@ class MACEWrapper():
 
         # Load the appropriate MACE Calculator
         calc_ml = self.load(calc_seed,target,prefix=prefix,suffix=suffix,dir_suffix=dir_suffix)
+        model.info['charge'] = charge if charge else self.charge
         if isinstance(target,dict):
             head = calc_params['calc_head']
             self.check_head(calc_ml,head)
@@ -658,6 +672,7 @@ class MACEWrapper():
 
         # Load the appropriate MACE  Calculator
         calc_ml = self.load(calc_seed,target,prefix=prefix,suffix=suffix,dir_suffix=dir_suffix)
+        model_opt.info['charge'] = charge if charge else self.charge
         if isinstance(target,dict):
             head = calc_params['calc_head']
             self.check_head(calc_ml,head)
@@ -708,6 +723,7 @@ class MACEWrapper():
         
         # Load the appropriate MACE Calculator(s)
         calc_ml = self.load(calc_seed,target,prefix=prefix,suffix=suffix,dir_suffix=dir_suffix)
+        model.info['charge'] = charge if charge else self.charge
         if isinstance(target,dict):
             head = calc_params['calc_head']
             self.check_head(calc_ml,head)
