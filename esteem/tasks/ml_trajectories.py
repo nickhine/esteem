@@ -27,6 +27,8 @@ class MLTrajTask:
         self.wrapper = None
         self.snap_wrapper = None
         self.snap_calc_params = None
+        self.snap_target = None
+        self.which_targets = None
         self.script_settings = None
         self.task_command = 'mltraj'
         args = self.make_parser().parse_args("")
@@ -44,7 +46,7 @@ class MLTrajTask:
         all_trajs = get_trajectory_list(self.ntraj)
         if self.which_trajs is None:
             which_trajs = all_trajs
-            which_targets = [self.target]*len(which_trajs)
+            self.which_targets = [self.target]*len(which_trajs)
         else:
             which_trajs = self.which_trajs
             assert len(self.which_targets)==len(self.which_trajs)
