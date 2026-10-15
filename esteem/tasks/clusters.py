@@ -130,8 +130,9 @@ class ClustersTask:
                 input_traj_label = self.subset_selection_which_traj
         traj_carved_file = f'{self.solute}{solvstr}_{which_targstr}_{input_traj_label}_{input_suffix}.traj'
         if self.subset_selection_method is not None:
-            # If we did not find a pre-selected subset, reset input to carved suffix and check again
-            if not os.path.exists(traj_carved_file):
+            # If we did not find a pre-selected subset, reset input to carved suffix and check again.
+            # An empty subset file counts as missing (it may still be being written by setup)
+            if not (os.path.exists(traj_carved_file) and os.path.getsize(traj_carved_file)>0):
                 if self.task_id is not None:
                     print(f'# Error: {traj_carved_file} not found')
                     raise Exception('For a subset trajectory, clusters_setup must be run before individual task_ids.')
@@ -170,6 +171,10 @@ class ClustersTask:
             input_traj_lengths = [len(Trajectory(inptraj)) for inptraj in input_traj_names]
             print(f'# Input trajectory lengths: {input_traj_lengths}')
             if not traj_carved_present:
+                # Only the setup step may write shared files: concurrent array tasks writing
+                # the same trajectory would corrupt it
+                if self.task_id is not None:
+                    raise Exception(f'# {traj_carved_file} not found: clusters_setup must be run before individual task_ids.')
                 print(f'# Merging {input_traj_names} and writing to {traj_carved_file}')
                 merge_traj(input_traj_names,traj_carved_file)
         else:
@@ -1059,8 +1064,10 @@ def write_subset_trajectory(trajin_file,trajout_file,nmax,method='R',
         print(f'# Standard deviations of E for chosen frames:\n# {stdelist}')
         print(f'# Average standard deviation of E for chosen frames: {np.mean(stdelist)}')
         print(f'# Average standard deviation of E for all frames: {np.mean(stde)}')
-    for i in range(nmax):
-        to.write(tc[args[-i-1]])
+    # write the chosen frames (framelist respects min_spacing; args alone does not)
+    for f in framelist:
+        to.write(tc[f])
+    to.close()
 
 def sanity_check(trajname='', wrapper=None, calc_params = {},
                  ref_solu_dir='', ref_solu='', ref_solv_dir='', ref_solv=''):
