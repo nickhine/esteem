@@ -758,7 +758,11 @@ class MACEWrapper():
             if forces:
                 f_calc = model.get_forces()
             if dipole:
-                d_calc = model.get_dipole_moment()
+                # some models (eg MACE-POLAR foundation models) do not provide a dipole
+                if 'dipole' in calc_ml.implemented_properties:
+                    d_calc = model.get_dipole_moment()
+                else:
+                    d_calc = None
         res = [e_calc]
         if forces:
             res.append(f_calc)
