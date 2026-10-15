@@ -441,27 +441,43 @@ end
             calc_orca.set(constraints=constraints)
         if self.scf_block is not None:
             calc_orca.parameters['orcablocks'] += self.scf_block
-        model.calc = calc_orca
+        # ORCA's MD module does not write single-point output that ase.io.orca can
+        # parse, so run ORCA directly and take the positions, energy and forces of the
+        # last MD step from its dumped .engrad file
         if readonly:
             print("Reading results")
-            calc_orca.atoms = model
-            calc_orca.read_results()
-            # these should not trigger re-runs
-            energy = model.get_potential_energy()
-            forces = model.get_forces()
         else:
             self.move_to_tempdir(steplabel)
-            forces = model.get_forces()
-            energy = model.calc.results["energy"]
+            calc_orca.write_inputfiles(model,['energy','forces'])
+            calc_orca.template.execute(calc_orca.directory,calc_orca.profile)
             self.return_from_tempdir(steplabel)
-        model.positions = calc_orca.atoms.positions
-        next_model = model
+        positions, energy, forces = self._read_md_engrad(steplabel)
+        from ase.calculators.singlepoint import SinglePointCalculator
+        model.positions = positions
+        model.calc = SinglePointCalculator(model,energy=energy,forces=forces)
 
         if cleanup and not readonly:
             self.cleanup(steplabel)
 
-        print(superstep,calc_orca.label,energy,forces[0],model.positions[0])
+        print(superstep,steplabel,energy,forces[0],model.positions[0])
         return None
+
+    def _read_md_engrad(self,steplabel):
+        """Reads positions, energy and forces of the last step of an ORCA MD run,
+        from the {steplabel}-stepNNNNNN.engrad files written by 'dump engrad'"""
+        import glob
+        from ase.units import Bohr
+        engrad_files = sorted(glob.glob(f'{steplabel}-step*.engrad'))
+        if len(engrad_files)==0:
+            raise Exception(f'# No MD engrad files found for {steplabel}')
+        with open(engrad_files[-1]) as f:
+            values = [l.split() for l in f if not l.startswith('#') and l.strip()]
+        natoms = int(values[0][0])
+        energy = float(values[1][0])*Hartree
+        gradient = np.array([float(v[0]) for v in values[2:2+3*natoms]]).reshape(natoms,3)
+        forces = -gradient*Hartree/Bohr
+        positions = np.array([[float(x) for x in v[1:4]] for v in values[2+3*natoms:2+4*natoms]])*Bohr
+        return positions, energy, forces
 
     def excitations(self,model,label,calc_params={},nroots=1,solvent=None,charge=0,spin=0,
                     writeonly=False,readonly=False,continuation=False,cleanup=True,
