@@ -751,7 +751,16 @@ class MACEWrapper():
                 f_calc = np.array(f_calc)
                 model.calc.results["forces"] = f_calc
                 model.calc.results["forces_std"] = np.std(f_calc,axis=1)
-            model.calc = calc_ml
+            # Keep the committee results (arrays over models) on the structure, so that
+            # snapshots written to trajectories carry them (needed for uncertainty-based
+            # selection); previously model.calc was replaced by the list of calculators
+            from ase.calculators.singlepoint import SinglePointCalculator
+            from ase.calculators.calculator import all_properties
+            committee_results = dict(model.calc.results)
+            spc = SinglePointCalculator(model,**{k:v for k,v in committee_results.items()
+                                                 if k in all_properties})
+            spc.results.update(committee_results)
+            model.calc = spc
         else:
             model.calc = calc_ml
             e_calc = model.get_potential_energy()
