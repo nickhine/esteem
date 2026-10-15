@@ -249,8 +249,9 @@ class SolutesTask:
                 seed = f'{seed}_es{str(target)}'
             else:
                 baseseed = seed
-            if seed in charges:
-                charge = charges[seed]
+            # charges are keyed by the molecule name, not the excited-state seed
+            if baseseed in charges:
+                charge = charges[baseseed]
             else:
                 charge = 0
             infile = f'{in_path}/{seed}.xyz'
