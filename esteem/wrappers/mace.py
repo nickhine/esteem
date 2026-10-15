@@ -140,7 +140,9 @@ class MACEWrapper():
                 if not use_json:
                     tp.info["REF_energy"] = t.calc.results["energy"]
                     tp.info["REF_dipole"] = t.calc.results["dipole"]
-                    tp.arrays["REF_forces"] = t.calc.results["forces"][0]
+                    # forces may be (natoms,3), or (ntargets,natoms,3) from a multi-target singlepoint
+                    forces = np.asarray(t.calc.results["forces"])
+                    tp.arrays["REF_forces"] = forces[0] if forces.ndim == 3 else forces
                 else:
                     en = np.array([traj[i].calc.results["energy"] for traj in trajs])
                     tp.info["REF_energy"] = "_JSON " + json.dumps(en.tolist())
@@ -308,6 +310,11 @@ class MACEWrapper():
                     heads[targetstr]['E0s'] = str({Z:0 for Z in E0s})
         else:
             train_args.E0s = str(E0s)
+        # Use the elements with E0s as the element table, so that elements in the atoms
+        # trajectory but absent from the training data (eg O from a water reference)
+        # do not give a mismatch between atomic energies and node attributes
+        if getattr(train_args,'atomic_numbers',None) is None:
+            train_args.atomic_numbers = str(sorted(E0s))
 
         # Set up input data
         train_args.name = self.calc_filename(seed,targets_in,prefix="",suffix=suffix)
