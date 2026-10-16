@@ -417,7 +417,7 @@ class SolutesTask:
                                                 nrot = nrot + 1
                                                 break
             if nrot==0:
-                print('No rotatable OH bonds found')
+                print('# No rotatable OH bonds found')
                 if '' in sol_opt.info:
                     del sol_opt.info['']
                 write(outfile,sol_opt)

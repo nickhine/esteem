@@ -204,7 +204,7 @@ class MACEWrapper():
             if path.exists(modelfile):
                 found=True
                 best_model = modelfile
-                print(modelfile,' found')
+                print(f'# Model file {modelfile} found')
                 break
         if best_model is None:
             print(f'ERROR: No model found among: {modelfiles}')

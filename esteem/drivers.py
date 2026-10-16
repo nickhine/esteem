@@ -1776,7 +1776,7 @@ def spectra_driver(all_solutes,all_solvents,task,warp_params=None,cluster_spectr
         if base_path not in all_paths and task.files is None:
             if not path.exists(exc_path):
                 print(f'\nSkipping Spectra for: {solusolvstr}')
-                print(f'Directory {exc_path} not found')
+                print(f'# Directory {exc_path} not found')
                 continue
             else:
                 chdir(exc_path)
