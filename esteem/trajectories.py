@@ -598,7 +598,8 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
                            wrapper,calc_params,input_traj_range=None,input_traj_label=None,
                            output_traj_offset=0,charge=0,solvent=None,
                            calc_forces=True,calc_dipole=True,
-                           geom_opt_kernel=False,vibfreq_kernel=False):
+                           geom_opt_kernel=False,vibfreq_kernel=False,
+                           skip_failed=False,max_frames=None):
     """
     Loads snapshots from a trajectory and recalculates the energy and forces with the current settings
     seed: str
@@ -607,6 +608,11 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
         Excited state index
     traj_label: character or str
         String labelling trajectory (usually A,B,C..)
+    skip_failed: bool
+        If True, a frame whose calculation failed is left out of the output trajectory rather than
+        stopping (only when it fails before anything is written for that frame, ie at its first target)
+    max_frames: int or None
+        If set, stop once this many frames have been written to the output trajectory
     """
     
     if False:
@@ -670,12 +676,18 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
             all_targets = [all_targets] # add a second list around it so we just pass it in once
 
     # Loop over and recalculate each trajectory point
+    skipped = []
+    nwritten = 0
     for i in input_traj_range:
+        if max_frames is not None and nwritten >= max_frames:
+            print(f'# {nwritten} frames written: not using the remaining (spare) frames')
+            break
         frame = intraj[i].copy()
         frame.calc = intraj[i].calc
         iout = i + output_traj_offset
         cont = False
-        for targ in all_targets:
+        frame_failed = False
+        for itarg,targ in enumerate(all_targets):
             label = f"{seed}_{targstr(targ)}_{traj_label}_{traj_suffix}{iout:04}"
             # If output files already exist, read them
             readonly = check_completed_and_cleanup(label,wrapper,input_traj_range)
@@ -739,10 +751,19 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
                 forces = np.zeros([len(frame),3])
                 print(e)
                 print('FAIL: ',label+'.out',iout,targ,len(frame))
-                raise Exception(e)
+                # Only skip if nothing has been written for this frame yet, so the
+                # output trajectories for each target stay in step
+                if skip_failed and itarg == 0:
+                    frame_failed = True
+                else:
+                    raise Exception(e)
             finally:
                 chdir(origdir)
                 chdir(wdir)
+            if frame_failed:
+                print(f'# Skipping frame {iout}: its calculation failed')
+                skipped.append(iout)
+                break
             cont = True # After first excitation, assume subsequently can restart
             prevtarg = targ
             # Prepare formatted strings for positions, forces and dipole
@@ -790,7 +811,13 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
                         frame.calc = frame.calc[-1]
                     if True: #if success:
                         outtraj[targ].write(frame)
+        if not frame_failed:
+            nwritten += 1
 
+    if skipped:
+        print(f'# Skipped {len(skipped)} frames whose calculations failed: {skipped}')
+    if max_frames is not None and nwritten < max_frames:
+        print(f'# Warning: only {nwritten} of the {max_frames} frames requested were written')
     # Return to base directory
     chdir(origdir)
     # Close trajectories

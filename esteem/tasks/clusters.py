@@ -201,7 +201,10 @@ class ClustersTask:
             if not traj_subset_present:
                 #if self.task_id is not None:
                 #    raise Exception(f"# Please run trajectory selection by running with no task_id before running individual task_id's")
-                write_subset_trajectory(traj_carved_file,traj_subset_file,nmax=self.subset_selection_nmax,
+                if self.subset_selection_nspare > 0:
+                    print(f'# Selecting {self.subset_selection_nspare} spare frames beyond the {self.subset_selection_nmax} required')
+                write_subset_trajectory(traj_carved_file,traj_subset_file,
+                                        nmax=self.subset_selection_nmax+self.subset_selection_nspare,
                                         method=self.subset_selection_method,
                                         min_spacing=self.subset_selection_min_spacing,
                                         bias_beta=self.subset_selection_bias_beta,
@@ -292,13 +295,20 @@ class ClustersTask:
                         input_traj_label = subset_selection_traj
                         input_traj_range = range(self.min_snapshots+self.task_id,self.min_snapshots+self.task_id+1)
                         output_traj_offset = -self.min_snapshots
+            # When assembling (not in individual array tasks, whose failures must still be reported),
+            # optionally skip failed frames; with spares, keep at most nmax
+            skip_failed = (self.skip_failed_frames or self.subset_selection_nspare > 0) and self.task_id is None
+            max_frames = None
+            if self.subset_selection_method is not None and self.subset_selection_nspare > 0 and self.task_id is None:
+                max_frames = self.subset_selection_nmax
             # Now run through the trajectory, calculating singlepoint energy for each frame
             recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input_suffix,
                                    self.wrapper,calc_params=calc_params,
                                    input_traj_range=input_traj_range,input_traj_label=input_traj_label,
                                    output_traj_offset=output_traj_offset,
                                    charge=charge,solvent=self.impsolv,calc_forces=self.calc_forces,
-                                   geom_opt_kernel=self.geom_opt_kernel,vibfreq_kernel=self.vibfreq_kernel)
+                                   geom_opt_kernel=self.geom_opt_kernel,vibfreq_kernel=self.vibfreq_kernel,
+                                   skip_failed=skip_failed,max_frames=max_frames)
             # If we are processing whole trajectory, do sanity checking of result now
             if self.task_id is None and self.ref_mol_dir is not None:
                 ref_solu, ref_solv = get_solu_solv_names(seed)
@@ -629,6 +639,8 @@ class ClustersTask:
         parser.add_argument('--subset_selection_bias_beta','-a',default=20,type=int,help='Effective inverse temperature 1/kBT (in eV-1) for bias on U trajectories')
         parser.add_argument('--subset_selection_stde_thresh','-E',default=0.02,type=float,help='Threshold committee energy standard deviation per atom for trajectory truncation')
         parser.add_argument('--subset_selection_which_traj','-J',default=None,type=str,help='Which trajectory name to read/write subset selection to')
+        parser.add_argument('--subset_selection_nspare',default=0,type=int,help='Number of spare frames to select (and calculate) beyond subset_selection_nmax. When the trajectory is assembled, frames whose calculation failed are skipped and the first subset_selection_nmax that succeeded (in selection order) are kept')
+        parser.add_argument('--skip_failed_frames',default=False,type=bool,help='When assembling the output trajectory, skip frames whose calculation failed rather than stopping (always on if subset_selection_nspare > 0)')
         parser.add_argument('--repeat_without_solute','-W',default=False,type=bool,help='Repeat calculation with no solute present')
         parser.add_argument('--geom_opt_kernel','-G',default=False,type=bool,help='Geometry Optimise the kernel region')
         parser.add_argument('--vibfreq_kernel','-X',default=False,type=bool,help='Calculate vibrational frequencies of kernel region')
@@ -1005,9 +1017,11 @@ def write_subset_trajectory(trajin_file,trajout_file,nmax,method='R',
     k = 0 # how far we have got in original list
     tc = [] # list of (truncated) frames
     stde = [] # list of std of energies
+    kept = [] # number of frames kept from each trajectory
     if method!='R':
         for itraj,trajlen in enumerate(input_traj_lengths): # count trajectories and get length of each
             k0 = k
+            ntc0 = len(tc)
             for j in range(k0,k0+trajlen): # loop over entries
                 if method!='R':
                     stde_j=np.std(t[k].get_potential_energy())/len(t[k])
@@ -1017,32 +1031,18 @@ def write_subset_trajectory(trajin_file,trajout_file,nmax,method='R',
                     print(f'# Standard deviation per atom at frame {j-k0:05} of trajectory {itraj} is: {stde_j}')
                     print(f'# This is above the threshold of {stde_thresh}')
                     print(f'# Truncating trajectory thereafter ({trajlen-j+k0} frames discarded).')
-    kept = [] # number of frames kept from each trajectory
                     k = k0 + trajlen
                     break
                 else:
-            ntc0 = len(tc)
                     tc = tc + [t[k]]
                     stde.append(stde_j)
                     i = i + 1
                     k = k + 1
+            kept.append(len(tc)-ntc0)
     else:
         tc = t
     stde = np.array(stde)
     print(f'# Final input trajectory length: {len(tc)} {len(stde)}')
-    # energy standard deviation-based sorting
-    if method=='E':
-        args=np.argsort(stde)
-    # dipole-based sorting
-    if method=='D':
-        stdd=np.zeros(len(tc))
-        std_dip=np.zeros((len(tc),3))
-        for i,f in enumerate(tc):
-            kept.append(len(tc)-ntc0)
-            std_dip[i]=np.std(f.get_dipole_moment(),axis=0)
-            stdd[i] = np.sqrt(np.sum(std_dip[i]*std_dip[i]))
-        args=np.argsort(stdd)
-    # energy standard deviation-based biasing, or random choice
     if len(tc) < nmax:
         kept_str = ", ".join(f"trajectory {itraj}: {nk}/{trajlen}" for itraj,(nk,trajlen)
                              in enumerate(zip(kept,input_traj_lengths)))
@@ -1051,6 +1051,18 @@ def write_subset_trajectory(trajin_file,trajout_file,nmax,method='R',
                         f"(frames kept: {kept_str}), so {nmax} cannot be chosen. "
                         f"The committee disagrees strongly on these trajectories: inspect the ML MD, "
                         f"or raise subset_selection_stde_thresh (-E) to select from them anyway.")
+    # energy standard deviation-based sorting
+    if method=='E':
+        args=np.argsort(stde)
+    # dipole-based sorting
+    if method=='D':
+        stdd=np.zeros(len(tc))
+        std_dip=np.zeros((len(tc),3))
+        for i,f in enumerate(tc):
+            std_dip[i]=np.std(f.get_dipole_moment(),axis=0)
+            stdd[i] = np.sqrt(np.sum(std_dip[i]*std_dip[i]))
+        args=np.argsort(stdd)
+    # energy standard deviation-based biasing, or random choice
     if method=='U' or method=='R':
         from numpy.random import default_rng
         rng = default_rng()
