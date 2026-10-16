@@ -1017,9 +1017,11 @@ def write_subset_trajectory(trajin_file,trajout_file,nmax,method='R',
                     print(f'# Standard deviation per atom at frame {j-k0:05} of trajectory {itraj} is: {stde_j}')
                     print(f'# This is above the threshold of {stde_thresh}')
                     print(f'# Truncating trajectory thereafter ({trajlen-j+k0} frames discarded).')
+    kept = [] # number of frames kept from each trajectory
                     k = k0 + trajlen
                     break
                 else:
+            ntc0 = len(tc)
                     tc = tc + [t[k]]
                     stde.append(stde_j)
                     i = i + 1
@@ -1036,10 +1038,19 @@ def write_subset_trajectory(trajin_file,trajout_file,nmax,method='R',
         stdd=np.zeros(len(tc))
         std_dip=np.zeros((len(tc),3))
         for i,f in enumerate(tc):
+            kept.append(len(tc)-ntc0)
             std_dip[i]=np.std(f.get_dipole_moment(),axis=0)
             stdd[i] = np.sqrt(np.sum(std_dip[i]*std_dip[i]))
         args=np.argsort(stdd)
     # energy standard deviation-based biasing, or random choice
+    if len(tc) < nmax:
+        kept_str = ", ".join(f"trajectory {itraj}: {nk}/{trajlen}" for itraj,(nk,trajlen)
+                             in enumerate(zip(kept,input_traj_lengths)))
+        raise Exception(f"# Only {len(tc)} frames remain after truncating where the committee energy "
+                        f"standard deviation per atom exceeds stde_thresh={stde_thresh} "
+                        f"(frames kept: {kept_str}), so {nmax} cannot be chosen. "
+                        f"The committee disagrees strongly on these trajectories: inspect the ML MD, "
+                        f"or raise subset_selection_stde_thresh (-E) to select from them anyway.")
     if method=='U' or method=='R':
         from numpy.random import default_rng
         rng = default_rng()
