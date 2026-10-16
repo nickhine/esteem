@@ -57,11 +57,20 @@ def get_param(md_param,label):
 
     return param
 
+def committee_stde_per_atom(energy,natoms):
+    """
+    Standard deviation per atom of a committee of energies (as used to select and truncate
+    active-learning trajectories). Zero for a single energy.
+    """
+    e = np.atleast_1d(energy)
+    return np.std(e)/natoms if len(e)>1 else 0.0
+
 def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wrapper,
                            count_snaps,count_equil,md_steps,md_timestep,md_friction,temp,
                            traj_calc_params,charge=0,solvent=None,constraints=None,dynamics=None,
                            snap_target=None,snap_wrapper=None,snap_calc_params=None,
-                           continuation=False,store_full_traj=False,debugger=None):
+                           continuation=False,store_full_traj=False,debugger=None,
+                           stop_stde_thresh=None):
     """
     Runs equilibration followed by statistics generation MD for a given model.
     
@@ -102,9 +111,15 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
         Variables controlling the constraints
     dynamics: wrapper-dependent type
         Variables controlling the dynamics
+    stop_stde_thresh: float or None
+        If set, the snap_wrapper committee is also evaluated after each equilibration step, and the
+        trajectory stops once the committee energy standard deviation per atom exceeds this. If that
+        happens during equilibration, the equilibration frames evaluated so far become the snapshots.
+
+    Returns 'done', 'aborted' (temperature blew up) or 'stopped' (committee disagreement).
     """
     from ase.units import fs
-    
+
     # Setup file extensions for restart files
     exts = []
     snap_exts = []
@@ -158,8 +173,28 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
             print('# Setting 10A padding')
             model.center(10)
 
+    def eval_snap_committee(targ,label):
+        # Evaluate the snapshot calculator (eg the committee) for one target, as for snapshots below,
+        # leaving its results on model, and return the energy (array for a committee)
+        orig_head = snap_calc_params.get('calc_head')
+        if isinstance(snap_calc_params['target'],dict):
+            snap_calc_params['calc_head'] = snap_calc_params['target'][targ]
+            model.calc.atoms = None
+        else:
+            snap_calc_params['target'] = targ
+        energy = snap_wrapper.singlepoint(model,label,snap_calc_params,solvent=solvent,charge=charge,
+                                          forces=True,dipole=True)[0]
+        if isinstance(snap_calc_params['target'],dict):
+            snap_calc_params['calc_head'] = orig_head
+        return energy
+
     # Run Equilibration MD
     abort = False
+    stopped = False
+    # With stop_stde_thresh, equilibration frames are evaluated with the committee and buffered,
+    # so they can become the snapshots if the trajectory has to stop during equilibration
+    eqcheck_files = {targ: path.join(origdir,f"{seed}_{targstr(targ)}_{traj_label}_{traj_suffix}_eqcheck.traj")
+                     for targ in all_targets}
     if not continuation:
         chdir(equil_dir)
         timestep = get_param(md_timestep,'EQ')
@@ -181,6 +216,9 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
         else:
             traj_calc_params['target'] = targ
         print(f"# Starting EQ runs 0 to {count_equil} (each {md_steps} steps of {dynamics.type} dynamics with timestep {timestep/fs} fs)")
+        if stop_stde_thresh is not None:
+            print(f"# Checking committee energy std dev per atom against {stop_stde_thresh} eV after each EQ run")
+            eqcheck = {t: Trajectory(eqcheck_files[t],"w") for t in all_targets}
         for step in range(0,count_equil):
             steplabel, readonly, cont = cycle_step_labels_and_restarts(
                                          seed,traj_label,
@@ -198,15 +236,51 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
                 print(f'# Temperature {curr_temp} K exceeds 10x target ({temp} K), aborting Equilibration MD runs')
                 abort = True
                 break
+            if stop_stde_thresh is not None:
+                stde = 0.0
+                for t in all_targets:
+                    stde = max(stde,committee_stde_per_atom(eval_snap_committee(t,f"{steplabel}_eqcheck"),len(model)))
+                    eqcheck[t].write(model)
+                if stde > stop_stde_thresh:
+                    print(f'# Committee energy std dev per atom {stde:.4f} exceeds {stop_stde_thresh} eV after EQ run {step}: '
+                          f'stopping, and keeping the {step+1} EQ frames evaluated as snapshots')
+                    stopped = True
+                    break
+                # Restore the head of the MD calculator (snapshot evaluation may have changed it)
+                if isinstance(traj_calc_params['target'],dict):
+                    traj_calc_params['calc_head'] = traj_calc_params['target'][traj_target]
+                    model.calc.atoms = None
 
         # Return to base directory
         chdir(origdir)
-        if not abort:
+        if stop_stde_thresh is not None:
+            for t in all_targets:
+                eqcheck[t].close()
+        if not abort and not stopped:
             print("# Finished Equilibration MD runs")
     else:
         print("# Skipping Equilibration MD runs")
     if abort:
-        return
+        for t in all_targets:
+            if path.isfile(eqcheck_files[t]):
+                remove(eqcheck_files[t])
+        return 'aborted'
+    if stopped:
+        # The EQ frames checked so far become the output trajectory
+        for t in all_targets:
+            output_traj = f"{seed}_{targstr(t)}_{traj_label}_{traj_suffix}.traj"
+            eqframes = Trajectory(eqcheck_files[t])
+            out = Trajectory(output_traj,"w")
+            for frame in eqframes:
+                out.write(frame)
+            out.close()
+            print(f'# Wrote {len(eqframes)} EQ frames to {output_traj}')
+            eqframes.close()
+            remove(eqcheck_files[t])
+        return 'stopped'
+    for t in all_targets:
+        if path.isfile(eqcheck_files[t]):
+            remove(eqcheck_files[t])
 
     outtraj = {}
     snaps_done = 0
@@ -272,6 +346,7 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
                 continuation=cont,readonly=readonly)
         report_outputs(model,step,targ,'MD')
         # Now do singlepoints for (ground and) excited state snapshots, if applicable
+        stde = 0.0
         chdir(origdir)
         chdir(snaps_dir)
         prev_targ = targ
@@ -315,6 +390,8 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
                 energy, forces = results
             else:
                 energy, = results
+            if stop_stde_thresh is not None:
+                stde = max(stde,committee_stde_per_atom(energy,len(model)))
             if isinstance(energy,list) or isinstance(energy,np.ndarray):
                 energy = energy[0]
             if len(all_targets)>1:
@@ -330,6 +407,12 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
             print(f'# Temperature {curr_temp} K exceeds 10x target ({temp} K), aborting Snapshot MD runs')
             abort = True
             break
+        # Check if the committee disagrees too much to continue (this snapshot is kept)
+        if stop_stde_thresh is not None and stde > stop_stde_thresh:
+            print(f'# Committee energy std dev per atom {stde:.4f} exceeds {stop_stde_thresh} eV at snapshot {step}: '
+                  f'stopping Snapshot MD runs')
+            stopped = True
+            break
 
         # Return to parent directory
         chdir(origdir)
@@ -338,8 +421,12 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
     chdir(origdir)
     for targ in all_targets:
         outtraj[targ].close()
-    if not abort:
-        print("# Finished Snapshot MD runs")
+    if abort:
+        return 'aborted'
+    if stopped:
+        return 'stopped'
+    print("# Finished Snapshot MD runs")
+    return 'done'
 
 
 # Helper functions
