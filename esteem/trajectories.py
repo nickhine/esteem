@@ -667,28 +667,28 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
                     if outtraj[tg] is not None:
                         len_en = len(energy)
                         len_en_targ = int(len_en/num_states)
+                        # Index (rather than slice) when there is one value per state (eg QM),
+                        # so the frames written have scalar energies and (nat,3) forces
+                        def state_idx(istate):
+                            if len_en_targ == 1:
+                                return istate
+                            return slice(istate*len_en_targ,(istate+1)*len_en_targ)
                         frame_targ = frame.copy()
                         frame_targ.calc = frame.calc
                         if type(tg) is str and 'diff' in tg:
                             it1 = int(tg[4]) # currently supports only diffXY where X is one digit
                             it2 = int(tg[5:])
-                            i0 = it1*len_en_targ
-                            i1 = (it1+1)*len_en_targ
-                            frame_targ.calc.results["energy"] = energy[i0:i1]
-                            frame_targ.calc.results["forces"] = forces[i0:i1]
-                            frame_targ.calc.results["dipole"] = dipole[i0:i1]
-                            i0 = it2*len_en_targ
-                            i1 = (it2+1)*len_en_targ
-                            frame_targ.calc.results["energy"] -= energy[i0:i1]
-                            frame_targ.calc.results["forces"] -= forces[i0:i1]
-                            frame_targ.calc.results["dipole"] -= dipole[i0:i1]
+                            s1 = state_idx(it1)
+                            s2 = state_idx(it2)
+                            # Not in-place, to avoid modifying the shared energy/forces arrays
+                            frame_targ.calc.results["energy"] = energy[s1] - energy[s2]
+                            frame_targ.calc.results["forces"] = forces[s1] - forces[s2]
                             frame_targ.calc.results["dipole"] = exc[0][f"S{it1}_S{it2}"][1]
                         else:
-                            i0 = it*len_en_targ
-                            i1 = (it+1)*len_en_targ
-                            frame_targ.calc.results["energy"] = energy[i0:i1]
-                            frame_targ.calc.results["forces"] = forces[i0:i1]
-                            frame_targ.calc.results["dipole"] = dipole[i0:i1]
+                            s = state_idx(it)
+                            frame_targ.calc.results["energy"] = energy[s]
+                            frame_targ.calc.results["forces"] = forces[s]
+                            frame_targ.calc.results["dipole"] = dipole[s]
                         #if (it>0):
                         #    frame_targ.calc.results["trans_dip"] = exc[i0:i1][0][f"S0_S{it}"][1]
                         outtraj[tg].write(frame_targ)
@@ -1034,9 +1034,10 @@ def compare_traj_to_traj(trajx,trajy,plot_func=plot_diff,plot_file=None,xlabel=N
     for i,framex in enumerate(trajx):
         
         # Read in total energy and forces from trajectories
-        e_x.append(framex.get_potential_energy())
-        f_x.append(framex.get_forces())
-        d_x.append(framex.get_dipole_moment())
+        # (reshape copes with reference data written with a leading length-1 state axis)
+        e_x.append(np.reshape(framex.get_potential_energy(),()))
+        f_x.append(np.reshape(framex.get_forces(),(len(framex),3)))
+        d_x.append(np.reshape(framex.get_dipole_moment(),(3,)))
         framey = trajy[i]
         e_y.append(framey.get_potential_energy())
         f_y.append(framey.get_forces())
