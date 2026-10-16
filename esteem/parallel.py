@@ -15,18 +15,23 @@ from copy import deepcopy
 
 gnu_parallel_declarations = (f'NJOBS=$((${{SLURM_NTASKS}}/${{TASKS_PER_PROG}}))\n' +
     f'PARALLEL_OPTS="-N 1 --delay .5 -j ${{NJOBS}} --joblog parallel-${{SLURM_JOBID}}.log"\n' )
-gnu_parallel_command = "seq $SLURM_ARRAY_TASK_ID $(($SLURM_ARRAY_TASK_ID+99)) | parallel $PARALLEL_OPTS 'export SLURM_ARRAY_TASK_ID={}; python"
+# pipefail inside each parallel job, so parallel's exit status counts failures of python (not tee)
+gnu_parallel_command = "seq $SLURM_ARRAY_TASK_ID $(($SLURM_ARRAY_TASK_ID+99)) | parallel $PARALLEL_OPTS 'set -o pipefail; export SLURM_ARRAY_TASK_ID={}; python"
 
+# Run every step of the loop, but exit non-zero if any step failed (so afterok dependencies work)
 bash_loop_declarations = (f"""
 SMAX=5
 istart=$SLURM_ARRAY_TASK_ID
 iend=$(($SLURM_ARRAY_TASK_ID+SMAX))
+loop_status=0
 for ((i=istart;i<iend;i++)); do
 export SLURM_ARRAY_TASK_ID=$i
 """)
 
 bash_loop_endmatter = ("""
+step_status=$?; [ $step_status -ne 0 ] && loop_status=$step_status
 done
+exit $loop_status
 """)
 
 nanosim_1node = {'partition': 'nanosim',
@@ -349,7 +354,8 @@ def make_sbatch(seed,task='',**kwargs):
         slurm_num_threads = kwargs['num_threads']
     else:
         slurm_num_threads = slurm_ncpu
-    slurm_declarations = (f'\nexport OMP_NUM_THREADS={slurm_num_threads}\n'
+    # pipefail: the job's exit status is that of the command, not of '| tee', so afterok works
+    slurm_declarations = (f'\nset -o pipefail\nexport OMP_NUM_THREADS={slurm_num_threads}\n'
                           + slurm_declarations +
                           f'[ ! -z "$SLURM_ARRAY_TASK_ID" ] && export LOGSUFFIX="_"$SLURM_ARRAY_TASK_ID\n')
     if 'postfix' in kwargs:
