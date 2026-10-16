@@ -11,6 +11,7 @@ from ase import units
 import numpy as np
 from os import path, makedirs, getcwd, chdir, remove
 import shutil
+from glob import glob
 
 def targstr(targ):
     if targ == 0 or targ is None:
