@@ -1404,6 +1404,10 @@ def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False,setup_only=
         init_traj = seed_state_str+"_md_init.traj"
         if not isinstance(mltraj.md_init_traj_link,list):
             traj_link = sub_solu_solv_names(mltraj.md_init_traj_link,mltraj.seed,all_solutes,all_solvents)
+            # Without it, the MD would silently start from the optimised geometry instead
+            if not (path.isfile('../'+traj_link) and path.getsize('../'+traj_link)>0):
+                raise Exception(f'# Trajectory of starting points {traj_link} is missing or empty. '
+                                f'The task that produces it must finish first.')
             if not path.isfile(init_traj) and not path.islink(init_traj):
                 print(f"# Creating symlink: {init_traj} -> ../{traj_link} ")
                 try:
