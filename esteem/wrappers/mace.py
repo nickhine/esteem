@@ -87,17 +87,25 @@ class MACEWrapper():
             self.calc_params = {'target': target,'calc_prefix': prefix,
                                 'calc_suffix': suffix,'calc_seed': seed}
 
-        if self.calc is not None: 
-            return self.calc
         if self.foundation_model is not None:
-            import mace.calculators
-            family, model = self.foundation_model
-            self.calc = getattr(mace.calculators,f'mace_{family}')(model=model,**self.foundation_kwargs)
+            if self.calc is None:
+                import mace.calculators
+                family, model = self.foundation_model
+                self.calc = getattr(mace.calculators,f'mace_{family}')(model=model,**self.foundation_kwargs)
+            return self.calc
+
+        # One calculator (or committee) is kept for each set of parameters, so that one wrapper
+        # can evaluate several targets in turn (eg S1 then S0 at each snapshot)
+        if not hasattr(self,'loaded_calcs'):
+            self.loaded_calcs = {}
+        key = (seed,repr(target),prefix,repr(suffix),dir_suffix)
+        if key in self.loaded_calcs:
+            self.calc = self.loaded_calcs[key]
             return self.calc
         from mace.calculators import MACECalculator
 
         # Find checkpoint file(s) for calculator
-        calctarget = self.calc_params['target']
+        calctarget = target
         if isinstance(suffix,dict) or isinstance(target,list):
             self.calc = []
         suffixes = suffix if isinstance(suffix,dict) else {suffix:self.train_args.seed}
@@ -124,6 +132,7 @@ class MACEWrapper():
                 else:
                     self.calc = calc
 
+        self.loaded_calcs[key] = self.calc
         return self.calc
 
     def traj_to_extxyz(self,trajfile,outfilename,use_json=False):
