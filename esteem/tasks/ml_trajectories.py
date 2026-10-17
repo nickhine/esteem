@@ -15,6 +15,11 @@ from ase.io.trajectory import Trajectory
 from esteem.trajectories import generate_md_trajectory, find_initial_geometry, get_trajectory_list, targstr
 from esteem.trajectories import committee_stde_per_atom, md_output_names, finish_md_output
 
+def driving_target(traj_target):
+    """The target that drives the MD: the first, if several are evaluated at each snapshot (eg [1,0]).
+    Output trajectories are named by target, so this one gives the trajectory's main output file"""
+    return traj_target[0] if isinstance(traj_target,list) else traj_target
+
 class MLTrajTask:
 
     """
@@ -82,7 +87,7 @@ class MLTrajTask:
                 model[traj_label] = None
                 if self.continuation:
                     # an unfinished run is under the incomplete name, a finished one under the final name
-                    final, incomplete = md_output_names(self.seed,traj_target,traj_label,self.traj_suffix)
+                    final, incomplete = md_output_names(self.seed,driving_target(traj_target),traj_label,self.traj_suffix)
                     continuation_trajfile = incomplete if os.path.exists(incomplete) else final
                     if os.path.exists(continuation_trajfile):
                         continuation_traj = Trajectory(continuation_trajfile)
@@ -160,7 +165,7 @@ class MLTrajTask:
                                        continuation=self.continuation,debugger=self.debugger,
                                        stop_stde_thresh=self.md_stop_stde_thresh)
                 self.continuation = True
-                final, incomplete = md_output_names(self.seed,traj_target,traj_label,self.traj_suffix)
+                final, incomplete = md_output_names(self.seed,driving_target(traj_target),traj_label,self.traj_suffix)
                 output_trajfile = final if os.path.exists(final) else incomplete
                 if os.path.exists(output_trajfile):
                     output_traj = Trajectory(output_trajfile)
@@ -185,8 +190,9 @@ class MLTrajTask:
                         print(f'# Trajectory {traj_label} aborted {len(offsets[traj_label])} times: giving up '
                               f'with {continuation_len[traj_label]} of {self.nsnap} snapshots')
                         enough_data[traj_label] = True
-                        # what there is counts as the finished trajectory
-                        finish_md_output(self.seed,traj_target,traj_label,self.traj_suffix)
+                        # what there is counts as the finished trajectory (for every target evaluated)
+                        for t in (traj_target if isinstance(traj_target,list) else [traj_target]):
+                            finish_md_output(self.seed,t,traj_label,self.traj_suffix)
                     else:
                         print(f'# Trajectory {traj_label} aborted: restart {len(offsets[traj_label])} of '
                               f'{self.max_restarts} from a new initial snapshot')
