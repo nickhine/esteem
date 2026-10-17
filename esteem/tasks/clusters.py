@@ -168,8 +168,22 @@ class ClustersTask:
         if self.radius is None and isinstance(self.md_suffix,list):
             # merging required
             input_traj_names = [f'{self.solute}{solvstr}_{mds}.traj' for mds in self.md_suffix]
+            missing = [f for f in input_traj_names if not (os.path.isfile(f) and os.path.getsize(f)>0)]
+            if missing:
+                raise Exception(f'# Input trajectories missing or empty: {missing}. '
+                                f'The MD runs for these must finish before the clusters task can use them.')
             input_traj_lengths = [len(Trajectory(inptraj)) for inptraj in input_traj_names]
             print(f'# Input trajectory lengths: {input_traj_lengths}')
+            # Check any existing merged trajectory (and subset selected from it) matches the current inputs
+            merged_file = f'{self.solute}{solvstr}_{which_targstr}_{self.which_traj}_{self.carved_suffix}.traj'
+            merged_present = os.path.exists(merged_file) and os.path.getsize(merged_file)>0
+            if merged_present and len(Trajectory(merged_file)) != sum(input_traj_lengths):
+                raise Exception(f'# {merged_file} has {len(Trajectory(merged_file))} frames, but the input '
+                                f'trajectories have {sum(input_traj_lengths)} between them, so it is left over from '
+                                f'earlier versions of them. Delete it (and any subset selected from it) and rerun.')
+            if traj_carved_file != merged_file and traj_carved_present and not merged_present:
+                raise Exception(f'# {traj_carved_file} was selected from {merged_file}, which no longer exists, so it '
+                                f'cannot be checked against the current input trajectories. Delete it and rerun.')
             if not traj_carved_present:
                 # Only the setup step may write shared files: concurrent array tasks writing
                 # the same trajectory would corrupt it
