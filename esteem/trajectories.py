@@ -11,7 +11,6 @@ from ase import units
 import numpy as np
 from os import path, makedirs, getcwd, chdir, remove
 import shutil
-from glob import glob
 
 def targstr(targ):
     if targ == 0 or targ is None:
@@ -638,6 +637,21 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
     if input_traj_range is None:
         input_traj_range = range(0,len(intraj))
 
+    # Before assembling a whole trajectory from QM output files, check every frame has been run,
+    # so nothing is overwritten if the calculations are incomplete
+    if (len(input_traj_range) > 1 and hasattr(wrapper,'get_completed_file_exts')
+            and not (geom_opt_kernel or vibfreq_kernel) and not isinstance(target,dict)):
+        main_ext = wrapper.get_completed_file_exts()[0]
+        # label of the first calculation for each frame (all targets at once, if the wrapper does that)
+        label_targ = all_targets if hasattr(wrapper,'load') else all_targets[0]
+        not_run = [i+output_traj_offset for i in input_traj_range
+                   if not path.isfile(path.join(traj_suffix,
+                       f"{seed}_{targstr(label_targ)}_{traj_label}_{traj_suffix}{i+output_traj_offset:04}{main_ext}"))]
+        if not_run:
+            raise Exception(f"# {len(not_run)} of {len(input_traj_range)} frames have no {main_ext} file in "
+                            f"{traj_suffix}/: {not_run}. Run (or wait for) the calculations for these frames "
+                            f"before assembling the trajectory.")
+
     outtraj = {}
     for targ in all_targets:
         # Check if output trajectory already exists
@@ -881,7 +895,8 @@ def check_completed_and_cleanup(label,wrapper,input_traj_range):
     if all(completed_files):
         readonly = True
     elif readonly and any(completed_files):
-        print(f'# Some files not present for {label} - cleanup may be required')
+        # The files are left in place: the calculation may have failed, or still be running
+        print(f'# Some files not present for {label}: calculation incomplete or failed')
         main_outfile = f'{label}{wrapper.get_completed_file_exts()[0]}'
         try:
             print(f'# Final 30 lines of {main_outfile}:')
@@ -890,10 +905,6 @@ def check_completed_and_cleanup(label,wrapper,input_traj_range):
                 print(line, end="")
         except:
             print(f'# Not found: {main_outfile}')
-        all_files = glob(f"{label}*")
-        print(f'# Removing {label}*: {all_files}')
-        for f in all_files:
-            remove(f)
     return readonly
 
 def cycle_restarts(seed,traj_label,traj_suffix,prevtarg,currtarg,prevstep,currstep,db_ext):
