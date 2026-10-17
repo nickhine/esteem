@@ -13,7 +13,7 @@ import os
 import string
 from ase.io.trajectory import Trajectory
 from esteem.trajectories import generate_md_trajectory, find_initial_geometry, get_trajectory_list, targstr
-from esteem.trajectories import committee_stde_per_atom
+from esteem.trajectories import committee_stde_per_atom, md_output_names, finish_md_output
 
 class MLTrajTask:
 
@@ -81,7 +81,9 @@ class MLTrajTask:
                 # Check if we have a continuation to load in
                 model[traj_label] = None
                 if self.continuation:
-                    continuation_trajfile = f"{self.seed}_{targstr(traj_target)}_{traj_label}_{self.traj_suffix}.traj"
+                    # an unfinished run is under the incomplete name, a finished one under the final name
+                    final, incomplete = md_output_names(self.seed,traj_target,traj_label,self.traj_suffix)
+                    continuation_trajfile = incomplete if os.path.exists(incomplete) else final
                     if os.path.exists(continuation_trajfile):
                         continuation_traj = Trajectory(continuation_trajfile)
                         continuation_len[traj_label] = len(continuation_traj)
@@ -158,7 +160,8 @@ class MLTrajTask:
                                        continuation=self.continuation,debugger=self.debugger,
                                        stop_stde_thresh=self.md_stop_stde_thresh)
                 self.continuation = True
-                output_trajfile = f"{self.seed}_{targstr(traj_target)}_{traj_label}_{self.traj_suffix}.traj"
+                final, incomplete = md_output_names(self.seed,traj_target,traj_label,self.traj_suffix)
+                output_trajfile = final if os.path.exists(final) else incomplete
                 if os.path.exists(output_trajfile):
                     output_traj = Trajectory(output_trajfile)
                     continuation_len[traj_label] = len(output_traj)
@@ -182,6 +185,8 @@ class MLTrajTask:
                         print(f'# Trajectory {traj_label} aborted {len(offsets[traj_label])} times: giving up '
                               f'with {continuation_len[traj_label]} of {self.nsnap} snapshots')
                         enough_data[traj_label] = True
+                        # what there is counts as the finished trajectory
+                        finish_md_output(self.seed,traj_target,traj_label,self.traj_suffix)
                     else:
                         print(f'# Trajectory {traj_label} aborted: restart {len(offsets[traj_label])} of '
                               f'{self.max_restarts} from a new initial snapshot')

@@ -9,7 +9,7 @@ from ase.io.trajectory import Trajectory
 from ase.units import Bohr
 from ase import units
 import numpy as np
-from os import path, makedirs, getcwd, chdir, remove
+from os import path, makedirs, getcwd, chdir, remove, rename
 import shutil
 
 def targstr(targ):
@@ -55,6 +55,22 @@ def get_param(md_param,label):
         param = md_param
 
     return param
+
+def md_output_names(seed,targ,traj_label,traj_suffix):
+    """
+    Returns (final, incomplete) names of an MD output trajectory. The MD is written to the
+    incomplete name and only renamed to the final name once the run has finished, so the
+    final file existing means the MD is done.
+    """
+    final = f"{seed}_{targstr(targ)}_{traj_label}_{traj_suffix}.traj"
+    return final, final[:-len('.traj')] + '.incomplete.traj'
+
+def finish_md_output(seed,targ,traj_label,traj_suffix):
+    """Renames a finished MD output trajectory from its incomplete name to its final name"""
+    final, incomplete = md_output_names(seed,targ,traj_label,traj_suffix)
+    if path.isfile(incomplete):
+        rename(incomplete,final)
+        print(f'# MD finished: {incomplete} renamed to {final}')
 
 def committee_stde_per_atom(energy,natoms):
     """
@@ -187,6 +203,19 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
             snap_calc_params['calc_head'] = orig_head
         return energy
 
+    # Output is written under an incomplete name and renamed when the run finishes (see md_output_names)
+    for t in all_targets:
+        final, incomplete = md_output_names(seed,t,traj_label,traj_suffix)
+        if not continuation:
+            # Starting afresh: remove outputs of any earlier run now, so they cannot be mistaken for this one
+            for f in (final, incomplete):
+                if path.isfile(f):
+                    print(f'# Removing output of an earlier run: {f}')
+                    remove(f)
+        elif path.isfile(final) and not path.isfile(incomplete):
+            # Continuing a finished trajectory (eg to extend it): it is incomplete again until this run finishes
+            rename(final,incomplete)
+
     # Run Equilibration MD
     abort = False
     stopped = False
@@ -267,7 +296,7 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
     if stopped:
         # The EQ frames checked so far become the output trajectory
         for t in all_targets:
-            output_traj = f"{seed}_{targstr(t)}_{traj_label}_{traj_suffix}.traj"
+            output_traj = md_output_names(seed,t,traj_label,traj_suffix)[1]
             eqframes = Trajectory(eqcheck_files[t])
             out = Trajectory(output_traj,"w")
             for frame in eqframes:
@@ -276,6 +305,7 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
             print(f'# Wrote {len(eqframes)} EQ frames to {output_traj}')
             eqframes.close()
             remove(eqcheck_files[t])
+            finish_md_output(seed,t,traj_label,traj_suffix)
         return 'stopped'
     for t in all_targets:
         if path.isfile(eqcheck_files[t]):
@@ -284,17 +314,11 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
     outtraj = {}
     snaps_done = 0
     for targ in all_targets:
-        # Check if output trajectory already exists
-        output_traj = f"{seed}_{targstr(targ)}_{traj_label}_{traj_suffix}.traj"
-        if path.isfile(output_traj) and not continuation:
-            # Delete it and start afresh
-            try:
-                remove(output_traj)
-            except:
-                print('# Unable to remove {output_traj} - mid-air collision between jobs? Continuing')
+        # Output is written under the incomplete name (any earlier output was dealt with above)
+        output_traj = md_output_names(seed,targ,traj_label,traj_suffix)[1]
 
         # Create output trajectory
-        if continuation:
+        if continuation and path.isfile(output_traj):
             print(f"# Opening output trajectory: {output_traj} for appending")
             outtraj[targ] = Trajectory(output_traj)
             snaps_done = len(outtraj[targ])
@@ -421,7 +445,10 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
     for targ in all_targets:
         outtraj[targ].close()
     if abort:
+        # left under the incomplete name: the caller may restart it
         return 'aborted'
+    for targ in all_targets:
+        finish_md_output(seed,targ,traj_label,traj_suffix)
     if stopped:
         return 'stopped'
     print("# Finished Snapshot MD runs")
