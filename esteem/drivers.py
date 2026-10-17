@@ -1003,8 +1003,29 @@ def qmd_driver(qmdtraj,all_solutes,all_solvents):
 
     qmdtraj.run()
     
+def missing_traj_link_targets(mltrain_task,all_solutes,all_solvents):
+    """
+    Returns the trajectory files that the training, validation and test traj_links of
+    mltrain_task point to but which are missing or empty (paths relative to the parent directory)
+    """
+    missing = []
+    for prefix,traj_links in (('',mltrain_task.traj_links),('valid',mltrain_task.traj_links_valid),
+                              ('test',mltrain_task.traj_links_test)):
+        if traj_links is None:
+            continue
+        which_trajs = mltrain_task.get_which_trajs(prefix)[0]
+        for traj in which_trajs:
+            if traj not in traj_links:
+                continue # reported by make_traj_links
+            links = traj_links[traj] if isinstance(traj_links[traj],list) else [traj_links[traj]]
+            for traj_link in links:
+                traj_link = sub_solu_solv_names(traj_link,mltrain_task.seed,all_solutes,all_solvents)
+                if not (path.isfile(traj_link) and path.getsize(traj_link)>0):
+                    missing.append(traj_link)
+    return missing
+
 def make_traj_links(mltrain_task,traj_links,train_dir,prefix,all_solutes,all_solvents):
-    
+
     from ase.io import Trajectory
     from os import readlink, remove
     
@@ -1117,15 +1138,21 @@ def mltrain_driver(mltrain_task,all_solutes={},all_solvents={},setup_only=False)
 
     # Check we are in parent directory and train_dir exists
     base_path = path.basename(getcwd())
-    if base_path != train_dir:
-        if not path.exists(train_dir):
-            print(f'# Creating directory {train_dir}')
-            try:
-                makedirs(train_dir)
-            except FileExistsError:
-                print(f"# Possible mid-air collision between jobs - directory {train_dir} exists")
-    else:
+    if base_path == train_dir:
         chdir('..')
+
+    # Check all the trajectories to be linked exist before changing anything
+    missing = missing_traj_link_targets(mltrain_task,all_solutes,all_solvents)
+    if missing:
+        raise Exception(f'# Trajectories needed for training are missing or empty: {missing}. '
+                        f'The tasks that produce them must finish first. Nothing has been changed.')
+
+    if not path.exists(train_dir):
+        print(f'# Creating directory {train_dir}')
+        try:
+            makedirs(train_dir)
+        except FileExistsError:
+            print(f"# Possible mid-air collision between jobs - directory {train_dir} exists")
 
     # Check that the xyz file exists, create it if it does not
     if not path.isfile(train_seed_xyz):
