@@ -667,20 +667,29 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
     if input_traj_range is None:
         input_traj_range = range(0,len(intraj))
 
-    # Before assembling a whole trajectory from QM output files, check every frame has been run,
-    # so nothing is overwritten if the calculations are incomplete
+    # Before assembling a whole trajectory from QM output files, check every frame needed has been run,
+    # so nothing is overwritten if the calculations are incomplete. With max_frames (spare frames),
+    # frames are needed in order until max_frames are complete or not yet run: failed ones are replaced
     if (len(input_traj_range) > 1 and hasattr(wrapper,'get_completed_file_exts')
             and not (geom_opt_kernel or vibfreq_kernel) and not isinstance(target,dict)):
-        main_ext = wrapper.get_completed_file_exts()[0]
+        exts = wrapper.get_completed_file_exts()
         # label of the first calculation for each frame (all targets at once, if the wrapper does that)
         label_targ = all_targets if hasattr(wrapper,'load') else all_targets[0]
-        not_run = [i+output_traj_offset for i in input_traj_range
-                   if not path.isfile(path.join(traj_suffix,
-                       f"{seed}_{targstr(label_targ)}_{traj_label}_{traj_suffix}{i+output_traj_offset:04}{main_ext}"))]
+        not_run = []
+        ncounted = 0
+        for i in input_traj_range:
+            if max_frames is not None and ncounted >= max_frames:
+                break
+            label = path.join(traj_suffix,f"{seed}_{targstr(label_targ)}_{traj_label}_{traj_suffix}{i+output_traj_offset:04}")
+            if not path.isfile(label+exts[0]):
+                not_run.append(i+output_traj_offset)
+                ncounted += 1
+            elif all(path.isfile(label+ext) for ext in exts):
+                ncounted += 1
+            # otherwise the calculation failed: with spares, the next frame is needed instead
         if not_run:
-            raise Exception(f"# {len(not_run)} of {len(input_traj_range)} frames have no {main_ext} file in "
-                            f"{traj_suffix}/: {not_run}. Run (or wait for) the calculations for these frames "
-                            f"before assembling the trajectory.")
+            raise Exception(f"# {len(not_run)} frames needed have no {exts[0]} file in {traj_suffix}/: {not_run}. "
+                            f"Run (or wait for) the calculations for these frames before assembling the trajectory.")
 
     outtraj = {}
     for targ in all_targets:
