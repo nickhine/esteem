@@ -337,6 +337,9 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
         dynamics.type = "LANG"
         dynamics.friction = friction
         dynamics.new_traj = False
+    else:
+        # dynamics carried over from equilibration: switch from its friction to the MD one
+        dynamics.friction = friction
     if snaps_done<count_snaps:
         print(f"# Starting Snapshot MD runs {snaps_done} to {count_snaps} (each {md_steps} steps of {dynamics.type} dynamics with timestep {timestep/fs} fs)")
         output_header(model,'MD')
