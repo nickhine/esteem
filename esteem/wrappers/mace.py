@@ -16,15 +16,32 @@ class MACEWrapper():
     from mace import tools
     default_train_args = tools.build_default_arg_parser().parse_args(["--name", "dummy", "--train_file", "train.xyz"])
 
-    def __init__(self, **kwargs):
-        """Sets up instance attributes for MACEWrapper """
+    def __init__(self, xmace=False, **kwargs):
+        """Sets up instance attributes for MACEWrapper
+
+        xmace: bool
+            Use X-MACE (the xmace package) instead of MACE: one model for several
+            electronic states, trained with a target dict such as {0: 'gs', 1: 'es1'},
+            whose head names select the state to evaluate
+        """
         from copy import deepcopy
-        self.train_args = deepcopy(self.default_train_args)
-        self.train_args.max_num_epochs = -1
-        self.train_args.model = 'EnergyDipolesMACE'
-        self.train_args.loss = 'energy_forces_dipole'
-        self.train_args.error_table = 'EnergyDipoleRMSE'
-        self.train_args.restart_latest = True
+        self.xmace = xmace
+        if xmace:
+            from xmace import tools as xmace_tools
+            self.train_args = xmace_tools.build_default_arg_parser().parse_args(
+                ["--name", "dummy", "--train_file", "train.xyz"])
+            self.train_args.max_num_epochs = -1
+            self.train_args.model = 'ExcitedMACE'
+            # energies and forces only: EnergyNacsDipoleMAE needs dipole (and NAC) data
+            self.train_args.error_table = 'PerAtomRMSE'
+            self.train_args.restart_latest = True
+        else:
+            self.train_args = deepcopy(self.default_train_args)
+            self.train_args.max_num_epochs = -1
+            self.train_args.model = 'EnergyDipolesMACE'
+            self.train_args.loss = 'energy_forces_dipole'
+            self.train_args.error_table = 'EnergyDipoleRMSE'
+            self.train_args.restart_latest = True
 
         # Make a set of default loading arguments by copying in training arguments
         self.load_args = {}
@@ -127,7 +144,13 @@ class MACEWrapper():
                 dirname = self.calc_filename(seed, targ, prefix=prefix, suffix=dir_suffix)
                 calcfn = self.calc_filename(seed, targ, prefix="", suffix=suff)
                 modelfile = self.find_best_model(dirname, calcfn, suffixes[suff])
-                calc = MACECalculator(modelfile, device="cuda", default_dtype='float64', model_type='EnergyDipoleMACE')
+                if self.xmace:
+                    from xmace.calculators import MACECalculator as XMACECalculator
+                    calc = XMACECalculator(modelfile, device="cuda", default_dtype='float64', model_type='MACE',
+                                           n_energies=len(self.xmace_states(targ)))
+                else:
+                    calc = MACECalculator(modelfile, device="cuda", default_dtype='float64',
+                                          model_type='EnergyDipoleMACE')
                 if isinstance(suffix, dict) or isinstance(calctarget, list):
                     self.calc.append(calc)
                 else:
@@ -166,8 +189,10 @@ class MACEWrapper():
                     forces = np.asarray(t.calc.results["forces"])
                     tp.arrays["REF_forces"] = forces[0] if forces.ndim == 3 else forces
                 else:
+                    # all states in one frame, as X-MACE expects: energy (1, n_states),
+                    # forces (n_atoms, n_states, 3)
                     en = np.array([traj[i].calc.results["energy"] for traj in trajs])
-                    tp.info["REF_energy"] = "_JSON " + json.dumps(en.tolist())
+                    tp.info["REF_energy"] = "_JSON " + json.dumps([en.tolist()])
                     dip = np.stack([traj[i].calc.results["dipole"] for traj in trajs])
                     tp.info["REF_dipole"] = "_JSON " + json.dumps(dip.tolist())
                     fo = np.stack([traj[i].calc.results["forces"] for traj in trajs])
@@ -255,13 +280,13 @@ class MACEWrapper():
             # if we supplied a single target, convert to a dictionary
             targets = {targets_in: str(targets_in)}
             heads = None
-        elif train_args.model == "ExcitedMACE":
-            targets = targets_in.copy()
-            if "diff" in targets:
-                del targets["diff"]
+        elif self.xmace or train_args.model in ("ExcitedMACE", "AutoencoderExcitedMACE"):
+            # X-MACE: one model learns all the states, from one file with every state per frame
+            targets = {targ: targets_in[targ] for targ in self.xmace_states(targets_in)}
             heads = None
             use_json = True
-            print(targets_in)
+            train_args.n_energies = len(targets)
+            print(f'# X-MACE model for {train_args.n_energies} states: {targets}')
         else:
             # if we supplied multiple targets set up heads dictionary
             targets = targets_in
@@ -275,7 +300,10 @@ class MACEWrapper():
         if validfile is not None:
             convtrajfile['valid'] = validfile
         else:  # assume we want to use a validation fraction of 5%
-            del train_args.valid_file
+            if self.xmace:  # X-MACE tests valid_file is None, rather than its absence
+                train_args.valid_file = None
+            else:
+                del train_args.valid_file
             if not hasattr(train_args, 'valid_fraction'):
                 train_args.valid_fraction = 0.05
         if testfile is not None:
@@ -341,8 +369,9 @@ class MACEWrapper():
         # Set up input data
         train_args.name = self.calc_filename(seed, targets_in, prefix="", suffix=suffix)
         train_args.device = 'cuda'
-        train_args.heads = str(heads) if heads is not None else heads
-        print('# Setting heads to:', train_args.heads)
+        if not self.xmace:  # X-MACE has no heads argument
+            train_args.heads = str(heads) if heads is not None else heads
+            print('# Setting heads to:', train_args.heads)
 
         # Some fixes to the input parameter list that prevent breakage
         if train_args.start_swa is None:
@@ -360,10 +389,32 @@ class MACEWrapper():
         print(f'# Training MACE model using trajectory {extxyzfile} with parameters:')
         print('#', train_args)
 
-        from mace.cli import run_train
+        if self.xmace:
+            from xmace.cli import run_train
+        else:
+            from mace.cli import run_train
         run_train.run(train_args)
 
         os.chdir(orig_dir)
+
+    def xmace_states(self, target):
+        """States learned by an X-MACE model for this target, in model order (no 'diff' heads)"""
+        if not isinstance(target, dict):
+            return [target]
+        return [targ for targ in target if targ != 'diff']
+
+    def select_head(self, calc_ml, model, target, head):
+        """Selects the head (state) of a multi-target model that the calculator(s) evaluate"""
+        calcs = calc_ml if isinstance(calc_ml, list) else [calc_ml]
+        if self.xmace:
+            names = [target[targ] for targ in self.xmace_states(target)]
+            if head not in names:
+                raise Exception(f"Head {head} not among the X-MACE model states {names}")
+            for calc in calcs:
+                calc.state = names.index(head)
+        else:
+            self.check_head(calc_ml, head)
+            model.info["head"] = head
 
     def check_head(self, calc_ml, head):
         if isinstance(calc_ml, list):
@@ -537,9 +588,7 @@ class MACEWrapper():
         calc_ml = self.load(calc_seed, target, prefix=prefix, suffix=suffix, dir_suffix=dir_suffix)
         model.info['charge'] = charge if charge else self.charge
         if isinstance(target, dict):
-            head = calc_params['calc_head']
-            self.check_head(calc_ml, head)
-            model.info["head"] = head
+            self.select_head(calc_ml, model, target, calc_params['calc_head'])
         model.calc = calc_ml
 
         # Initialise velocities if this is first step, otherwise inherit from model
@@ -624,9 +673,7 @@ class MACEWrapper():
         calc_ml = self.load(calc_seed, target, prefix=prefix, suffix=suffix, dir_suffix=dir_suffix)
         model.info['charge'] = charge if charge else self.charge
         if isinstance(target, dict):
-            head = calc_params['calc_head']
-            self.check_head(calc_ml, head)
-            model.info["head"] = head
+            self.select_head(calc_ml, model, target, calc_params['calc_head'])
         model.calc = calc_ml
 
         # Create instance of BFGS optimizer, run it and return results
@@ -683,9 +730,7 @@ class MACEWrapper():
         calc_ml = self.load(calc_seed, target, prefix=prefix, suffix=suffix, dir_suffix=dir_suffix)
         model_opt.info['charge'] = charge if charge else self.charge
         if isinstance(target, dict):
-            head = calc_params['calc_head']
-            self.check_head(calc_ml, head)
-            model_opt.info["head"] = head
+            self.select_head(calc_ml, model_opt, target, calc_params['calc_head'])
         model_opt.calc = calc_ml
 
         # Create instance of Vibrations class, run it and return results
@@ -734,25 +779,27 @@ class MACEWrapper():
         calc_ml = self.load(calc_seed, target, prefix=prefix, suffix=suffix, dir_suffix=dir_suffix)
         model.info['charge'] = charge if charge else self.charge
         if isinstance(target, dict):
-            head = calc_params['calc_head']
-            self.check_head(calc_ml, head)
-            model.info["head"] = head
+            self.select_head(calc_ml, model, target, calc_params['calc_head'])
         if isinstance(calc_ml, list):
             e_calc = []
             f_calc = []
             d_calc = []
+            # some models (eg X-MACE) do not provide a dipole
+            has_dipole = all('dipole' in tcalc.implemented_properties for tcalc in calc_ml)
             for tcalc in calc_ml:
                 tcalc.results = {}
                 model.calc = tcalc
                 e_calc.append(model.get_potential_energy())
                 if forces:
                     f_calc.append(model.get_forces())
-                if dipole:
+                if dipole and has_dipole:
                     d_calc.append(model.get_dipole_moment())
             e_calc = np.array(e_calc)
             model.calc.results["energy"] = e_calc
             model.calc.results["energy_std"] = np.std(e_calc)
-            if dipole:
+            if dipole and not has_dipole:
+                d_calc = None
+            elif dipole:
                 d_calc = np.array(d_calc)
                 model.calc.results["dipole"] = d_calc
                 model.calc.results["dipole_std"] = np.std(d_calc, axis=1)
