@@ -1138,8 +1138,8 @@ def plot_diff(e_x,e_y,rms_fd,xlabel=None,ylabel=None,clabel=None,stats={},plot_f
     cb.set_label(clabel)
     # Plot y=x for comparison
     if align_axes:
-        lims = [np.min([ax.get_xlim(), ax.get_ylim()]),
-                np.max([ax.get_xlim(), ax.get_ylim()])]
+        lims = [float(np.min([ax.get_xlim(), ax.get_ylim()])),
+                float(np.max([ax.get_xlim(), ax.get_ylim()]))]
         cblims = cb.mappable.get_clim()
         if plot_file!='show':
             data_file = plot_file.replace('.png','.data.gz')
@@ -1150,6 +1150,7 @@ def plot_diff(e_x,e_y,rms_fd,xlabel=None,ylabel=None,clabel=None,stats={},plot_f
             print(f'# Dumping limits {lims_dict} to {plot_file_json}')
             dump(lims_dict,open(plot_file_json,"w"),indent=2)
             plot_file_stats = plot_file.replace('.png','.stats.json')
+            stats = {k: float(v) for k, v in stats.items()}
             print(f'# Dumping stats {stats} to {plot_file_stats}')
             dump(stats,open(plot_file_stats,"w"),indent=2)
         ax.plot(lims, lims, 'k-', alpha=0.75, zorder=0)

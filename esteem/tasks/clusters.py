@@ -1094,8 +1094,8 @@ def write_subset_trajectory(trajin_file,trajout_file,nmax,method='R',
     if len(framelist)!=nmax:
         raise Exception(f"Could not find enough frames to pick {nmax} with min_spacing={min_spacing} from {len(t)}")
     #framelist = list(args[(len(t)-nmax):len(t)])
-    print(f'# Chosen frames:\n# {framelist}')
-    print(f'# Chosen frames sorted ascending:\n# {sorted(framelist)}')
+    print(f'# Chosen frames:\n# {[int(f) for f in framelist]}')
+    print(f'# Chosen frames sorted ascending:\n# {sorted(int(f) for f in framelist)}')
     if method!='R':
         stdelist = stde[framelist]
         print(f'# Standard deviations of E for chosen frames:\n# {stdelist}')
