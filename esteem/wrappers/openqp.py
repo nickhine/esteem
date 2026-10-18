@@ -14,13 +14,14 @@ Supported:
       so forces for several states take one run per state.
     * implicit solvent (PCM, ddX backend) for energies only: OpenQP's PCM does not
       yet provide gradients, so requesting forces in solvent raises NotImplementedError
+    * gas-phase geometry optimisation of one state (OpenQP's runtype=optimize)
 
-Not yet supported: geometry optimisation, MD, dispersion corrections.
+Not yet supported: MD, dispersion corrections.
 """
 
 import json
 import subprocess
-from os import environ, path
+from os import environ, path, replace
 
 import numpy as np
 from ase.units import Hartree, Bohr
@@ -65,7 +66,7 @@ class OpenQPWrapper():
         return calc_params['basis'], calc_params['func'], calc_params['target'], calc_params.get('disp', False)
 
     def _write_input(self, model, label, basis, xc, charge, spin, runtype,
-                     mrsf_nstate=None, grad_state=None, solvent=None):
+                     mrsf_nstate=None, grad_state=None, opt_state=None, solvent=None):
         """Writes an OpenQP input file {label}.inp"""
         lines = ["[input]", "system="]
         for num, pos in zip(model.get_atomic_numbers(), model.get_positions()):
@@ -85,6 +86,8 @@ class OpenQPWrapper():
         lines.append("")
         if grad_state is not None:
             lines += ["[properties]", f"grad={grad_state}", ""]
+        if opt_state is not None:
+            lines += ["[optimize]", f"istate={opt_state}", ""]
         if solvent is not None:
             if solvent not in self.solvent_epsilon:
                 raise Exception(f'# No dielectric constant known for solvent {solvent}: add it to solvent_epsilon')
@@ -182,8 +185,50 @@ class OpenQPWrapper():
             res.append(model.calc)
         return res
 
-    def geom_opt(self, *args, **kwargs):
-        raise NotImplementedError("# OpenQPWrapper: geometry optimisation is not yet supported")
+    def geom_opt(self, model_opt, label, calc_params={}, driver_tol='default',
+                 solvent=None, continuation=False, charge=0, spin=0, readonly=False,
+                 calconly=False, cleanup=True):
+        """
+        Optimises the geometry of one state with OpenQP (runtype=optimize)
+
+        The optimised positions are written into model_opt. driver_tol is not used:
+        OpenQP's own convergence criteria apply. An optimisation that does not
+        converge raises an Exception.
+        """
+        basis, xc, target, disp = self.unpack_params(calc_params)
+        if disp:
+            raise NotImplementedError("# OpenQPWrapper: dispersion corrections are not yet supported")
+        if solvent is not None:
+            raise NotImplementedError("# OpenQPWrapper: OpenQP's PCM does not yet provide gradients, "
+                                      "so geometry optimisation in implicit solvent is not available")
+        if isinstance(target, list):
+            raise Exception("# OpenQPWrapper: geometry optimisation needs a single target")
+        state = 0 if target is None else target
+        mrsf = state > 0
+        # OpenQP's optimiser writes opt.xyz (latest geometry, in Angstrom), opt_geom.xyz
+        # (every step) and opt_status.txt into the run directory: keep them as {label}_opt*
+        opt_files = {'opt.xyz': f"{label}_opt.xyz", 'opt_geom.xyz': f"{label}_opt_geom.xyz",
+                     'opt_status.txt': f"{label}_opt_status.txt"}
+        if readonly:
+            results = self._read_json(label)
+        else:
+            # istate numbers states as [properties] grad does: MRSF S0 is 1
+            self._write_input(model_opt, label, basis, xc, charge, spin, "optimize",
+                              mrsf_nstate=(state+1 if mrsf else None),
+                              opt_state=(state+1 if mrsf else 0))
+            results = self._run(label)
+            for src, dest in opt_files.items():
+                if path.isfile(src):
+                    replace(src, dest)
+            with open(f"{label}.log") as f:
+                if "Has Converged" not in f.read():
+                    raise Exception(f"# OpenQP geometry optimisation did not converge for {label}")
+        model_opt.positions = np.loadtxt(opt_files['opt.xyz'], skiprows=2, usecols=(1, 2, 3)).reshape(-1, 3)
+        energy = self._state_energy(results, state, mrsf)
+        forces = -np.array(results['grad']).reshape(-1, 3)*Hartree/Bohr if 'grad' in results else None
+        from ase.calculators.singlepoint import SinglePointCalculator
+        model_opt.calc = SinglePointCalculator(model_opt, energy=energy, forces=forces)
+        return energy, forces, model_opt.positions
 
     def run_md(self, *args, **kwargs):
         raise NotImplementedError("# OpenQPWrapper: MD is not yet supported")
