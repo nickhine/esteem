@@ -147,7 +147,7 @@ class SpecPyCodeWrapper():
         else:
             results_file = f"{self.rootname}_{self.md_output_suffix}MD_ensemble_spectrum.dat"
         if not self.results_exist():
-            print(f"Results file {results_file} not found")
+            print(f"# Results file {results_file} not found")
             #raise Exception(f"Results file {results_file} not found")
         try:
             spec = np.loadtxt(results_file,usecols=(0,1))

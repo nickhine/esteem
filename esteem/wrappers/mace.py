@@ -87,17 +87,25 @@ class MACEWrapper():
             self.calc_params = {'target': target,'calc_prefix': prefix,
                                 'calc_suffix': suffix,'calc_seed': seed}
 
-        if self.calc is not None: 
-            return self.calc
         if self.foundation_model is not None:
-            import mace.calculators
-            family, model = self.foundation_model
-            self.calc = getattr(mace.calculators,f'mace_{family}')(model=model,**self.foundation_kwargs)
+            if self.calc is None:
+                import mace.calculators
+                family, model = self.foundation_model
+                self.calc = getattr(mace.calculators,f'mace_{family}')(model=model,**self.foundation_kwargs)
+            return self.calc
+
+        # One calculator (or committee) is kept for each set of parameters, so that one wrapper
+        # can evaluate several targets in turn (eg S1 then S0 at each snapshot)
+        if not hasattr(self,'loaded_calcs'):
+            self.loaded_calcs = {}
+        key = (seed,repr(target),prefix,repr(suffix),dir_suffix)
+        if key in self.loaded_calcs:
+            self.calc = self.loaded_calcs[key]
             return self.calc
         from mace.calculators import MACECalculator
 
         # Find checkpoint file(s) for calculator
-        calctarget = self.calc_params['target']
+        calctarget = target
         if isinstance(suffix,dict) or isinstance(target,list):
             self.calc = []
         suffixes = suffix if isinstance(suffix,dict) else {suffix:self.train_args.seed}
@@ -124,6 +132,7 @@ class MACEWrapper():
                 else:
                     self.calc = calc
 
+        self.loaded_calcs[key] = self.calc
         return self.calc
 
     def traj_to_extxyz(self,trajfile,outfilename,use_json=False):
@@ -204,7 +213,7 @@ class MACEWrapper():
             if path.exists(modelfile):
                 found=True
                 best_model = modelfile
-                print(modelfile,' found')
+                print(f'# Model file {modelfile} found')
                 break
         if best_model is None:
             print(f'ERROR: No model found among: {modelfiles}')
@@ -751,7 +760,16 @@ class MACEWrapper():
                 f_calc = np.array(f_calc)
                 model.calc.results["forces"] = f_calc
                 model.calc.results["forces_std"] = np.std(f_calc,axis=1)
-            model.calc = calc_ml
+            # Keep the committee results (arrays over models) on the structure, so that
+            # snapshots written to trajectories carry them (needed for uncertainty-based
+            # selection); previously model.calc was replaced by the list of calculators
+            from ase.calculators.singlepoint import SinglePointCalculator
+            from ase.calculators.calculator import all_properties
+            committee_results = dict(model.calc.results)
+            spc = SinglePointCalculator(model,**{k:v for k,v in committee_results.items()
+                                                 if k in all_properties})
+            spc.results.update(committee_results)
+            model.calc = spc
         else:
             model.calc = calc_ml
             e_calc = model.get_potential_energy()

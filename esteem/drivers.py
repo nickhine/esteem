@@ -285,7 +285,8 @@ def solutes_driver(all_solutes,all_solvents,task):
 
     for solvent in all_solvents_to_run:
         print(f'Setting solvent to {solvent}')
-        task.solvent = solvent
+        # 'gas' is the placeholder for no solvent (seeds <solute>_gas): no implicit solvent model
+        task.solvent = solvent if solvent != "gas" else None
         if task.solvent_settings is not None and task.solvent is not None:
             task.solvent = task.solvent_settings
             task.solvent['solvent'] = solvent
@@ -751,7 +752,9 @@ def clusters_driver(all_solutes,all_solvents,seed,task,make_sbatch=None,dryrun=F
                 if reset_roots:
                     print(f'\n# Warning: solute==solvent, so assuming excitations are not required. Setting nroots=0')
                     task.nroots = 0
-            if isinstance(task.impsolv,dict):
+            if solvent == "gas":
+                task.impsolv = None   # placeholder for no solvent: no implicit solvent model
+            elif isinstance(task.impsolv,dict):
                 task.impsolv['solvent'] = solvent
             else:
                 task.impsolv = solvent
@@ -777,6 +780,9 @@ def get_solu_solv_names(seed):
     solu = "_".join(seed.split("_")[0:-1])
     try:
         solv = seed.split("_")[-1]
+        # Gas-phase seeds are named <solute>_gas
+        if solv == "gas":
+            solv = None
     except:
         solv = "NO_SOLVENT_FOUND"
     return solu,solv
@@ -880,8 +886,12 @@ def atom_energies_driver(atomen):
             if solv is not None:
                 copyfile(f'{ref_mol_dir}/is_opt_{solv}/{solv}.xyz',f'{atoms_dir}/{solv}.xyz')
         if not path.isfile(f'{atoms_dir}/{atoms_xyz}') and not path.islink(f'{atoms_dir}/{atoms_xyz}'):
-            print(f'# Source file {atoms_xyz} not found - trying to combine {solu} and {solv} xyzs')
-            merge_xyzs(solu,solv,f'{atoms_dir}/{atoms_xyz}',atoms_dir)
+            if solv is None:
+                # gas phase: the seed geometry is just the solute
+                copyfile(f'{atoms_dir}/{solu}.xyz',f'{atoms_dir}/{atoms_xyz}')
+            else:
+                print(f'# Source file {atoms_xyz} not found - trying to combine {solu} and {solv} xyzs')
+                merge_xyzs(solu,solv,f'{atoms_dir}/{atoms_xyz}',atoms_dir)
         if not path.isfile(f'{atoms_dir}/{atoms_xyz}'):
             try:
                 copyfile(atoms_xyz,f'{atoms_dir}/{atoms_xyz}')
@@ -1003,8 +1013,29 @@ def qmd_driver(qmdtraj,all_solutes,all_solvents):
 
     qmdtraj.run()
     
+def missing_traj_link_targets(mltrain_task,all_solutes,all_solvents):
+    """
+    Returns the trajectory files that the training, validation and test traj_links of
+    mltrain_task point to but which are missing or empty (paths relative to the parent directory)
+    """
+    missing = []
+    for prefix,traj_links in (('',mltrain_task.traj_links),('valid',mltrain_task.traj_links_valid),
+                              ('test',mltrain_task.traj_links_test)):
+        if traj_links is None:
+            continue
+        which_trajs = mltrain_task.get_which_trajs(prefix)[0]
+        for traj in which_trajs:
+            if traj not in traj_links:
+                continue # reported by make_traj_links
+            links = traj_links[traj] if isinstance(traj_links[traj],list) else [traj_links[traj]]
+            for traj_link in links:
+                traj_link = sub_solu_solv_names(traj_link,mltrain_task.seed,all_solutes,all_solvents)
+                if not (path.isfile(traj_link) and path.getsize(traj_link)>0):
+                    missing.append(traj_link)
+    return missing
+
 def make_traj_links(mltrain_task,traj_links,train_dir,prefix,all_solutes,all_solvents):
-    
+
     from ase.io import Trajectory
     from os import readlink, remove
     
@@ -1117,15 +1148,21 @@ def mltrain_driver(mltrain_task,all_solutes={},all_solvents={},setup_only=False)
 
     # Check we are in parent directory and train_dir exists
     base_path = path.basename(getcwd())
-    if base_path != train_dir:
-        if not path.exists(train_dir):
-            print(f'# Creating directory {train_dir}')
-            try:
-                makedirs(train_dir)
-            except FileExistsError:
-                print(f"# Possible mid-air collision between jobs - directory {train_dir} exists")
-    else:
+    if base_path == train_dir:
         chdir('..')
+
+    # Check all the trajectories to be linked exist before changing anything
+    missing = missing_traj_link_targets(mltrain_task,all_solutes,all_solvents)
+    if missing:
+        raise Exception(f'# Trajectories needed for training are missing or empty: {missing}. '
+                        f'The tasks that produce them must finish first. Nothing has been changed.')
+
+    if not path.exists(train_dir):
+        print(f'# Creating directory {train_dir}')
+        try:
+            makedirs(train_dir)
+        except FileExistsError:
+            print(f"# Possible mid-air collision between jobs - directory {train_dir} exists")
 
     # Check that the xyz file exists, create it if it does not
     if not path.isfile(train_seed_xyz):
@@ -1377,6 +1414,10 @@ def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False,setup_only=
         init_traj = seed_state_str+"_md_init.traj"
         if not isinstance(mltraj.md_init_traj_link,list):
             traj_link = sub_solu_solv_names(mltraj.md_init_traj_link,mltraj.seed,all_solutes,all_solvents)
+            # Without it, the MD would silently start from the optimised geometry instead
+            if not (path.isfile('../'+traj_link) and path.getsize('../'+traj_link)>0):
+                raise Exception(f'# Trajectory of starting points {traj_link} is missing or empty. '
+                                f'The task that produces it must finish first.')
             if not path.isfile(init_traj) and not path.islink(init_traj):
                 print(f"# Creating symlink: {init_traj} -> ../{traj_link} ")
                 try:
@@ -1406,7 +1447,7 @@ def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False,setup_only=
         else:
             geom_prefix = '../' + geom_prefix + '/opt'
         geom_prefix = sub_solu_solv_names(geom_prefix,mltraj.seed,all_solutes,all_solvents)
-        for geomfile in [seed_state_str+suffix,solu+suffix,solv+suffix]:
+        for geomfile in [seed_state_str+suffix,solu+suffix] + ([solv+suffix] if solv is not None else []):
             geomfile_in = geom_prefix+'/'+geomfile
             if path.isfile(geomfile_in) or path.islink(geomfile_in):
                 if not path.isfile(geomfile):
@@ -1776,7 +1817,7 @@ def spectra_driver(all_solutes,all_solvents,task,warp_params=None,cluster_spectr
         if base_path not in all_paths and task.files is None:
             if not path.exists(exc_path):
                 print(f'\nSkipping Spectra for: {solusolvstr}')
-                print(f'Directory {exc_path} not found')
+                print(f'# Directory {exc_path} not found')
                 continue
             else:
                 chdir(exc_path)

@@ -15,18 +15,23 @@ from copy import deepcopy
 
 gnu_parallel_declarations = (f'NJOBS=$((${{SLURM_NTASKS}}/${{TASKS_PER_PROG}}))\n' +
     f'PARALLEL_OPTS="-N 1 --delay .5 -j ${{NJOBS}} --joblog parallel-${{SLURM_JOBID}}.log"\n' )
-gnu_parallel_command = "seq $SLURM_ARRAY_TASK_ID $(($SLURM_ARRAY_TASK_ID+99)) | parallel $PARALLEL_OPTS 'export SLURM_ARRAY_TASK_ID={}; python"
+# pipefail inside each parallel job, so parallel's exit status counts failures of python (not tee)
+gnu_parallel_command = "seq $SLURM_ARRAY_TASK_ID $(($SLURM_ARRAY_TASK_ID+99)) | parallel $PARALLEL_OPTS 'set -o pipefail; export SLURM_ARRAY_TASK_ID={}; python"
 
+# Run every step of the loop, but exit non-zero if any step failed (so afterok dependencies work)
 bash_loop_declarations = (f"""
 SMAX=5
 istart=$SLURM_ARRAY_TASK_ID
 iend=$(($SLURM_ARRAY_TASK_ID+SMAX))
+loop_status=0
 for ((i=istart;i<iend;i++)); do
 export SLURM_ARRAY_TASK_ID=$i
 """)
 
 bash_loop_endmatter = ("""
+step_status=$?; [ $step_status -ne 0 ] && loop_status=$step_status
 done
+exit $loop_status
 """)
 
 nanosim_1node = {'partition': 'nanosim',
@@ -153,6 +158,7 @@ def get_default_script_settings(wrapper):
     from esteem.wrappers.onetep import OnetepWrapper
     from esteem.wrappers.nwchem import NWChemWrapper
     from esteem.wrappers.orca import ORCAWrapper
+    from esteem.wrappers.openqp import OpenQPWrapper
     from esteem.wrappers.physnet import PhysNetWrapper
     from esteem.wrappers.mace import MACEWrapper
     from esteem.wrappers.amber import AmberWrapper
@@ -168,7 +174,7 @@ def get_default_script_settings(wrapper):
             script_settings = deepcopy(nanosimd_8mpi)
         elif "stan" in host:
             script_settings = deepcopy(nanosim_1node)
-        if isinstance(wrapper,ORCAWrapper):
+        if isinstance(wrapper,(ORCAWrapper,OpenQPWrapper)):
             wrapper.setup()
             script_settings['declarations'] = script_settings['declarations'] + bash_loop_declarations
             script_settings['endmatter'] = script_settings['endmatter'] + bash_loop_endmatter
@@ -190,7 +196,7 @@ def get_default_script_settings(wrapper):
             script_settings = deepcopy(avon_1gpu)
         if isinstance(wrapper,MACEWrapper):
             script_settings = deepcopy(avon_1gpu)
-        if isinstance(wrapper,ORCAWrapper):
+        if isinstance(wrapper,(ORCAWrapper,OpenQPWrapper)):
             script_settings = deepcopy(avon_1node_gnu)
             script_settings['declarations'] = script_settings['declarations'] + bash_loop_declarations
             script_settings['endmatter'] = script_settings['endmatter'] + bash_loop_endmatter
@@ -213,7 +219,7 @@ def get_default_script_settings(wrapper):
             script_settings = deepcopy(sulis_1gpu)
         if isinstance(wrapper,MACEWrapper):
             script_settings = deepcopy(sulis_1gpu)
-        if isinstance(wrapper,ORCAWrapper):
+        if isinstance(wrapper,(ORCAWrapper,OpenQPWrapper)):
             script_settings = deepcopy(sulis_1node)
             script_settings['declarations'] = script_settings['declarations'] + bash_loop_declarations
             script_settings['endmatter'] = script_settings['endmatter'] + bash_loop_endmatter
@@ -349,7 +355,8 @@ def make_sbatch(seed,task='',**kwargs):
         slurm_num_threads = kwargs['num_threads']
     else:
         slurm_num_threads = slurm_ncpu
-    slurm_declarations = (f'\nexport OMP_NUM_THREADS={slurm_num_threads}\n'
+    # pipefail: the job's exit status is that of the command, not of '| tee', so afterok works
+    slurm_declarations = (f'\nset -o pipefail\nexport OMP_NUM_THREADS={slurm_num_threads}\n'
                           + slurm_declarations +
                           f'[ ! -z "$SLURM_ARRAY_TASK_ID" ] && export LOGSUFFIX="_"$SLURM_ARRAY_TASK_ID\n')
     if 'postfix' in kwargs:

@@ -133,7 +133,7 @@ class ezFCFWrapper():
     def read(self):
         results_file = f"{self.xml_filename}.spectrum_dushinsky"
         if not self.results_exist():
-            print(f"Results file {results_file} not found")
+            print(f"# Results file {results_file} not found")
             #raise Exception(f"Results file {results_file} not found")
         try:
             spec = np.loadtxt(results_file,usecols=(0,1))

@@ -47,7 +47,8 @@ class MLTrainingTask:
         for arg in vars(args):
             setattr(self,arg,getattr(args,arg))
             
-    def get_trajnames(self,prefix=""):
+    def get_which_trajs(self,prefix=""):
+        """Returns the trajectory labels and targets used for training (or validation, if 'valid' is in prefix)"""
         all_trajs = get_trajectory_list(self.ntraj)
         if 'valid' in prefix:
             which_trajs = self.which_trajs_valid
@@ -62,6 +63,10 @@ class MLTrainingTask:
             for trajname in which_trajs:
                 if trajname not in all_trajs:
                     raise Exception("Invalid trajectory name: ",trajname)
+        return which_trajs,which_targets
+
+    def get_trajnames(self,prefix=""):
+        which_trajs,which_targets = self.get_which_trajs(prefix)
         trajstem = self.wrapper.calc_filename(self.seed,self.target,prefix=self.calc_prefix,suffix="")
         trajnames = [f'{trajstem}{s}_{self.traj_suffix}.traj' for s in which_trajs]
 
