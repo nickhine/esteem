@@ -11,8 +11,8 @@ Supported:
     * ground-state RHF/RKS energies and forces (target None; also target 0 if
       mrsf_ground is False)
     * MRSF-TDDFT energies and forces for any set of states (target int, or list; S0
-      is target 0), using a triplet ROHF reference. OpenQP computes one state gradient per run,
-      so forces for several states take one run per state.
+      is target 0), using a triplet ROHF reference. Forces for several states come from
+      one run, which exports each state's gradient to {label}.grad_<state>.
     * implicit solvent (PCM, ddX backend) for energies only: OpenQP's PCM does not
       yet provide gradients, so requesting forces in solvent raises NotImplementedError
     * gas-phase geometry optimisation of one state (OpenQP's runtype=optimize)
@@ -92,7 +92,12 @@ class OpenQPWrapper():
             lines += [f"type={'rhf' if mult == 1 else 'rohf'}", f"multiplicity={mult}"]
         lines.append("")
         if grad_state is not None:
-            lines += ["[properties]", f"grad={grad_state}", ""]
+            states = grad_state if isinstance(grad_state, list) else [grad_state]
+            lines += ["[properties]", "grad=" + ",".join(str(s) for s in states)]
+            if len(states) > 1:
+                # The JSON holds only one gradient: export writes each to {label}.grad_<state>
+                lines += ["export=true", f"title={label}"]
+            lines.append("")
         if opt_state is not None:
             lines += ["[optimize]", f"istate={opt_state}", ""]
         if solvent is not None:
@@ -160,18 +165,21 @@ class OpenQPWrapper():
             energies = [self._state_energy(results, t, mrsf) for t in targets]
             f_all = None
         else:
-            # One gradient run per state (MRSF state numbering starts at 1 for S0)
-            energies, f_all = [], []
-            for t in targets:
-                run_label = f"{label}_grad{t}" if len(targets) > 1 else label
-                results = self._read_json(run_label) if readonly else None
-                if results is None:
-                    self._write_input(model, run_label, basis, xc, charge, spin, "grad",
-                                      mrsf_nstate=nstate, grad_state=(t+1 if mrsf else None),
-                                      solvent=solvent)
-                    results = self._run(run_label)
-                energies.append(self._state_energy(results, t, mrsf))
-                f_all.append(-np.array(results['grad']).reshape(-1, 3)*Hartree/Bohr)
+            # One run gives the gradients of every target (MRSF state numbering starts at 1 for S0)
+            grad_states = [t+1 for t in targets] if mrsf else None
+            if grad_states is not None and len(grad_states) == 1:
+                grad_states = grad_states[0]
+            results = self._read_json(label) if readonly else None
+            if results is None:
+                self._write_input(model, label, basis, xc, charge, spin, "grad",
+                                  mrsf_nstate=nstate, grad_state=grad_states, solvent=solvent)
+                results = self._run(label)
+            energies = [self._state_energy(results, t, mrsf) for t in targets]
+            if isinstance(grad_states, list):
+                f_all = [-np.loadtxt(f"{label}.grad_{s}").reshape(-1, 3)*Hartree/Bohr
+                         for s in grad_states]
+            else:
+                f_all = [-np.array(results['grad']).reshape(-1, 3)*Hartree/Bohr]
 
         if isinstance(target, list):
             e_calc = np.array(energies)
