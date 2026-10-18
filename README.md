@@ -18,6 +18,7 @@ train a Machine Learned Interatomic Potential for Theoretical Spectroscopy.
 
 ## Codes which can be interfaced with (all optional):
 * ORCA (>= 5.0.2)
+* OpenQP
 * NWChem
 * AMBER
 * LAMMPS
