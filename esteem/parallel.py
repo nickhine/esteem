@@ -158,6 +158,7 @@ def get_default_script_settings(wrapper):
     from esteem.wrappers.onetep import OnetepWrapper
     from esteem.wrappers.nwchem import NWChemWrapper
     from esteem.wrappers.orca import ORCAWrapper
+    from esteem.wrappers.openqp import OpenQPWrapper
     from esteem.wrappers.physnet import PhysNetWrapper
     from esteem.wrappers.mace import MACEWrapper
     from esteem.wrappers.amber import AmberWrapper
@@ -173,7 +174,7 @@ def get_default_script_settings(wrapper):
             script_settings = deepcopy(nanosimd_8mpi)
         elif "stan" in host:
             script_settings = deepcopy(nanosim_1node)
-        if isinstance(wrapper,ORCAWrapper):
+        if isinstance(wrapper,(ORCAWrapper,OpenQPWrapper)):
             wrapper.setup()
             script_settings['declarations'] = script_settings['declarations'] + bash_loop_declarations
             script_settings['endmatter'] = script_settings['endmatter'] + bash_loop_endmatter
@@ -195,7 +196,7 @@ def get_default_script_settings(wrapper):
             script_settings = deepcopy(avon_1gpu)
         if isinstance(wrapper,MACEWrapper):
             script_settings = deepcopy(avon_1gpu)
-        if isinstance(wrapper,ORCAWrapper):
+        if isinstance(wrapper,(ORCAWrapper,OpenQPWrapper)):
             script_settings = deepcopy(avon_1node_gnu)
             script_settings['declarations'] = script_settings['declarations'] + bash_loop_declarations
             script_settings['endmatter'] = script_settings['endmatter'] + bash_loop_endmatter
@@ -218,7 +219,7 @@ def get_default_script_settings(wrapper):
             script_settings = deepcopy(sulis_1gpu)
         if isinstance(wrapper,MACEWrapper):
             script_settings = deepcopy(sulis_1gpu)
-        if isinstance(wrapper,ORCAWrapper):
+        if isinstance(wrapper,(ORCAWrapper,OpenQPWrapper)):
             script_settings = deepcopy(sulis_1node)
             script_settings['declarations'] = script_settings['declarations'] + bash_loop_declarations
             script_settings['endmatter'] = script_settings['endmatter'] + bash_loop_endmatter
