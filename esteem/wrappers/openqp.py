@@ -74,7 +74,8 @@ class OpenQPWrapper():
         lines += [f"charge={charge}", f"runtype={runtype}", f"basis={basis.lower()}",
                   f"functional={xc.lower()}",
                   f"method={'tdhf' if mrsf_nstate is not None else 'hf'}", "",
-                  "[guess]", f"type={self.guess}", "",
+                  # save_mol makes OpenQP write the {label}.json results file read below
+                  "[guess]", f"type={self.guess}", "save_mol=true", "",
                   "[scf]"]
         if mrsf_nstate is not None:
             # MRSF-TDDFT uses a triplet ROHF reference
