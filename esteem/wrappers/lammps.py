@@ -122,14 +122,14 @@ class LAMMPSWrapper():
                 nproc_cmd = f'-np {nprocs}'
                 mpirun = 'mpirun'
             environ["ASE_LAMMPSRUN_COMMAND"] = f'{mpirun} {nproc_cmd} {lammps_cmd}'
-             # PREFIX.nwi >> PREFIX.nwo 2> PREFIX.err
+            # PREFIX.nwi >> PREFIX.nwo 2> PREFIX.err
 
     def load(self, seed, target=None, prefix="", suffix="", **kwargs):
         """
         Loads an existing AMP Calculator and converts it into a PROPhet-LAMMPS calculator
 
         seed: str
-        
+
         target: int
 
         suffix: str
@@ -166,7 +166,7 @@ class LAMMPSWrapper():
         model: ASE Atoms
 
         seed: str
-        
+
         suffix: str
 
         dummy: str
@@ -208,9 +208,9 @@ class LAMMPSWrapper():
         model: ASE Atoms
 
         seed: str
-        
+
         target: int
-        
+
         suffix: str
 
         md_steps: int
@@ -269,7 +269,7 @@ class LAMMPSWrapper():
         model: ASE Atoms
 
         seed: str
-        
+
         suffix: str
 
         dummy: str
@@ -317,7 +317,10 @@ class LAMMPSWrapper():
         # irest = 0 (new simulation)
 
         # Load the appropriate Calculator
-        target = 0; suffix = "3x15_R8.0"; prefix = '../'; calc_seed = 'cate'
+        target = 0
+        suffix = "3x15_R8.0"
+        prefix = '../'
+        calc_seed = 'cate'
         calc_ml = self.load(calc_seed, target, prefix=prefix, suffix=suffix)
 
         calc_ml.set(**self.lammps_params_amberconv)

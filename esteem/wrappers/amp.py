@@ -35,7 +35,7 @@ class AMPWrapper():
         Loads an existing AMP Calculator
 
         seed: str
-        
+
         target: int
 
         suffix: str
@@ -57,7 +57,7 @@ class AMPWrapper():
         Runs training for AMP ASE calculator using an input trajectory as training points
 
         seed: str
-        
+
         target: int
 
         suffix: str
@@ -123,9 +123,9 @@ class AMPWrapper():
         model: ASE Atoms
 
         seed: str
-        
+
         calc_params: dict
-        
+
         md_steps: int
 
         md_timestep: float
@@ -189,7 +189,7 @@ class AMPWrapper():
         model: ASE Atoms
 
         seed: str
-        
+
         calc_params: dict
 
         dummy: str
@@ -235,11 +235,11 @@ class AMPWrapper():
              temp=300, writeonly=False, readonly=False, continuation=False, cleanup=True):
         """
         Runs a Vibrational Frequency calculation with the AMP ASE calculator
-        
+
         model_opt: ASE Atoms
 
         seed: str
-        
+
         suffix: str
 
         dummy: str
@@ -249,7 +249,7 @@ class AMPWrapper():
         target: int or None
 
         solvent: str or None
-        
+
         temp: float
 
         readonly: bool
@@ -284,7 +284,7 @@ class AMPWrapper():
         model: ASE Atoms
 
         seed: str
-        
+
         suffix: str
 
         dummy: str

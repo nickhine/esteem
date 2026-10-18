@@ -11,6 +11,8 @@ import string
 from ase.io.trajectory import Trajectory
 
 from esteem.trajectories import merge_traj, get_trajectory_list
+import numpy as np
+from esteem.trajectories import compare_traj_to_traj, atom_energy
 
 
 class MLTestingTask:
@@ -170,7 +172,7 @@ class MLTestingTask:
         trajout = Trajectory(trajout_file, 'w')
         targ = 0
         if targ == 0:
-                ref_solu_t = ref_solu
+            ref_solu_t = ref_solu
         else:
             ref_solu_t = f'{ref_solu}_{targstr(targ)}'
         ref_mol_dir = self.ref_mol_dir.replace("{targ}", targstr(targ))
@@ -249,9 +251,6 @@ class MLTestingTask:
 
 
 # # Comparison of results from trajectory to calculator
-
-import numpy as np
-from esteem.trajectories import compare_traj_to_traj, atom_energy
 
 
 def compare_wrapper_to_traj(wrapper, calc_params, trajin, trajout_file):

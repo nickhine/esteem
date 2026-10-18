@@ -11,31 +11,31 @@ from shutil import copyfile
 
 
 def make_diff_trajs(target_dict, which_targets, trajnames):
-     which_diff = target_dict['diff']
-     # Split the strings either side of the '_m_' separator (short for "minus")
-     if '_m_' in which_diff:
-         diff_targets = which_diff.split('_m_')
-     else:
-         raise Exception(f"Invalid difference target string: {which_diff}. Expected format: 'target1_m_target2'")
-     trajnames_diff = []
-     itarget = diff_targets[0]
-     jtarget = diff_targets[1]
-     # Create lists of the trajectories for each of these targets
-     itrajs = [traj for traj, targ in zip(trajnames, which_targets) if targ == itarget]
-     jtrajs = [traj for traj, targ in zip(trajnames, which_targets) if targ == jtarget]
-     print(f'# Calling diff_traj with {itarget} {jtarget} {trajnames}')
-     assert (len(itrajs) == len(jtrajs))
-     # iterate over both lists simultaneously
-     for itraj, jtraj in zip(itrajs, jtrajs):
-         # Create new name for output trajectory by splitting on concatenation
-         # of target names and substituting the last instance with "diff"
-         ktraj = 'diff'.join(itraj.rsplit(f'{jtarget}{itarget}', 1))
-         print(f'# Calling diff_traj with {itraj} {jtraj} {ktraj}')
-         # Process trajectories to write difference trajectory
-         diff_traj(itraj, jtraj, ktraj)
-         # Store the name of the difference trajectory for later use
-         trajnames_diff.append(ktraj)
-     return trajnames_diff
+    which_diff = target_dict['diff']
+    # Split the strings either side of the '_m_' separator (short for "minus")
+    if '_m_' in which_diff:
+        diff_targets = which_diff.split('_m_')
+    else:
+        raise Exception(f"Invalid difference target string: {which_diff}. Expected format: 'target1_m_target2'")
+    trajnames_diff = []
+    itarget = diff_targets[0]
+    jtarget = diff_targets[1]
+    # Create lists of the trajectories for each of these targets
+    itrajs = [traj for traj, targ in zip(trajnames, which_targets) if targ == itarget]
+    jtrajs = [traj for traj, targ in zip(trajnames, which_targets) if targ == jtarget]
+    print(f'# Calling diff_traj with {itarget} {jtarget} {trajnames}')
+    assert (len(itrajs) == len(jtrajs))
+    # iterate over both lists simultaneously
+    for itraj, jtraj in zip(itrajs, jtrajs):
+        # Create new name for output trajectory by splitting on concatenation
+        # of target names and substituting the last instance with "diff"
+        ktraj = 'diff'.join(itraj.rsplit(f'{jtarget}{itarget}', 1))
+        print(f'# Calling diff_traj with {itraj} {jtraj} {ktraj}')
+        # Process trajectories to write difference trajectory
+        diff_traj(itraj, jtraj, ktraj)
+        # Store the name of the difference trajectory for later use
+        trajnames_diff.append(ktraj)
+    return trajnames_diff
 
 
 class MLTrainingTask:

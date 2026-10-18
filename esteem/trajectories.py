@@ -96,9 +96,9 @@ def generate_md_trajectory(model, seed, traj_target, traj_label, traj_suffix, tr
                            stop_stde_thresh=None):
     """
     Runs equilibration followed by statistics generation MD for a given model.
-    
+
     This generic function gets called by both AIMD and by MLMD.
-    
+
     model: ASE Atoms
         Initial geometry for the MD trajectory
     seed: str
@@ -405,7 +405,8 @@ def generate_md_trajectory(model, seed, traj_target, traj_label, traj_suffix, tr
             readonly = False
             if path.isfile(steplabel + '.out') or path.isfile(steplabel + '.nwo'):
                 readonly = True
-            energy = None; forces = None;
+            energy = None
+            forces = None
             if isinstance(snap_calc_params['target'], dict):
                 snap_calc_params['calc_head'] = snap_calc_params['target'][targ]
                 model.calc.atoms = None
@@ -429,7 +430,7 @@ def generate_md_trajectory(model, seed, traj_target, traj_label, traj_suffix, tr
             if isinstance(energy, list) or isinstance(energy, np.ndarray):
                 energy = energy[0]
             if len(all_targets) > 1:
-                 print("SP: ", step, i, targ, energy, model.positions[0])
+                print("SP: ", step, i, targ, energy, model.positions[0])
             outtraj[targ].write(model)
             prev_targ = targ
             if isinstance(all_targets, dict):
@@ -563,7 +564,7 @@ def find_initial_geometry(seed, geom_opt_func=None, calc_params={}, which_traj=N
     """
     Obtains a suitable initial geometry for the current seed and state.
     Optimises it if not present.
-    
+
     seed: str
         String indicating name of molecule, used to find xyz file
     geom_opt_func: function
@@ -992,7 +993,8 @@ def get_trajectory_list(ntraj):
     Currently ABCDEDFGHIJKLMNOPQRSTUVWXYZ (26)
     then uses AA,AB,...,ZZ (26^2)
     """
-    import itertools, string
+    import itertools
+    import string
     extras = []
     if ntraj > 26 * 27:
         raise Exception('get_trajectory_list cannot yet handle more than 26*27 trajectories')
@@ -1193,7 +1195,7 @@ def plot_diff(e_x, e_y, rms_fd, xlabel=None, ylabel=None, clabel=None, stats={},
 def compare_traj_to_traj(trajx, trajy, plot_func=plot_diff, plot_file=None, xlabel=None, ylabel=None, clabel=None):
     """
     Compares two trajectories to each other and calculates statistics for how much they differ in energy and force
-    
+
     trajx: ASE Trajectory
         Trajectory whose energy is plotted along x-axis
     trajy: ASE Trajectory
@@ -1241,7 +1243,9 @@ def compare_traj_to_traj(trajx, trajy, plot_func=plot_diff, plot_file=None, xlab
         max_fd.append(np.max(np.sqrt((f_x[-1] - f_y[-1])**2)))
 
     # Calculate Root Mean Square energy error
-    e_x = np.array(e_x); e_y = np.array(e_y); nat = np.array(nat)
+    e_x = np.array(e_x)
+    e_y = np.array(e_y)
+    nat = np.array(nat)
     if e_y.ndim == 2:
         mean_e_y = np.mean(e_y, axis=1)
         std_e_y = np.std(e_y, axis=1)

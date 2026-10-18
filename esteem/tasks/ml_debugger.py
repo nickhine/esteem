@@ -36,7 +36,8 @@ class MLDebugger:
     def reorder_frame(self, t, i, nat, nmol, rad, keep_idx=None, keep_solute=False, recenter=False):
 
         from esteem.tasks.clusters import delete_distant_molecules
-        nat_solu = self.nat_solu; nat_solv = self.nat_solv
+        nat_solu = self.nat_solu
+        nat_solv = self.nat_solv
         solu = t[0:self.nat_solu].copy()
         solv = t[nat_solu + i * nat_solv:nat_solu + (i + 1) * nat_solv].copy()
         del t[list(range(0, nat_solu))]

@@ -125,7 +125,7 @@ class ezFCFWrapper():
         errorcode = subprocess.call(ezfcf_command, shell=True)
         if errorcode:
             print(f'ezFCF process failed with errorcode: {errorcode}')
-             # aise Exception(f'ezFCF process failed with errorcode: {errorcode}')
+            # raise Exception(f'ezFCF process failed with errorcode: {errorcode}')
 
     def results_exist(self):
         from os import path

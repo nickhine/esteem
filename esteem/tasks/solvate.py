@@ -202,7 +202,9 @@ class SolvateTask:
             density = self.init_density * units.kg * 0.001 / (units.m * 0.01)**3
             self.boxsize = (mass / density)**(1 / 3)
             print(self.boxsize)
-        pd = 1.2; bs = self.boxsize; rg = bs / 4
+        pd = 1.2
+        bs = self.boxsize
+        rg = bs / 4
         for i, seed in enumerate([self.solute, self.solvent]):
             # Load molecular structure from .xyz file
             component = mda.Universe(f'../{seed}.xyz')

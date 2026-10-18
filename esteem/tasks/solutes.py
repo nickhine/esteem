@@ -438,7 +438,10 @@ class SolutesTask:
                     sol_opt_rota.append(sol_opt.copy())
                     flip = [(rota & (2**(len(ijkl) - i - 1))) >> (len(ijkl) - i - 1) for i in range(len(ijkl))]
                     for oH in range(len(ijkl)):
-                        i = ijkl[oH][0]; j = ijkl[oH][1]; k = ijkl[oH][2]; l = ijkl[oH][3];
+                        i = ijkl[oH][0]
+                        j = ijkl[oH][1]
+                        k = ijkl[oH][2]
+                        l = ijkl[oH][3]
                         if flip[oH]:
                             sol_opt_rota[rota].set_dihedral(l, k, j, i, 0)
                     label = 'rota' + repr(rota).zfill(3)

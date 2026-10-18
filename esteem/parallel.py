@@ -11,6 +11,7 @@ Settings and script-writers to run ESTEEM tasks in serial or parallel
 
 
 from copy import deepcopy
+from os import environ
 
 gnu_parallel_declarations = (f'NJOBS=$((${{SLURM_NTASKS}}/${{TASKS_PER_PROG}}))\n' +
                              f'PARALLEL_OPTS="-N 1 --delay .5 -j ${{NJOBS}} --joblog parallel-${{SLURM_JOBID}}.log"\n')
@@ -253,12 +254,12 @@ def get_default_script_settings(wrapper):
 def make_sbatch(seed, task='', **kwargs):
     """
     Writes a SLURM sbatch script for a task
-    
+
     task: str
         Name of the task to be performed
     kwargs: dict of strings
         Many options to control script parameters, including possible keys:
-        
+
         ``account``, ``partition``, ``qos``, ``nodes``, ``ntask``, ``ncpu``,
         ``time``, ``mem``, ``execpath``, ``target``, ``jobname``
     """
@@ -385,12 +386,12 @@ def make_sbatch(seed, task='', **kwargs):
 def make_pbs(seed, dest='local', task='solutes', execpath='', ncpu=None, target=None):
     """
     Writes a PBS script for a task. Possibly out-of-date (not recently used)
-    
+
     task: str
         Name of the task to be performed
     kwargs: dict of strings
         Many options to control script parameters, including possible keys:
-        
+
         ``account``, ``partition``, ``nodes``, ``ntask``, ``ncpu``, ``time``, ``mem``,
         ``execpath``, ``target``, ``jobname``
     """
@@ -473,9 +474,6 @@ module load python-compute/3.6.0_gcc6.1.0
 # # Helper functions
 
 # In[ ]:
-
-
-from os import environ
 
 
 def get_array_task_id():

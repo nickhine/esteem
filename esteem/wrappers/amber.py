@@ -731,7 +731,7 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
                           topologyfile=f'{seed}.prmtop',
                           incoordfile='min.rst',
                           outcoordfile='heat.rst')
-                          # mdcoordfile='heat.mdcrd.nc')
+        # mdcoordfile='heat.mdcrd.nc')
         calc_heat.write_coordinates(model, 'min.rst')
         model.set_calculator(calc_heat)
         new_pe = model.get_potential_energy()
@@ -770,7 +770,7 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
                           topologyfile=f'{seed}.prmtop',
                           incoordfile='heat.rst',
                           outcoordfile='density.rst')
-                          # mdcoordfile='density.mdcrd.nc')
+        # mdcoordfile='density.mdcrd.nc')
         model.set_calculator(calc_dens)
 
         new_pe = model.get_potential_energy()
@@ -806,7 +806,7 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
                            topologyfile=seed + '.prmtop',
                            incoordfile='density.rst',
                            outcoordfile='equil.rst')
-                           # mdcoordfile='equil.mdcrd.nc')
+        # mdcoordfile='equil.mdcrd.nc')
         model.set_calculator(calc_equil)
 
         new_pe = model.get_potential_energy()

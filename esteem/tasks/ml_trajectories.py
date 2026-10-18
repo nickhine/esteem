@@ -27,7 +27,7 @@ class MLTrajTask:
     """
     Defines a task to use a Machine Learning calculator to generate
     Molecular Dynamics trajectories
-    
+
     The main routine is :meth:`esteem.tasks.ml_trajectories.run`
     """
 

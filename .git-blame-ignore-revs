@@ -3,3 +3,6 @@
 
 # Whitespace cleanup with autopep8
 f2fa012968b78e97875440dcc35b783d295b9f96
+
+# Style fixes: imports, one statement per line, indentation, docstring whitespace
+3a6f54688523a3ee382f7a82947b38c66567e89c

@@ -1,16 +1,16 @@
 from esteem import drivers, parallel
 from esteem.wrappers import amber, orca
 import glob
+from esteem.tasks.solutes import SolutesTask
+from esteem.tasks.solvate import SolvateTask
+from esteem.tasks.clusters import ClustersTask
+from esteem.tasks.spectra import SpectraTask
 
 # List solutes and solvents and get default arguments
 all_solutes = {'cate': 'catechol'}
 all_solvents = {'cycl': 'cyclohexane', 'meth': 'methanol'}
 all_solutes.update(all_solvents)
 
-from esteem.tasks.solutes import SolutesTask
-from esteem.tasks.solvate import SolvateTask
-from esteem.tasks.clusters import ClustersTask
-from esteem.tasks.spectra import SpectraTask
 
 solutes_task = SolutesTask()
 solvate_task = SolvateTask()
