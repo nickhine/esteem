@@ -8,13 +8,15 @@ Each calculation writes an OpenQP input file, runs the ``openqp`` command on it,
 and reads the results from the JSON file OpenQP writes next to its log.
 
 Supported:
-    * ground-state RHF/RKS energies and forces (target None or 0)
-    * MRSF-TDDFT energies and forces for any set of states (target int > 0, or list),
-      using a triplet ROHF reference. OpenQP computes one state gradient per run,
+    * ground-state RHF/RKS energies and forces (target None; also target 0 if
+      mrsf_ground is False)
+    * MRSF-TDDFT energies and forces for any set of states (target int, or list; S0
+      is target 0), using a triplet ROHF reference. OpenQP computes one state gradient per run,
       so forces for several states take one run per state.
     * implicit solvent (PCM, ddX backend) for energies only: OpenQP's PCM does not
       yet provide gradients, so requesting forces in solvent raises NotImplementedError
     * gas-phase geometry optimisation of one state (OpenQP's runtype=optimize)
+    * vertical MRSF excitation energies and oscillator strengths (excitations)
 
 Not yet supported: MD, dispersion corrections.
 """
@@ -45,6 +47,10 @@ class OpenQPWrapper():
                                 'dich': 8.93, 'cycl': 2.0165, 'diox': 2.25}
         self.pcm_backend = "ddx"
         self.pcm_model = "ddpcm"
+        # True: target 0 is the MRSF S0, so ground and excited states share one MRSF
+        # manifold. False: target 0 is a plain RHF/RKS ground state. target=None
+        # (eg isolated atoms, which have no triplet reference) is always plain SCF.
+        self.mrsf_ground = True
 
     def setup(self, nprocs=None, openqp_cmd=None):
         """Sets the number of OpenMP threads and the command used to run OpenQP"""
@@ -139,7 +145,8 @@ class OpenQPWrapper():
             raise NotImplementedError("# OpenQPWrapper: OpenQP's PCM does not yet provide gradients, "
                                       "so forces in implicit solvent are not available")
         targets = target if isinstance(target, list) else [0 if target is None else target]
-        mrsf = isinstance(target, list) or any(t > 0 for t in targets)
+        mrsf = target is not None and (self.mrsf_ground or isinstance(target, list)
+                                       or any(t > 0 for t in targets))
         nstate = max(targets) + 1 if mrsf else None
 
         if not forces:
@@ -205,7 +212,7 @@ class OpenQPWrapper():
         if isinstance(target, list):
             raise Exception("# OpenQPWrapper: geometry optimisation needs a single target")
         state = 0 if target is None else target
-        mrsf = state > 0
+        mrsf = target is not None and (self.mrsf_ground or state > 0)
         # OpenQP's optimiser writes opt.xyz (latest geometry, in Angstrom), opt_geom.xyz
         # (every step) and opt_status.txt into the run directory: keep them as {label}_opt*
         opt_files = {'opt.xyz': f"{label}_opt.xyz", 'opt_geom.xyz': f"{label}_opt_geom.xyz",
@@ -230,6 +237,43 @@ class OpenQPWrapper():
         from ase.calculators.singlepoint import SinglePointCalculator
         model_opt.calc = SinglePointCalculator(model_opt, energy=energy, forces=forces)
         return energy, forces, model_opt.positions
+
+    def excitations(self, model, label, calc_params={}, nroots=1, solvent=None, charge=0, spin=0,
+                    writeonly=False, readonly=False, continuation=False, cleanup=True,
+                    plot_homo=None, plot_lumo=None, plot_trans_den=None):
+        """
+        Vertical MRSF-TDDFT excitations from the S0 of the MRSF manifold
+
+        Returns (s_excit, energy) as the ORCA wrapper does: s_excit is a list of
+        (root, excitation energy in eV, oscillator strength) for roots 1..nroots, and
+        energy is the total MRSF S0 energy in eV. Oscillator strengths are None if
+        OpenQP did not write the transition dipoles. The plot_* arguments are ignored.
+        """
+        basis, xc, target, disp = self.unpack_params(calc_params)
+        if disp:
+            raise NotImplementedError("# OpenQPWrapper: dispersion corrections are not yet supported")
+        if readonly:
+            results = self._read_json(label)
+        else:
+            self._write_input(model, label, basis, xc, charge, spin, "energy",
+                              mrsf_nstate=nroots+1, solvent=solvent)
+            if writeonly:
+                return 0
+            results = self._run(label)
+        td = results.get('td_energies')
+        if td is None or len(td) < nroots+1:
+            raise Exception(f'# MRSF excitations not available in OpenQP results for {label}')
+        dip = results.get('td_trans_dipole')
+        s_excit = []
+        for root in range(1, nroots+1):
+            if td[root] is None or td[0] is None:
+                continue
+            de = td[root] - td[0]   # Hartree
+            osc = (2.0/3.0*de*float(np.sum(np.array(dip)[:, 0, root]**2))
+                   if dip is not None else None)
+            s_excit.append((root, de*Hartree, osc))
+            print(f'# Excitation {root}: {de*Hartree:10.5f} eV, f = {osc}')
+        return s_excit, self._state_energy(results, 0, True)
 
     def run_md(self, *args, **kwargs):
         raise NotImplementedError("# OpenQPWrapper: MD is not yet supported")
