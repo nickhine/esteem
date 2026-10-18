@@ -26,7 +26,7 @@ import subprocess
 from os import environ, path, replace
 
 import numpy as np
-from ase.units import Hartree, Bohr
+from ase.units import Hartree, Bohr, Debye
 
 
 class OpenQPWrapper():
@@ -51,6 +51,9 @@ class OpenQPWrapper():
         # manifold. False: target 0 is a plain RHF/RKS ground state. target=None
         # (eg isolated atoms, which have no triplet reference) is always plain SCF.
         self.mrsf_ground = True
+        # MRSF states solved for above the highest target, to make the Davidson solver
+        # more robust when states are close
+        self.mrsf_spare_roots = 1
 
     def setup(self, nprocs=None, openqp_cmd=None):
         """Sets the number of OpenMP threads and the command used to run OpenQP"""
@@ -102,6 +105,9 @@ class OpenQPWrapper():
             if len(states) > 1:
                 # The JSON holds only one gradient: export writes each to {label}.grad_<state>
                 lines += ["export=true", f"title={label}"]
+            if mrsf_nstate is not None:
+                # relaxed-density dipole of each gradient state, printed to {label}.log
+                lines.append("td_prop=true")
             lines.append("")
         if opt_state is not None:
             lines += ["[optimize]", f"istate={opt_state}", ""]
@@ -130,6 +136,21 @@ class OpenQPWrapper():
         with open(f"{label}.json") as f:
             return json.load(f)
 
+    def _read_state_dipoles(self, label):
+        """Relaxed MRSF state dipoles (e*Angstrom, about the centre of mass) from {label}.log,
+        keyed by OpenQP state number (S0 is 1). OpenQP prints them only with td_prop=true."""
+        dipoles = {}
+        state = None
+        with open(f"{label}.log") as f:
+            for line in f:
+                words = line.split()
+                if line.strip().startswith("Excited state index:"):
+                    state = int(words[-1])
+                elif words[:1] == ["D_ex"] and state is not None:
+                    dipoles[state] = np.array([float(w) for w in words[1:4]])*Debye
+                    state = None
+        return dipoles
+
     def _state_energy(self, results, state, mrsf):
         """Total energy (eV) of a state: for MRSF, reference energy + td_energies[state]"""
         if not mrsf:
@@ -146,8 +167,9 @@ class OpenQPWrapper():
         Runs a singlepoint calculation with OpenQP
 
         For a list of targets, returns arrays over targets (as the ORCA wrapper does).
-        Dipoles are not yet read from OpenQP, so None is returned in their place, and
-        likewise for the excitation spectrum (excitations=True with a list of targets).
+        Dipoles are the relaxed MRSF state dipoles, available only when forces are
+        calculated: otherwise they are NaN. The excitation spectrum (excitations=True
+        with a list of targets) is not read, so None is returned in its place.
         """
         basis, xc, target, disp = self.unpack_params(calc_params)
         if disp:
@@ -158,7 +180,7 @@ class OpenQPWrapper():
         targets = target if isinstance(target, list) else [0 if target is None else target]
         mrsf = target is not None and (self.mrsf_ground or isinstance(target, list)
                                        or any(t > 0 for t in targets))
-        nstate = max(targets) + 1 if mrsf else None
+        nstate = max(targets) + 1 + self.mrsf_spare_roots if mrsf else None
 
         if not forces:
             # One energy run gives every state
@@ -187,14 +209,34 @@ class OpenQPWrapper():
             else:
                 f_all = [-np.array(results['grad']).reshape(-1, 3)*Hartree/Bohr]
 
+        if mrsf:
+            # Energies (eV) of every MRSF state solved for, including spare roots, kept with
+            # the frame so the output trajectories record eg the S1-S2 gap near crossings
+            td = results.get('td_energies') or []
+            model.info['mrsf_energies'] = [float((results['energy'] + e)*Hartree) if e is not None
+                                           else float('nan') for e in td]
+            # S0->Sn transition dipoles (e*Angstrom) for n = 1, 2, ...: row n-1 is S0->Sn
+            tdm = results.get('td_trans_dipole')
+            if tdm is not None:
+                tdm = np.array(tdm)*Bohr
+                model.info['mrsf_trans_dipoles'] = [tdm[:, 0, n].tolist() for n in range(1, tdm.shape[1])]
+
+        d_all = [np.full(3, np.nan) for t in targets]
+        if dipole and forces and mrsf:
+            state_dipoles = self._read_state_dipoles(label)
+            missing = [t for t in targets if t+1 not in state_dipoles]
+            if missing:
+                raise Exception(f'# No OpenQP dipole for targets {missing} in {label}.log')
+            d_all = [state_dipoles[t+1] for t in targets]
+
         if isinstance(target, list):
             e_calc = np.array(energies)
             f_calc = np.array(f_all) if forces else None
-            d_calc = np.array([None]*len(targets)) if dipole else None
+            d_calc = np.array(d_all) if dipole else None
         else:
             e_calc = energies[0]
             f_calc = f_all[0] if forces else None
-            d_calc = None
+            d_calc = d_all[0] if dipole else None
         from ase.calculators.singlepoint import SinglePointCalculator
         model.calc = SinglePointCalculator(model, energy=energies[0],
                                            forces=(f_all[0] if forces else None))
@@ -238,7 +280,7 @@ class OpenQPWrapper():
         else:
             # istate numbers states as [properties] grad does: MRSF S0 is 1
             self._write_input(model_opt, label, basis, xc, charge, spin, "optimize",
-                              mrsf_nstate=(state+1 if mrsf else None),
+                              mrsf_nstate=(state+1+self.mrsf_spare_roots if mrsf else None),
                               opt_state=(state+1 if mrsf else 0))
             results = self._run(label)
             for src, dest in opt_files.items():
