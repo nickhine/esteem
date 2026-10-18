@@ -80,8 +80,9 @@ class ClustersTask:
                            'func': self.func}
             if self.calc_params == {}:
                 self.calc_params = calc_params
-        if ('nwo' in self.output or 'nwchem' in self.output or 'orca' in self.output):
-            # set default basis for NWChem/ORCA calculations:
+        if ('nwo' in self.output or 'nwchem' in self.output or 'orca' in self.output
+                or 'openqp' in self.output):
+            # set default basis for NWChem/ORCA/OpenQP calculations:
             calc_params = {'basis': self.basis,
                            'func': self.func,
                            'disp': self.disp,
@@ -278,7 +279,7 @@ class ClustersTask:
                     targets_str = f"state {target}"
             print(f'# Calculating {outputs} for {targets_str} in {self.output}.')
         # Main block for calculation of cluster energies and forces
-        if any(out in self.output.lower() for out in ['nw','orca','physnet','mace']):
+        if any(out in self.output.lower() for out in ['nw','orca','openqp','physnet','mace']):
             from esteem.trajectories import recalculate_trajectory
             seed = f'{self.solute}_{self.solvent}' if self.solvent is not None else self.solute
             traj_label = self.which_traj

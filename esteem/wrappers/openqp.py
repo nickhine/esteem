@@ -59,6 +59,11 @@ class OpenQPWrapper():
         if openqp_cmd is not None:
             self.openqp_cmd = openqp_cmd
 
+    def load(self, *args, **kwargs):
+        # Not used: as for ORCAWrapper, having load() makes recalculate_trajectory pass
+        # all targets to one singlepoint call, which returns arrays over targets
+        pass
+
     def get_completed_file_exts(self):
         return ['.json']
 
@@ -136,12 +141,13 @@ class OpenQPWrapper():
 
     def singlepoint(self, model, label, calc_params={}, solvent=None, charge=0, spin=0,
                     forces=False, dipole=False, continuation=False, readonly=False, calc=False,
-                    cleanup=True):
+                    excitations=False, cleanup=True):
         """
         Runs a singlepoint calculation with OpenQP
 
         For a list of targets, returns arrays over targets (as the ORCA wrapper does).
-        Dipoles are not yet read from OpenQP, so None is returned in their place.
+        Dipoles are not yet read from OpenQP, so None is returned in their place, and
+        likewise for the excitation spectrum (excitations=True with a list of targets).
         """
         basis, xc, target, disp = self.unpack_params(calc_params)
         if disp:
@@ -197,6 +203,8 @@ class OpenQPWrapper():
             res.append(f_calc)
         if dipole:
             res.append(d_calc)
+        if excitations and isinstance(target, list):
+            res.append(None)
         if calc:
             res.append(model.calc)
         return res
