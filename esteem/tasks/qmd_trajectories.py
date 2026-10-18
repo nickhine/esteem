@@ -33,9 +33,9 @@ class QMDTrajTask:
         Results, including a trajectory file with the stored snapshots, are saved to files
         appending ``args.suffix`` to the seed and state, for use in future runs.
 
-        The run is divided into equilibration (``args.nequil`` runs of ``args.qmd_steps`` MD steps
-        each, with timestep ``args.qmd_timestep``), then snapshot generation (``args.nsnap`` runs of
-        ``args.qmd_steps`` MD steps each, with timestep ``args.qmd_timestep``).
+        The run is divided into equilibration (``args.nequil`` runs of ``args.md_steps`` MD steps
+        each, with timestep ``args.md_timestep``), then snapshot generation (``args.nsnap`` runs of
+        ``args.md_steps`` MD steps each, with timestep ``args.md_timestep``).
 
         A thermostat (wrapper-dependent) at temperature ``args.temp`` means we stay in the NVT ensemble.
 
@@ -46,7 +46,7 @@ class QMDTrajTask:
         args: namespace or class
             Full set of arguments to the QMD_Trajectories task - see below for a listing.
 
-            Key arguments include ``basis``, ``func``, ``qmd_timestep``, ``qmd_steps``, ``nsnap``,
+            Key arguments include ``basis``, ``func``, ``md_timestep``, ``md_steps``, ``nsnap``,
             ``nequil``, ``temp``, ``constraints``
 
             Generate with a call to qmd_trajectories.make_parser()
@@ -117,9 +117,9 @@ class QMDTrajTask:
 
             # Pass in routine to actually run MD into generic Snapshot MD driver
             generate_md_trajectory(model,self.seed,self.target,traj_label,self.traj_suffix,
-                                   wrapper=self.wrapper,count_snaps=self.nsnap,count_equil=self.nequil,
-                                   md_steps=self.qmd_steps,md_timestep=self.qmd_timestep,md_friction=None,
-                                   temp=self.temp,calc_params=calc_params,
+                                   traj_wrapper=self.wrapper,count_snaps=self.nsnap,count_equil=self.nequil,
+                                   md_steps=self.md_steps,md_timestep=self.md_timestep,md_friction=None,
+                                   temp=self.temp,traj_calc_params=calc_params,
                                    solvent=self.solvent,charge=charge,constraints=self.constraints,
                                    store_full_traj=True)
 

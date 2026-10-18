@@ -1,17 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
-
-
 """Defines a task to test a Machine Learning calculator by comparing its results
 to those of an existing trajectory or set of trajectories"""
-
-
-# # Main Routine
-
-# In[ ]:
-
 
 # Load essential modules
 import sys
@@ -41,9 +32,7 @@ class MLTestingTask:
             if isinstance(which_trajs,dict):
                 which_trajs_dict = which_trajs
                 which_trajs = []
-                for w in which_trajs_dict:
-                    for v in which_trajs_dict[w]:
-                        which_trajs.append(v)
+                which_trajs = list(which_trajs_dict)
             for trajname in which_trajs:
                 if trajname not in all_trajs:
                     raise Exception("Invalid trajectory name: ",trajname)
@@ -83,6 +72,12 @@ class MLTestingTask:
             if "_" in which_trajs:
                 traj_suffix = which_trajs.split("_",1)[1]
                 which_trajs = which_trajs.split("_",1)[0]
+            traj_target = None
+            for traj in which_trajs:
+                if self.which_targets[traj] != traj_target and traj_target is not None:
+                    raise Exception("Non-matching targets in test trajectories")
+                traj_target = self.which_targets[traj]
+                print('# Target set to: ',traj_target)
             #for trajname in which_trajs:
             #    if trajname not in all_trajs:
             #        raise Exception("Invalid trajectory name:",trajname)
@@ -115,15 +110,19 @@ class MLTestingTask:
             print(f'# Writing merged input trajectory file {intrajfile}')
         merge_traj(trajnames,intrajfile)
         intraj = Trajectory(intrajfile)
-        # Load the calculator
-        print("# Loading Calculator")
+        # Set up the calculator parameters
+        print(f"# Loading Calculator with params: {self.calc_seed} {self.target} {self.calc_prefix} {self.calc_dir_suffix} {self.calc_suffix}")
+        #self.wrapper.calc = None
         calc_params = {'calc_seed': self.calc_seed,
                        'calc_suffix': self.calc_suffix,
                        'calc_dir_suffix': self.calc_dir_suffix,
                        'calc_prefix': f'../{self.calc_prefix}', # Testing will be run from subdirectory
-                       'target': self.target}
+                       'calc_head': traj_target,
+                       'target': self.target} # Run on specific target (calculator for all targets may be loaded if using multihead)
         if hasattr(self.wrapper,'update_atom_e'):
             self.wrapper.update_atom_e = True
+        # Load the calculator
+        #self.wrapper.load(self.calc_seed,self.target,'../'+self.calc_prefix,self.calc_suffix,self.calc_dir_suffix)
         output_traj = self.output_traj
         if output_traj is None:
             output_traj = calc_suffix + "_"+which_traj_str+"_test"
@@ -137,14 +136,14 @@ class MLTestingTask:
         # Open temporary trajectory for reading
         outtraj = Trajectory(outtrajfile)
         if self.ref_mol_dir is not None:
-            intrajfile = trajfn+"_"+calc_suffix+"_"+which_traj_str+'_refsub.traj'
-            self.subtract_reference_energies(intraj,intrajfile)
+            intrajfile_refsub = trajfn+"_"+calc_suffix+"_"+which_traj_str+'_refsub.traj'
+            self.subtract_reference_energies(intraj,intrajfile_refsub,traj_target)
             intraj.close()
-            intraj = Trajectory(intrajfile)
-            outtrajfile = trajfn+"_"+output_traj+'_refsub.traj'
-            self.subtract_reference_energies(outtraj,outtrajfile)
+            intraj = Trajectory(intrajfile_refsub)
+            outtrajfile_refsub = trajfn+"_"+output_traj+'_refsub.traj'
+            self.subtract_reference_energies(outtraj,outtrajfile_refsub,traj_target)
             outtraj.close()
-            outtraj = Trajectory(outtrajfile)
+            outtraj = Trajectory(outtrajfile_refsub)
             
         # Finally, plot comparison
         clabel = 'RMS Force component deviation (eV/Ang)'
@@ -155,8 +154,11 @@ class MLTestingTask:
         if self.cleanup: # optional cleanup
             os.remove(intrajfile)
             os.remove(outtrajfile)
+            if self.ref_mol_dir is not None:
+                os.remove(intrajfile_refsub)
+                os.remove(outtrajfile_refsub)
 
-    def subtract_reference_energies(self,trajin,trajout_file):
+    def subtract_reference_energies(self,trajin,trajout_file,traj_target):
         """Subtract reference energies from a trajectory to just get energy above reference zero"""
         from esteem.drivers import get_solu_solv_names
         from esteem.trajectories import targstr
@@ -179,6 +181,7 @@ class MLTestingTask:
                        'calc_suffix': self.calc_suffix,
                        'calc_dir_suffix': self.calc_dir_suffix,
                        'calc_prefix': f'../{self.calc_prefix}',
+                       'calc_head': traj_target,
                        'target': self.target}
         # Read in Reference E, f, p
         if ref_solv is not None:
@@ -247,11 +250,7 @@ class MLTestingTask:
 
 # # Comparison of results from trajectory to calculator
 
-# In[ ]:
-
-
 import numpy as np
-
 from esteem.trajectories import compare_traj_to_traj,atom_energy
     
 def compare_wrapper_to_traj(wrapper,calc_params,trajin,trajout_file):
@@ -270,7 +269,7 @@ def compare_wrapper_to_traj(wrapper,calc_params,trajin,trajout_file):
         err=False
         seed=f"{calc_params['calc_seed']}{i:4d}"
         
-        e_calc, f_calc, d_calc, calc_ml = wrapper.singlepoint(frame,seed,calc_params,
+        e_calc, f_calc, d_calc = wrapper.singlepoint(frame,seed,calc_params,
              forces=True,dipole=True)
 
         # Calculate RMS and Max force errors
@@ -285,7 +284,7 @@ def compare_wrapper_to_traj(wrapper,calc_params,trajin,trajout_file):
         if isinstance(calc_params["calc_suffix"],dict):
             print(f'{i:4d} {e_traj:12.5f} {np.mean(e_calc):12.5f} {np.std(e_calc):8.5f} {np.mean(e_traj-e_calc):8.5f} {np.mean(np.abs(e_traj-e_calc)):8.5f} {rms_fd:8.5f} {max_fd:8.5f}')
         else:
-            print('%4d   %12.5f %12.5f     %12.8f     %8.5f  %8.5f %8.5f' %
+            print('%4d   %14.5f %14.5f     %12.8f     %8.5f  %8.5f %8.5f' %
               (i, e_traj, e_calc, e_traj-e_calc, rms_fd,max_fd,rms_dd))
         
         # Assemble dictionary of properties to write to the output trajectory
@@ -301,8 +300,6 @@ def compare_wrapper_to_traj(wrapper,calc_params,trajin,trajout_file):
 
 
 # # Command-line driver
-
-# In[ ]:
 
 
 def get_parser():

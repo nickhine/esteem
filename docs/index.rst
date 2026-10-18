@@ -35,6 +35,7 @@ Acknowledgements: Some parts of ESTEEM are based on python scripting by members 
    installation.rst
    using_esteem.rst
    parallel_execution.rst
+   active_learning.rst
    examples.rst
    drivers.rst
    solutes.rst

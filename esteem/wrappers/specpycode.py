@@ -42,10 +42,12 @@ class SpecPyCodeWrapper():
                  solvent_reorg="0.0",
                  rootname="rootname",
                  input_filename="input_file",
+                 md_output_suffix="",
                  third_order_cumulant="TRUE",
                  num_steps=1000,
                  max_t=300.0,
                  correlation_length_3rd=300,
+                 cumulant_nongaussian_prefactor="FALSE",
                  decay_length=500,
                  num_trajs=0,
                  task="ABSORPTION",
@@ -64,10 +66,12 @@ class SpecPyCodeWrapper():
         self.solvent_model = solvent_model
         self.solvent_reorg = solvent_reorg
         self.rootname = rootname
+        self.md_output_suffix = md_output_suffix
         self.third_order_cumulant = third_order_cumulant
         self.num_steps = num_steps
         self.max_t = max_t
         self.correlation_length_3rd = correlation_length_3rd
+        self.cumulant_nongaussian_prefactor = cumulant_nongaussian_prefactor,
         self.decay_length = decay_length
         self.task = task
         self.temperature = temperature
@@ -88,10 +92,12 @@ class SpecPyCodeWrapper():
         self.args = {"SOLVENT_MODEL": str(self.solvent_model).upper(),
                      "SOLVENT_REORG": self.solvent_reorg,
                      "MD_ROOTNAME": self.rootname+"_",
+                     "MD_OUTPUT_SUFFIX": self.md_output_suffix,
                      "THIRD_ORDER_CUMULANT": str(self.third_order_cumulant).upper(),
                      "NUM_STEPS": self.num_steps,
                      "MAX_T": self.max_t,
                      "CORRELATION_LENGTH_3RD": self.correlation_length_3rd,
+                     "CUMULANT_NONGAUSSIAN_PREFACTOR": self.cumulant_nongaussian_prefactor,
                      "DECAY_LENGTH": self.decay_length,
                      "TASK": str(self.task).upper(),
                      "TEMPERATURE": self.temperature,
@@ -130,16 +136,16 @@ class SpecPyCodeWrapper():
     def results_exist(self):
         from os import path
         if self.method=="CUMULANT":
-            results_file = f"{self.rootname}_MD_cumulant_spectrum.dat"
+            results_file = f"{self.rootname}_{self.md_output_suffix}MD_cumulant_spectrum.dat"
         else:
-            results_file = f"{self.rootname}_MD_ensemble_spectrum.dat"
+            results_file = f"{self.rootname}_{self.md_output_suffix}MD_ensemble_spectrum.dat"
         return True if path.exists(results_file) else False
     
     def read(self):
         if self.method=="CUMULANT":
-            results_file = f"{self.rootname}_MD_cumulant_spectrum.dat"
+            results_file = f"{self.rootname}_{self.md_output_suffix}MD_cumulant_spectrum.dat"
         else:
-            results_file = f"{self.rootname}_MD_ensemble_spectrum.dat"
+            results_file = f"{self.rootname}_{self.md_output_suffix}MD_ensemble_spectrum.dat"
         if not self.results_exist():
             print(f"Results file {results_file} not found")
             #raise Exception(f"Results file {results_file} not found")

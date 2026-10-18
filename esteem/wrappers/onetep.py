@@ -86,6 +86,7 @@ class OnetepWrapper():
         self.paw = False
         self.pseudo_path = ""
         self.pseudo_suffix = ""
+        self.output = "onetep"
 
     def setup(self,nprocs=None,mthreads=None,onetep_cmd=None,mpirun=None,
               set_pseudo_path=None,set_pseudo_suffix=None):
@@ -292,7 +293,7 @@ class OnetepWrapper():
         else:
             gs_energy = model.get_potential_energy()
 
-        excitations = self.read_excitations(calc_on)
+        excitations = self.read_excitations(calc_on.label+'.out')
         energies = np.array([gs_energy]*(len(excitations)+1))
         energies[1:] = energies[1:] + excitations[:,1]
 
@@ -301,17 +302,12 @@ class OnetepWrapper():
 
         return excitations,energies
 
-    def read_excitations(self,calc,out=None):
+    def read_excitations(self,filename):
         
         import numpy as np
         from ase.units import Hartree
 
-        if out is None:
-            onetep_file = calc.label + '.out'
-            try:
-                out = open(onetep_file, 'r')
-            except IOError:
-                raise Exception('Could not open output file "%s"' % onetep_file)
+        out = open(filename, 'r')
         line = out.readline()
         excitations = []
         while line:
@@ -328,8 +324,7 @@ class OnetepWrapper():
                     excitations.append([nE,float(words[1])*Hartree,float(words[2])])
                     line = out.readline()
         excitations = np.array(excitations)
-        calc.results['excitations'] = excitations
-        return excitations
+        return excitations, None
 
     from os import path
     def cleanup(self,seed):

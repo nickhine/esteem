@@ -88,6 +88,7 @@ class PhysNetWrapper():
         self.atom_e = 0.0
         self.atom_energies = {}
         self.update_atom_e = False
+        self.output = "physnet"
     
     def calc_filename(self,seed,target,prefix='',suffix=''):
         if target is None or target == 0:

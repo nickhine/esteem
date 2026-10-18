@@ -1,24 +1,40 @@
 #!/usr/bin/env python
 # coding: utf-8
-
-# In[ ]:
-
-
 """Defines a task to train a Machine Learning calculator on a trajectory of snapshots
 by calling the train() function of the MLWrapper"""
 
-
-# # Main Routine
-
-# In[ ]:
-
-
 from esteem.trajectories import merge_traj, diff_traj, get_trajectory_list, targstr
-
 import sys
 import os
 import string
 from shutil import copyfile
+
+def make_diff_trajs(target_dict,which_targets,trajnames):
+     which_diff = target_dict['diff']
+     # Split the strings either side of the '_m_' separator (short for "minus")
+     if '_m_' in which_diff:
+         diff_targets = which_diff.split('_m_')
+     else:
+         raise Exception(f"Invalid difference target string: {which_diff}. Expected format: 'target1_m_target2'")
+     trajnames_diff = []
+     itarget = diff_targets[0]
+     jtarget = diff_targets[1]
+     # Create lists of the trajectories for each of these targets
+     itrajs = [traj for traj,targ in zip(trajnames,which_targets) if targ==itarget]
+     jtrajs = [traj for traj,targ in zip(trajnames,which_targets) if targ==jtarget]
+     print(f'# Calling diff_traj with {itarget} {jtarget} {trajnames}')
+     assert(len(itrajs)==len(jtrajs))
+     # iterate over both lists simultaneously
+     for itraj,jtraj in zip(itrajs,jtrajs):
+         # Create new name for output trajectory by splitting on concatenation
+         # of target names and substituting the last instance with "diff"
+         ktraj = 'diff'.join(itraj.rsplit(f'{jtarget}{itarget}', 1))
+         print(f'# Calling diff_traj with {itraj} {jtraj} {ktraj}')
+         # Process trajectories to write difference trajectory
+         diff_traj(itraj,jtraj,ktraj)
+         # Store the name of the difference trajectory for later use
+         trajnames_diff.append(ktraj)
+     return trajnames_diff
 
 class MLTrainingTask:
 
@@ -35,10 +51,13 @@ class MLTrainingTask:
         all_trajs = get_trajectory_list(self.ntraj)
         if 'valid' in prefix:
             which_trajs = self.which_trajs_valid
+            which_targets = self.which_targets_valid
         else:
             which_trajs = self.which_trajs
+            which_targets = self.which_targets
         if which_trajs is None:
             which_trajs = all_trajs
+            which_targets = [self.target]*len(which_trajs)
         else:
             for trajname in which_trajs:
                 if trajname not in all_trajs:
@@ -46,7 +65,7 @@ class MLTrainingTask:
         trajstem = self.wrapper.calc_filename(self.seed,self.target,prefix=self.calc_prefix,suffix="")
         trajnames = [f'{trajstem}{s}_{self.traj_suffix}.traj' for s in which_trajs]
 
-        return which_trajs,trajnames
+        return which_trajs,which_targets,trajnames
 
     # Main routine
     def run(self):
@@ -55,15 +74,19 @@ class MLTrainingTask:
         # Check input args are valid
         #validate_args(args)
 
-        trajfn = self.wrapper.calc_filename(self.seed,self.target,prefix=self.calc_prefix,suffix=self.traj_suffix)
+        # Get name of folder where calculator files live
+        dirname = self.wrapper.calc_filename(self.seed,self.target,prefix="",suffix=self.calc_dir_suffix)
 
         # If we need an atom trajectory, copy it from traj_suffix to calc_suffix:
         if hasattr(self.wrapper,'atom_energies'):
             atom_traj_file = f'{self.seed}_atoms_{self.traj_suffix}.traj'
             if os.path.isfile(atom_traj_file):
-                atom_calc_file = f'{self.seed}_atoms_{self.calc_suffix}.traj'
-                print(f'# Copying from {atom_traj_file} to {atom_calc_file} for atom energies')
-                copyfile(atom_traj_file,atom_calc_file)
+                atom_calc_file = f'{dirname}/{self.seed}_atoms_{self.calc_suffix}.traj'
+                if not os.path.isfile(atom_calc_file):
+                    print(f'# Copying from {atom_traj_file} to {atom_calc_file} for atom energies')
+                    copyfile(atom_traj_file,atom_calc_file)
+                else:
+                    print(f'# Using {atom_calc_file} for atom energies')
             else:
                 raise Exception(f'# Trajectory file {atom_traj_file} not found for atom energies')
 
@@ -71,37 +94,77 @@ class MLTrainingTask:
         prefs = [""]
         if self.which_trajs_valid is not None:
             prefs = ["","valid"]
-        for prefix in prefs:
-            if False: #'diff' in self.target:
-                which_trajs, trajnames = self.get_trajnames(prefix)
-                itarget = 0
-                jtarget = 1
-                for traj in trajnames:
-                    itraj = traj.replace("diff",targstr(itarget))
-                    jtraj = traj.replace("diff",targstr(jtarget))
-                    print('# Calling diff_traj with {itraj} {jtraj} {traj}')
-                    diff_traj(itraj,jtraj,traj)
-
-            # If all trajectories exist, merge them
-            which_trajs, trajnames = self.get_trajnames(prefix)
-            print(f'# Trajectories to merge: {trajnames}',flush=True)
-            if all([os.path.isfile(f) for f in trajnames]):
-                if all([os.path.getsize(f) > 0 for f in trajnames]):
-                    if prefix=="":
-                        trajfile = f'{trajfn}_{prefix}merged_{self.calc_suffix}.traj'
-                        merge_traj(trajnames,trajfile)
-                    if prefix=="valid":
-                        validfile = f'{trajfn}_{prefix}merged_{self.calc_suffix}.traj'
-                        merge_traj(trajnames,validfile)
-                    else:
-                        validfile=None
-
-                else:
-                    raise Exception('# Empty Trajectory file(s) found: ',
-                                    [f for f in trajnames if os.path.getsize(f)==0])
+            separate_valid = True
+        else:
+            separate_valid = False
+            valid_fraction = self.valid_fraction
+            if hasattr(self,'rand_seed'):
+                rand_seed = self.rand_seed
             else:
-                raise Exception('# Missing Trajectory files: ',
-                                [f for f in trajnames if not os.path.isfile(f)])
+                rand_seed = 123
+        trajfile_dict = {}
+        validfile_dict = {}
+        split_seed_dict = {}
+        for prefix in prefs:
+            # If all trajectories exist, merge them
+            which_trajs, which_targets, trajnames = self.get_trajnames(prefix)
+            target_dict = self.target
+            if not isinstance(self.target,dict):
+                target_dict = {self.target:str(self.target)}
+
+            # Special handling for difference trajectories
+            if 'diff' in target_dict:
+                trajnames_diff = make_diff_trajs(target_dict,which_targets,trajnames)
+            # Iterate over all targets
+            for target in target_dict:
+                targetstr = target_dict[target]
+                # Special handling for difference trajectories
+                if target == 'diff':
+                    trajnames_target = trajnames_diff
+                else:
+                    if isinstance(self.target,dict):
+                        # Create a list of the trajectories for this target
+                        trajnames_target = [traj for traj,targ in zip(trajnames,which_targets) if targ==targetstr]
+                    else:
+                        # If only one target, use all trajectories
+                        trajnames_target = trajnames
+                # Construct the base of the filename for the merged trajectory
+                trajfn = self.wrapper.calc_filename(self.seed,target,prefix=self.calc_prefix,suffix=self.traj_suffix)
+                print(f'# Trajectories to merge: {trajnames_target} for target {targetstr}',flush=True)
+                # Check that all the trajectories exist and are non-empty
+                if all([os.path.isfile(f) for f in trajnames]):
+                    if all([os.path.getsize(f) > 0 for f in trajnames]):
+                        if separate_valid:
+                            if prefix=="":
+                                # Merge the trajectories for training
+                                trajfile = f'{trajfn}_{prefix}merged_{self.calc_suffix}.traj'
+                                merge_traj(trajnames_target,trajfile)
+                            if prefix=="valid":
+                                # Merge the trajectories for validation
+                                validfile = f'{trajfn}_{prefix}merged_{self.calc_suffix}.traj'
+                                merge_traj(trajnames_target,validfile)
+                            else:
+                                validfile=None
+                        else:
+                            # Merge the trajectories for training and validation (splitting as required)
+                            pref = prefix
+                            trajfile = f'{trajfn}_{pref}merged_{self.calc_suffix}.traj'
+                            pref = 'valid'
+                            validfile = f'{trajfn}_{pref}merged_{self.calc_suffix}.traj'
+                            merge_traj(trajnames_target,trajfile,validfile,valid_fraction,
+                                       split_seed=rand_seed,split_seed_dict=split_seed_dict)
+
+                    else:
+                        raise Exception('# Empty Trajectory file(s) found: ',
+                                        [f for f in trajnames if os.path.getsize(f)==0])
+                else:
+                    raise Exception('# Missing Trajectory files: ',
+                                    [f for f in trajnames if not os.path.isfile(f)])
+                # Store the filename lists for later use in constructing heads dictionaries
+                if prefix=="":
+                    trajfile_dict[targetstr] = trajfile
+                if prefix=='valid' or not separate_valid:
+                    validfile_dict[targetstr] = validfile
             
         if self.reset_loss:
             if hasattr(self.wrapper,"reset_loss"):
@@ -110,7 +173,7 @@ class MLTrainingTask:
             else:
                 raise Exception("# Error: reset_loss == True, yet wrapper has no reset_loss function")
         # Train the ML calculator using this training data
-        calc = self.wrapper.train(seed=self.seed,trajfile=trajfile,validfile=validfile,target=self.target,
+        calc = self.wrapper.train(seed=self.seed,trajfile=trajfile_dict,validfile=validfile_dict,targets_in=self.target,
                                   prefix=self.calc_prefix,suffix=self.calc_suffix,dir_suffix=self.calc_dir_suffix,
                                   restart=self.restart,**self.train_params)
         return calc
@@ -141,19 +204,7 @@ class MLTrainingTask:
         parser.add_argument('--traj_links_valid','-V',default=None,type=dict,help='Targets for links to create for validation trajectories')
         parser.add_argument('--traj_links_test','-U',default=None,type=dict,help='Targets for links to create for testing trajectories')
         parser.add_argument('--cutoff','-d',default=6.5,type=float,help='Gaussian descriptor cutoff')
-        '''
-        parser.add_argument('--cores','-c',default=1,type=int,help='Number of parallel cores on which to run the training')
-        parser.add_argument('--steps','-A',default=None,type=int,help='Annealer steps')
-        parser.add_argument('--Tmax','-u',default=800.0,type=float,help='Annealer starting temperature')
-        parser.add_argument('--Tmin','-v',default=0.01,type=float,help='Annealer final temperature')
-        parser.add_argument('--energy_rmse','-E',default=0.02,type=float,help='RMS Energy deviation for convergence')
-        parser.add_argument('--force_rmse','-F',default=0.02,type=float,help='RMS Force deviation for convergence')
-        parser.add_argument('--energy_maxresid','-G',default=None,type=float,help='Maximum energy deviation for convergence')
-        parser.add_argument('--force_maxresid','-H',default=None,type=float,help='Maximum force deviation for convergence')
-        parser.add_argument('--hiddenlayers','-L',default=(10,10,10),nargs='*',type=int,help='Hidden Layer structure ')
-        parser.add_argument('--force_coefficient','-f',default=0.04,type=float,help='Weighting of forces (compared to energy) in training')
-        parser.add_argument('--overfit','-o',default=0.00,type=float,help='Weighting of forces (compared to energy) in training')
-        '''
+        parser.add_argument('--valid_fraction','-W',default=0.1,type=float,help='Fraction of trajectory to use as validation data')
         
         return parser
 
@@ -165,10 +216,6 @@ class MLTrainingTask:
 
 
 # # Command-line driver
-
-# In[ ]:
-
-
 def get_parser():
     mltrain = MLTrainingTask()
     return mltrain.make_parser()

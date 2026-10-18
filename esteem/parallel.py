@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
 
 
 """
@@ -11,8 +10,6 @@ Settings and script-writers to run ESTEEM tasks in serial or parallel
 
 # # Make batch scripts
 
-# In[7]:
-
 
 from copy import deepcopy
 
@@ -21,7 +18,7 @@ gnu_parallel_declarations = (f'NJOBS=$((${{SLURM_NTASKS}}/${{TASKS_PER_PROG}}))\
 gnu_parallel_command = "seq $SLURM_ARRAY_TASK_ID $(($SLURM_ARRAY_TASK_ID+99)) | parallel $PARALLEL_OPTS 'export SLURM_ARRAY_TASK_ID={}; python"
 
 bash_loop_declarations = (f"""
-SMAX=1
+SMAX=5
 istart=$SLURM_ARRAY_TASK_ID
 iend=$(($SLURM_ARRAY_TASK_ID+SMAX))
 for ((i=istart;i<iend;i++)); do
@@ -38,7 +35,8 @@ nanosim_1node = {'partition': 'nanosim',
                  'ncpu': 1,
                  'time': '48:00:00',
                  'mem': '61679mb',
-                 'declarations': ''}
+                 'declarations': '',
+                 'endmatter': ''}
 
 nanosim_1core = deepcopy(nanosim_1node)
 nanosim_1core['ntask'] = 1
@@ -49,8 +47,16 @@ nanosimd_1node = {'partition': 'nanosimd',
                   'ncpu':  8,
                   'time': '48:00:00',
                   'mem': '14000mb',
-                  'declarations': ''}
-
+                  'declarations': '',
+                  'endmatter': ''}
+nanosimd_8mpi = {'partition': 'nanosimd',
+                  'nodes': 1,
+                  'ntask': 8,
+                  'ncpu':  1,
+                  'time': '48:00:00',
+                  'mem': '14000mb',
+                  'declarations': '',
+                  'endmatter': ''}
 nanosim_1core = deepcopy(nanosim_1node)
 nanosim_1core['ntask'] = 1
 
@@ -114,7 +120,7 @@ avon_1node_100['declarations'] += f'TASKS_PER_PROG={parallel_tasks_per_prog}\n' 
 avon_1node_100['command'] =  gnu_parallel_command
 
 sulis_tf = '\nmodule purge; module load GCC/10.3.0 CUDA/11.3.1 OpenMPI/4.1.1 TensorFlow/2.6.0-CUDA-11.3.1\n\n'
-sulis_pyt = '\nmodule purge; module load GCC/11.3.0 CUDA/11.7.0 OpenMPI/4.1.4 PyTorch/1.12.1-CUDA-11.7.0 matplotlib\n\n'
+sulis_pyt = '\nmodule purge; module load GCC/11.3.0 CUDA/11.7.0 OpenMPI/4.1.4 PyTorch/1.12.1-CUDA-11.7.0 matplotlib netCDF\n\n'
 
 sulis_1node =   {'account': 'su007-ndmh',
                  'partition': 'compute',
@@ -159,11 +165,13 @@ def get_default_script_settings(wrapper):
     if "warwick.ac.uk" in host:
         # local SCRTP
         if "theory" in host or "scrtp" in host:
-            script_settings = deepcopy(nanosimd_1node)
+            script_settings = deepcopy(nanosimd_8mpi)
         elif "stan" in host:
             script_settings = deepcopy(nanosim_1node)
         if isinstance(wrapper,ORCAWrapper):
             wrapper.setup()
+            script_settings['declarations'] = script_settings['declarations'] + bash_loop_declarations
+            script_settings['endmatter'] = script_settings['endmatter'] + bash_loop_endmatter
         if isinstance(wrapper,OnetepWrapper):
             wrapper.setup(onetep_cmd='~/onetep/bin/onetep.csc',
                                    set_pseudo_path='/storage/nanosim/NCP17_PBE_OTF/',
@@ -179,6 +187,8 @@ def get_default_script_settings(wrapper):
                                    set_pseudo_path='~/NCP17_PBE_OTF/',
                                    set_pseudo_suffix="_NCP17_PBE_OTF.usp")
         if isinstance(wrapper,PhysNetWrapper):
+            script_settings = deepcopy(avon_1gpu)
+        if isinstance(wrapper,MACEWrapper):
             script_settings = deepcopy(avon_1gpu)
         if isinstance(wrapper,ORCAWrapper):
             script_settings = deepcopy(avon_1node_gnu)

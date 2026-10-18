@@ -97,6 +97,7 @@ class LAMMPSWrapper():
             "write_velocities": True,
             "tmp_dir": ".",
             "units": "metal"}
+        self.output = "lammps"
 
     def calc_filename(self,seed,target,prefix='',suffix=''):
     

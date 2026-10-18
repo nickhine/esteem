@@ -1,17 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
-
-
 """Task that generates and plots uv/vis Spectra for solutes in solvent.
 Also contains routines to calculate spectral warp parameters and RGB colours from spectra"""
-
-
-# # Main Routine
-
-# In[ ]:
-
 
 import numpy as np
 wavelength_eV_conv=1239.84193
@@ -29,39 +20,21 @@ class SpectraTask:
     
     def read_excitations(self):
 
-        from ase.calculators.onetep import Onetep;
-        from ase.calculators.nwchem import NWChem;
-        from ase.calculators.orca import ORCA;
-        from esteem.wrappers import onetep
-        from esteem.wrappers import nwchem
-        from esteem.wrappers import orca
         from ase.io import Trajectory
         import os
 
-        #validate_args(self)
         all_excitations = []
         all_transition_origins = []
 
         if self.inputformat is None and self.trajectory is not None:
             self.inputformat = 'traj'
-        if self.inputformat.lower()=="nwchem":
-            calc=NWChem(label="temp")
-            wrapper=nwchem.NWChemWrapper()
-            read_excitations = wrapper.read_excitations
-        elif self.inputformat.lower()=="onetep":
-            calc=Onetep(label="temp")
-            wrapper=onetep.OnetepWrapper()
-            read_excitations = wrapper.read_excitations
-        elif self.inputformat.lower()=="orca":
-            calc=ORCA(label="temp")
-            wrapper=orca.ORCAWrapper()
-            read_excitations = wrapper.read_excitations
+        elif hasattr(self.inputformat,'read_excitations'):
+            read_excitations = self.inputformat.read_excitations
         elif self.inputformat.lower()=="precalculated":
             from types import SimpleNamespace
-            wrapper = None
-            calc = SimpleNamespace()
+            self.wrapper = SimpleNamespace()
             all_excitations = np.zeros((0,2))
-            read_excitations = self.read_precalculated
+            self.wrapper.read_excitations = self.read_precalculated
         elif self.inputformat.lower()=="traj":
             if self.files != [] and self.files is not None:
                 raise Exception("Cannot specify traj and set files simultaneously")
@@ -69,8 +42,6 @@ class SpectraTask:
                 raise Exception("Must specify trajectories if inputformat==traj")
             if type(self.trajectory)!=list:
                 raise Exception("Must specify trajectories as list if inputformat==traj")
-        else:
-            raise Exception('Unrecognised input format. The value of inputformat was: {}'.format(self.inputformat))
 
         # Load pre-calculated vibronic transitions, if supplied 
         if self.vib_files is not None:
@@ -116,6 +87,7 @@ class SpectraTask:
                     max_frames = min(self.max_frames,len(traj[0])-start_frame)
                 else:
                     max_frames = len(traj[0])-start_frame
+                assert (max_frames > 0), "ERROR: Negative max_frames encountered"
                 # Keep going as long as there are at least max_frames left in this trajectory
                 end_frame = start_frame + max_frames
                 while end_frame <= len(traj[0]):
@@ -128,6 +100,7 @@ class SpectraTask:
                             # Get energy for this excitation from first trajectory
                             e0 = traj[0][j].get_potential_energy()
                             e1 = None
+                            #print(f'read e0={e0} len(traj)={len(traj)} len(traj[0])={len(traj[0])}')
                             if isinstance(e0,list) or isinstance(e0,np.ndarray):
                                 if len(e0)>1:
                                     e1 = e0[i+1]
@@ -140,7 +113,7 @@ class SpectraTask:
                                 except:
                                     # If there is no corresponding excitation in one
                                     # of the roots, carry on anyway
-                                    continue
+                                    pass
                             # If we have supplied a wrapper for calculating vibronic transitions,
                             # use it now (or load its results if it has run already)
                             if hasattr(self.wrapper,'xml_filename'):
@@ -165,18 +138,27 @@ class SpectraTask:
                                         e1c = e0c[i+1]
                                         e0c = e0c[0]
                                 if e1c is None:
-                                    e1c = corr_traj[i+1][j].get_potential_energy()
-                                    assert len(corr_traj[0][j])==len(corr_traj[i+1][j])
+                                    try:
+                                        e1c = corr_traj[i+1][j].get_potential_energy()
+                                        assert len(corr_traj[0][j])==len(corr_traj[i+1][j])
+                                    except:
+                                        pass
                             else:
                                 e1c = 0.0; e0c = 0.0
                             # Account for calculators which return an array of values
-                            if isinstance(e1,list) or isinstance(e1,np.ndarray):
-                                e1 = e1[0]
+                            if isinstance(e0,list) or isinstance(e0,np.ndarray):
                                 e0 = e0[0]
-                                if corr_traj[0] is not None and (isinstance(e1c,list) or isinstance(e1c,np.ndarray)):
-                                    e1c = e1c[0]
+                                if corr_traj[0] is not None and (isinstance(e0c,list) or isinstance(e0c,np.ndarray)):
                                     e0c = e0c[0]
-                            ediff = e1 - e0 + e1c - e0c
+                            if isinstance(e1,list) or isinstance(e1,np.ndarray):
+                                e1 = e1[-1]
+                                if corr_traj[0] is not None and (isinstance(e1c,list) or isinstance(e1c,np.ndarray)):
+                                    e1c = e1c[-1]
+                            #ediff = e1 - e0 + e1c - e0c
+                            if e1 is not None:
+                                ediff = e1 - e0 - e1c + e0c
+                            else:
+                                ediff = abs(e0 + e0c)
                             # Swap sign of energy difference, if emission calculation is requested
                             if self.mode=='emission':
                                 ediff = -ediff
@@ -220,15 +202,10 @@ class SpectraTask:
             for f in self.files:
                 if not os.path.isfile(f):
                     raise OSError(f'# Could not read file {f}')
-                #try:
-                label = f.replace(".nwo","")
-                label = label.replace(".out","")
-                calc.label = label
-                #calc.read(label)
-                read_excitations(calc)
+                stick_spectrum, transition_origins = self.wrapper.read_excitations(f)
                 if self.vib_files is not None:
                     vibronic_excitations = []
-                    s_elec = calc.results['excitations']
+                    s_elec = stick_spectrum
                     for e in s_elec:
                         for v in vib_sticks:
                             sign = -1 if self.mode=='emission' else 1
@@ -237,17 +214,12 @@ class SpectraTask:
                     all_excitations.append(vibronic_excitations)
                 else:
                     if type(all_excitations)==np.ndarray:
-                        all_excitations = np.append(all_excitations,calc.results['excitations'],axis=0)
+                        all_excitations = np.append(all_excitations,stick_spectrum,axis=0)
                     else:
-                        all_excitations.append(calc.results['excitations'])
-                if self.inputformat.lower()=="nwchem":
-                    all_transition_origins.append(calc.results['transition_origins'])
-                #calc.read(label)
-                #except:
-                #    print(f'Reading excitations failed for: {f}')
+                        all_excitations.append(stick_spectrum)
+                all_transition_origins.append(transition_origins)
 
         stick_spectrum = []
-        #print(all_excitations,np.array(all_excitations))
         all_excitations = np.array(all_excitations)
         if len(all_excitations.shape)==1:
             for i in all_excitations:
@@ -266,7 +238,15 @@ class SpectraTask:
         return stick_spectrum, all_transition_origins
     
     def read_precalculated(self,calc=None):
-        calc.results = {'excitations': np.loadtxt(calc.label)}
+        import os
+        stick_spectrum = []
+        for f in self.files:
+            if not os.path.isfile(f):
+                raise OSError(f'# Could not read file {f}')
+            stick_spectrum.append(np.loadtxt(f)[:,1:3])
+        stick_spectrum = np.array(stick_spectrum).squeeze()
+        print(stick_spectrum.shape)
+        return stick_spectrum, None
 
     def vib_wrapper(self,model_init,model_targ):
 
@@ -276,34 +256,34 @@ class SpectraTask:
             self.wrapper.add_model_data(model_targ)
             self.wrapper.write_xml()
             self.wrapper.run()
+        else:
+            print('# Skipping vibration wrapper spectrum recalculation, results exist')
         vib_sticks = self.wrapper.read()
         if vib_sticks is not None:
             if vib_sticks.shape == (0,):
                 return vib_sticks
         else:
             return vib_sticks
-        # Normalise
-        #vib_sticks[:,1] = vib_sticks[:,1] / np.max(vib_sticks[:,1])
         return vib_sticks
 
-    def plot(self,broad_spectrum,fig,ax,rgb,label,linestyle='solid',linewidth=1.5):
+    def plot(self,broad_spectrum,fig,ax,rgb,label,linestyle='solid',linewidth=1.5,yoffs=0):
 
         # Set up and make plot
+        if ax is None and fig is not None:
+            return None,fig,ax
         if fig is None and ax is None:
             from matplotlib import pyplot
             fig, ax = pyplot.subplots()
             ax.set_xlabel('Wavelength (nm)')
             ax.set_ylabel('Absorbtion (arb)')
-            #x_ticks = np.arange(self.wavelength[0], self.wavelength[1], 25)
-            #pyplot.xticks(x_ticks)
-        #spec_plot = plot_sticks(stick_spectrum,rgb,fig,ax,all_transition_origins)
-        spec_plot = plot_spectrum(broad_spectrum,rgb,fig,ax,label,linestyle,linewidth)
+        spec_plot = plot_spectrum(broad_spectrum,rgb,fig,ax,label,linestyle,linewidth,yoffs)
         if self.output is not None:
+            print(f'# Saving to {self.output}')
             fig.savefig(self.output)
             
         return spec_plot,fig,ax
 
-    def run(self,fig=None,ax=None,plotlabel=None,rgb=np.array((0.0,0.0,0.0)),linestyle='solid'):
+    def run(self,fig=None,ax=None,plotlabel=None,rgb=np.array((0.0,0.0,0.0)),linestyle='solid',yoffs=0):
         """
         Main routine for plotting a spectrum. Capable of applying Gaussian broadening to a stick spectrum to
         produce a broadened spectrum, and also of applying spectral warping to shift/scale the stick spectrum.
@@ -369,6 +349,8 @@ class SpectraTask:
             if not self.wrapper.results_exist():
                 self.wrapper.write_input_file()
                 self.wrapper.run()
+            else:
+                print('# Skipping recalculation, wrapper results exist')
             broad_spectrum = self.wrapper.read()
         
         else:
@@ -390,7 +372,7 @@ class SpectraTask:
         
         # Plot the spectrum
         if True:
-            spec_plot, fig, ax = self.plot(broad_spectrum,fig,ax,rgb,label=plotlabel,linestyle=linestyle)
+            spec_plot, fig, ax = self.plot(broad_spectrum,fig,ax,rgb,label=plotlabel,linestyle=linestyle,yoffs=yoffs)
         else:
             spec_plot = None
 
@@ -406,6 +388,8 @@ class SpectraTask:
         parser.add_argument('--files','-f',nargs='*',default=[],type=str,help='List of output files from which to generate spectrum')
         parser.add_argument('--vib_files','-v',nargs='*',default=None,type=str,help='List of output files from which to generate spectrum')
         parser.add_argument('--trajectory','-t',nargs='*',default=None,type=str,help='Trajectory file for input')
+        parser.add_argument('--correction_trajectory',nargs='*',default=None,type=str,help='Trajectory file for input')
+        parser.add_argument('--vibration_trajectory',nargs='*',default=None,type=str,help='Trajectory file for input')
         parser.add_argument('--max_frames','-M',default=None,type=int,help='Maximum number of frames to process')
         parser.add_argument('--start_frame','-S',default=0,type=int,help='Starting point of frames to process')
         parser.add_argument('--stride_frames','-F',default=1,type=int,help='Stride for frames to process')
@@ -443,11 +427,6 @@ class SpectraTask:
 
 
 # # Helper Routines
-
-# In[ ]:
-
-
-
 def find_spectral_warp_params(args,dest_spectrum,origin_spectrum,arrow1_pos=None,arrow2_pos=None):
         """
         Finds spectral warping parameters via a range of schemes. See spectra documentation page
@@ -637,7 +616,7 @@ def spectral_value(wavelength,spectrum,broad):
     return abs_value
 
 def total_source_val(wavelength,intensity,spectrum,args):
-    spectral_contribution=spectral_value(wavelength,spectrum,args)
+    spectral_contribution=spectral_value(wavelength,spectrum,args.broad)
     path_length=10
     exponential_term=np.exp(-spectral_contribution*path_length)
     source_val=exponential_term*intensity
@@ -714,32 +693,21 @@ def RGB_colour(spectrum,args):
 
     return rgb
 
-def plot_spectrum(broad_spectrum,rgb,fig,ax,label,linestyle='solid',linewidth=1.5):
+def plot_spectrum(broad_spectrum,rgb,fig,ax,label,linestyle='solid',linewidth=1.5,yoffs=0):
 
     # Plot data
-    spec = ax.plot(broad_spectrum[:,0], broad_spectrum[:,1],color=rgb*(1.0/256.0),
+    spec = ax.plot(broad_spectrum[:,0], broad_spectrum[:,1]+yoffs,color=rgb*(1.0/256.0),
                    label=label,linestyle=linestyle,linewidth=linewidth)
-    #pyplot.setp(spec,color=rgb*(1.0/256.0))
-    #if label is not None:
-    #    ax.legend()
     return spec
 
 def plot_sticks(stick_spectrum,rgb,fig,ax,labels):
 
     # Plot data
-    #print(stick_spectrum[:,0])
-    #print(stick_spectrum[:,1])
     spec = ax.stem(stick_spectrum[:,0], stick_spectrum[:,1],color=rgb*(1.0/256.0))
-    #spec = ax.stem([0,1,2],[12,51,1])
-    #pyplot.setp(spec,color=rgb*(1.0/256.0))
     return spec
 
 
 # # Command-line driver
-
-# In[ ]:
-
-
 def get_parser():
     return SpectraTask().make_parser()
 

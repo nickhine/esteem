@@ -77,8 +77,11 @@ def main(all_solutes,all_solvents,all_solutes_tasks={},all_solvate_tasks={},
             for targ in all_solutes_tasks:
                 if target is not None and targ!=target:
                     continue
-                all_solutes_tasks[targ].script_settings['scriptname'] = scriptname
-                solutes_script_settings = all_solutes_tasks[targ].script_settings
+                if isinstance(all_solutes_tasks[targ].script_settings,dict):
+                    all_solutes_tasks[targ].script_settings['scriptname'] = scriptname
+                    solutes_script_settings = all_solutes_tasks[targ].script_settings
+                else:
+                    solutes_script_settings = {}
                 make_script(seed=seed,task='solutes',target=targ,**solutes_script_settings)
                 make_script(seed=seed,task='solvents',target=targ,**solutes_script_settings)
         else: # just one SolutesTask
@@ -95,9 +98,12 @@ def main(all_solutes,all_solvents,all_solutes_tasks={},all_solvate_tasks={},
                 for targ in tasks:
                     if target is not None and targ!=target:
                         continue
-                    print(tasks[targ].script_settings)
-                    tasks[targ].script_settings['scriptname'] = scriptname
-                    make_script(seed=seed,task=tasks[targ].task_command,target=targ,**tasks[targ].script_settings)
+                    if isinstance(tasks[targ].script_settings,dict):
+                        tasks[targ].script_settings['scriptname'] = scriptname
+                        script_settings = tasks[targ].script_settings
+                    else:
+                        script_settings = {}
+                    make_script(seed=seed,task=tasks[targ].task_command,target=targ,**script_settings)
             else:
                 tasks.script_settings['scriptname'] = scriptname
                 make_script(seed=seed,task=tasks.task_command,target=target,**tasks.script_settings)
@@ -113,11 +119,15 @@ def main(all_solutes,all_solvents,all_solutes_tasks={},all_solvate_tasks={},
         solvents_driver(all_solvents,solutes_task)
     if ('solvate' in task.split()):
         solvate_task = get_actual_args(all_solvate_tasks,target,'solvate')
+        if solvate_task.script_settings is None:
+            solvate_task.script_settings = {}
         solvate_task.script_settings['target'] = target
         solvate_task.script_settings['scriptname'] = scriptname
         solvate_driver(all_solutes,all_solvents,seed,solvate_task,make_script)
     if (any('clusters' in t for t in task.split()) or any('mlclus' in t for t in task.split())): 
         clusters_task = get_actual_args(all_clusters_tasks,target,'clusters')
+        if clusters_task.script_settings is None:
+            clusters_task.script_settings = {}
         clusters_task.script_settings['target'] = target
         clusters_task.script_settings['scriptname'] = scriptname
         if any('setup' in t for t in task.split()):
@@ -134,19 +144,22 @@ def main(all_solutes,all_solvents,all_solutes_tasks={},all_solvate_tasks={},
         qmd_task = get_actual_args(all_qmd_tasks,target,'qmd')
         qmd_task.seed = seed
         qmd_driver(qmd_task,all_solutes,all_solvents)
-    if ('train' in task.split()) or ('mltrain' in task.split()):
+    if any('train' in t for t in task.split()):
         mltrain_task = get_actual_args(all_mltrain_tasks,target,'mltrain')
+        setup_only = True if 'setup' in task else False
         mltrain_task.seed = seed
-        mltrain_driver(mltrain_task,all_solutes,all_solvents)
+        mltrain_driver(mltrain_task,all_solutes,all_solvents,setup_only)
     if ('test' in task.split()) or ('mltest' in task.split()):
         mltest_task = get_actual_args(all_mltest_tasks,target,'mltest')
         mltest_task.seed = seed
         mltest_driver(mltest_task,all_solutes,all_solvents)
     if ('traj' in task):
         cleanup_only = True if 'cleanup' in task else False
+        setup_only = True if 'setup' in task else False
         mltraj_task = get_actual_args(all_mltraj_tasks,target,'mltraj')
         mltraj_task.seed = seed
-        mltraj_driver(mltraj_task,all_solutes,all_solvents,cleanup_only=cleanup_only)
+        mltraj_driver(mltraj_task,all_solutes,all_solvents,
+                      cleanup_only=cleanup_only,setup_only=setup_only)
     if ('spectra' in task.split()):
         spectra_task = get_actual_args(all_spectra_tasks,target,'spectra')
         #warp_params = spectral_warp_driver(all_solutes,all_solvents,spectra_task)
@@ -173,6 +186,8 @@ def get_actual_args(all_args,target,task):
             prev_stem = ""
             key_suffix = ""
             for key in all_keys:
+                print(key)
+                continue
                 key_parts = key.split('_')
                 print(key,key_parts)
                 prev_key_suffix = key_suffix
@@ -190,10 +205,10 @@ def get_actual_args(all_args,target,task):
                         print("_[",end="")
                     prev_stem = key_stem
                 print(key_suffix+",",end="")
-            if prev_key_suffix!="":
-                print("]\n")
-            else:
-                print("\n")
+            #if prev_key_suffix!="":
+            #    print("]\n")
+            #else:
+            #    print("\n")
             raise e
             
     else:
@@ -269,6 +284,7 @@ def solutes_driver(all_solutes,all_solvents,task):
         all_solvents_to_run = all_solvents.copy()
 
     for solvent in all_solvents_to_run:
+        print(f'Setting solvent to {solvent}')
         task.solvent = solvent
         if task.solvent_settings is not None and task.solvent is not None:
             task.solvent = task.solvent_settings
@@ -282,9 +298,6 @@ def solutes_driver(all_solutes,all_solvents,task):
 
 
 # # Run calculations on individual Solvent molecules
-
-# In[ ]:
-
 
 from esteem.tasks import solutes
 
@@ -458,7 +471,7 @@ def solvate_driver(all_solutes,all_solvents,seed,task,make_sbatch=None):
         if solute in all_solvents and (solute!=solvent):
             del all_pairs[i]
     
-    all_paths = [f'{solute}_{solvent}_{md_suffix}' for (solvent,_),(solute,_) in all_pairs]
+    all_paths = [f'{solute}{"_"+solvent if solvent is not None else ""}_{md_suffix}' for (solvent,_),(solute,_) in all_pairs]
     base_path = path.basename(getcwd())
 
     # Determine if we are in a job array, in which case just run one pair
@@ -470,7 +483,7 @@ def solvate_driver(all_solutes,all_solvents,seed,task,make_sbatch=None):
     for i,((solvent,fullsolvent),(solute,fullsolute)) in enumerate(all_pairs):
         
         sol_sol_str = f'{solute} ({fullsolute}) in {solvent} ({fullsolvent})'
-        md_path = f'{solute}_{solvent}_{md_suffix}'
+        md_path = f'{solute}_{solvent}_{md_suffix}' if solvent is not None else f'{solute}_{md_suffix}'
 
         if solute in all_solvents and (solute!=solvent):
             continue
@@ -493,8 +506,10 @@ def solvate_driver(all_solutes,all_solvents,seed,task,make_sbatch=None):
             md_geom_prefix = task.md_geom_prefix
             if solvent is not None:
                 md_geom_prefix = md_geom_prefix + '/is_opt_{solv}'
+                seed=f'{solute}_{solvent}'
             else:
                 md_geom_prefix = md_geom_prefix + '/opt'
+                seed=f'{solute}'
             md_geom_prefix = sub_solu_solv_names(md_geom_prefix,f'{solute}_{solvent}',
                                                  all_solutes,all_solvents)
             # Copy in optimised geometry of solute in implicit solvent
@@ -522,14 +537,13 @@ def solvate_driver(all_solutes,all_solvents,seed,task,make_sbatch=None):
             
             # Write job script for submission to HPC cluster
             if make_sbatch is not None:
-                task.script_settings['jobname'] = f'{solute}_{solvent}_{md_suffix}'
+                task.script_settings['jobname'] = f'{solute}_{solvent}_{md_suffix}_solvate'
                 task.script_settings['execpath'] = '../'
                 make_sbatch(seed=seed,task='solvate',**task.script_settings)
 
             # Go back to base directory
             print(f'# Returning to parent directory\n\n')
             chdir('..')
-
         # We are in a subdirectory already so run a particular calculation
         elif base_path==md_path:
             # Now run MD in md_path
@@ -541,16 +555,13 @@ def solvate_driver(all_solutes,all_solvents,seed,task,make_sbatch=None):
                     task.boxsize = task.boxsize[solvent]
                 else:
                     raise Exception(f"task.boxsize is a dictionary but contains no entry for solvent '{solvent}'")
-            task.setup_amber()
+            task.setup()
             task.run()
+        print(base_path,md_path,solvent,solute)
 
 
 # # Run Clusters script on MD snapshots to extract region near solute
-
-# In[ ]:
-
-
-from shutil import copyfile
+from shutil import copyfile,SameFileError
 import itertools
 from os import path,chdir,makedirs,getcwd,symlink
 
@@ -611,7 +622,6 @@ def clusters_driver(all_solutes,all_solvents,seed,task,make_sbatch=None,dryrun=F
     
     # Iterate over all pairs of solute and solvent, unless in a specific directory already,
     # in which case just run that pair
-    
     # First take "which_traj" off the end of exc_suffix, if it is present
     if hasattr(task,'exc_dir_suffix'):
         exc_dir_suffix = task.exc_dir_suffix
@@ -639,7 +649,7 @@ def clusters_driver(all_solutes,all_solvents,seed,task,make_sbatch=None,dryrun=F
             continue
         
         # We are in the parent directory of this project, so setup clusters
-        # subdirectories if not already present 
+        # subdirectories if not already present
         if base_path not in all_paths:
             # Check that MD has finished - skip to next file if not
             if not isinstance(task.md_suffix,list):
@@ -680,13 +690,18 @@ def clusters_driver(all_solutes,all_solvents,seed,task,make_sbatch=None,dryrun=F
                 if not (path.isfile(f'{clus_path}/{trajlink}') or path.islink(f'{clus_path}/{trajlink}')):
                     chdir(clus_path)
                     print(f'# Creating link from ../{trajfile[mds]} to {trajlink}')
-                    symlink('../'+trajfile[mds],trajlink)
+                    try:
+                        symlink('../'+trajfile[mds],trajlink)
+                    except FileExistsError:
+                        print(f"# Possible mid-air collision between jobs - link {trajlink} exists")
                     chdir(orig_path)
 
             # Copy the geometries of the solute and solvent to the excitations directory
             # so they can be used in cluster extraction
             try:
                 copyfile(f'{md_path}/{solute}.xyz',f'{clus_path}/{solute}.xyz')
+            except SameFileError:
+                pass
             except FileNotFoundError:
                 print(f'# Geometry file {md_path}/{solute}.xyz not found')
             except PermissionError:
@@ -694,6 +709,8 @@ def clusters_driver(all_solutes,all_solvents,seed,task,make_sbatch=None,dryrun=F
             if solvent is not None:
                 try:
                     copyfile(f'{md_path}/{solvent}.xyz',f'{clus_path}/{solvent}.xyz')
+                except SameFileError:
+                    pass
                 except FileNotFoundError:
                     print(f'# Geometry file {md_path}/{solvent}.xyz not found')
                 except PermissionError:
@@ -724,7 +741,7 @@ def clusters_driver(all_solutes,all_solvents,seed,task,make_sbatch=None,dryrun=F
             task.solvent = solvent
             if task.solute == task.solvent:
                 reset_roots = False
-                if type(task.target)!=list:
+                if type(task.target) is not list:
                     if task.nroots > task.target:
                         reset_roots = True
                 else:
@@ -740,10 +757,12 @@ def clusters_driver(all_solutes,all_solvents,seed,task,make_sbatch=None,dryrun=F
                 task.impsolv = solvent
             # If we provided a dictionary for the radius, find the specific entry that we need
             if isinstance(task.radius,dict):
-                if solvent in task.radius:
+                if f'{solute}_{solvent}' in task.radius:
+                    task.radius = task.radius[f'{solute}_{solvent}']
+                elif solvent in task.radius:
                     task.radius = task.radius[solvent]
                 else:
-                    raise Exception(f"task.radius is a dictionary but contains no entry for solvent '{solvent}'")
+                    raise Exception(f"task.radius is a dictionary but contains no entry for '{solute}_{solvent}' or '{solvent}'")
             if hasattr(task,'calc_seed'):
                 if task.calc_seed is not None:
                     seed = f'{solute}_{solvent}' if solvent is not None else solute
@@ -753,14 +772,11 @@ def clusters_driver(all_solutes,all_solvents,seed,task,make_sbatch=None,dryrun=F
             task.run(dryrun=dryrun)
 
 
-# In[1]:
-
-
 def get_solu_solv_names(seed):
     # Guess solute and solvent names from seed name
-    solu = seed.split("_")[0]
+    solu = "_".join(seed.split("_")[0:-1])
     try:
-        solv = seed.split("_")[1]
+        solv = seed.split("_")[-1]
     except:
         solv = "NO_SOLVENT_FOUND"
     return solu,solv
@@ -832,7 +848,7 @@ def atom_energies_driver(atomen):
     if hasattr(atomen,'ref_mol_dir'):
         ref_mol_dir = atomen.ref_mol_dir
     else:
-        ref_mol_dir = 'PBE0'
+        ref_mol_dir = 'gs_PBE0'
     if hasattr(atomen,'ref_mol_xyz'):
         ref_mol_xyz = f'{ref_mol_dir}/{atomen.ref_mol_xyz}'
     else:
@@ -855,12 +871,12 @@ def atom_energies_driver(atomen):
                 makedirs(atoms_dir)
             except FileExistsError:
                 print(f"# Possible mid-air collision between jobs - directory {atoms_dir} exists")
-        if not path.exists('atoms_dir/{solu}.xyz'):
+        if not path.exists(f'{atoms_dir}/{solu}.xyz'):
             if solv is not None:
                 copyfile(f'{ref_mol_dir}/is_opt_{solv}/{solu}.xyz',f'{atoms_dir}/{solu}.xyz')
             else:
                 copyfile(f'{ref_mol_dir}/opt/{solu}.xyz',f'{atoms_dir}/{solu}.xyz')
-        if not path.exists('atoms_dir/{solv}.xyz'):
+        if not path.exists(f'{atoms_dir}/{solv}.xyz'):
             if solv is not None:
                 copyfile(f'{ref_mol_dir}/is_opt_{solv}/{solv}.xyz',f'{atoms_dir}/{solv}.xyz')
         if not path.isfile(f'{atoms_dir}/{atoms_xyz}') and not path.islink(f'{atoms_dir}/{atoms_xyz}'):
@@ -892,11 +908,13 @@ def atom_energies_driver(atomen):
             spin=0.5
         if atom=='C':
             spin=0
+        if atom=='Cl':
+            spin=0.5
         if wrapper_is_ml:
-            atom_energies[atom],forces,dipole,calc = atomen.wrapper.singlepoint(atom_model[atom],
+            atom_energies[atom],forces,dipole = atomen.wrapper.singlepoint(atom_model[atom],
                 f'{atomen.seed}',calc_params,solvent=solv,dipole=True,forces=True,)
         else:
-            atom_energies[atom],forces,dipole,calc = atomen.wrapper.singlepoint(atom_model[atom],
+            atom_energies[atom],forces,dipole = atomen.wrapper.singlepoint(atom_model[atom],
                 f'{atomen.seed}_{atom}',calc_params,solvent=solv,dipole=True,forces=True,spin=spin)
     
     # Rescale atom energies
@@ -988,13 +1006,14 @@ def qmd_driver(qmdtraj,all_solutes,all_solvents):
 def make_traj_links(mltrain_task,traj_links,train_dir,prefix,all_solutes,all_solvents):
     
     from ase.io import Trajectory
+    from os import readlink, remove
     
     origdir = getcwd()
     # switch to the training directory, so links are made there
     chdir(train_dir)
 
     # obtain a list of the trajectories to be used in the training
-    which_trajs,trajnames = mltrain_task.get_trajnames(prefix)
+    which_trajs,which_targets,trajnames = mltrain_task.get_trajnames(prefix)
     trajnames = dict(zip(which_trajs,trajnames))
     if prefix == "":
         print(f'# Creating symlinks to training trajectories')
@@ -1029,11 +1048,20 @@ def make_traj_links(mltrain_task,traj_links,train_dir,prefix,all_solutes,all_sol
             # Check the link destination exists, and if so make the link
             if not path.isfile('../'+traj_link) and not path.islink('../'+traj_link):
                 raise Exception(f'# File to link to not found for trajectory {traj}: {traj_link}')
+            if path.islink('../'+trajnames[traj]):
+                if (readlink('../'+trajnames[traj])!='../'+traj_link):
+                    currlink=readlink('../'+trajnames[traj])
+                    print(f'# Removing pre-existing link from ../{trajnames[traj]} to {currlink}')
+                    remove('../'+trajnames[traj])
+                    print(f'# Replacing with new link to ../{traj_link}')
             if not path.isfile('../'+trajnames[traj]) and not path.islink('../'+trajnames[traj]):
-                symlink('../'+traj_link,'../'+trajnames[traj])
+                try:
+                    symlink('../'+traj_link,'../'+trajnames[traj])
+                except FileExistsError:
+                    print(f"# Possible mid-air collision between jobs - link ../{trajnames[traj]} exists")
     chdir(origdir)
 
-def mltrain_driver(mltrain_task,all_solutes={},all_solvents={}):
+def mltrain_driver(mltrain_task,all_solutes={},all_solvents={},setup_only=False):
     """
     Driver to train a Neural Network (or other machine-learning approach) for
     a dataset. Key arguments are the wrapper, which supplies the interface
@@ -1120,6 +1148,8 @@ def mltrain_driver(mltrain_task,all_solutes={},all_solvents={}):
         make_traj_links(mltrain_task,mltrain_task.traj_links_valid,train_dir,'valid',all_solutes,all_solvents)
     if mltrain_task.traj_links_test is not None:
         make_traj_links(mltrain_task,mltrain_task.traj_links_test,train_dir,'test',all_solutes,all_solvents)
+    if setup_only:
+        return
     mltrain_task.run()
     
 def mltest_driver(mltest,all_solutes,all_solvents):
@@ -1221,6 +1251,7 @@ def mltest_driver(mltest,all_solutes,all_solvents):
             print(f'# Creating symlinks to trajectories')
             for traj in which_trajs:
                 if traj not in mltest.traj_links:
+                    print('traj not found in mltest.traj_links:',traj)
                     continue
 
                 # If there are multiple links that must be set up to assemble this trajectory,
@@ -1255,7 +1286,11 @@ def mltest_driver(mltest,all_solutes,all_solvents):
                             remove(trajnames[traj])
                     if not path.isfile(trajnames[traj]) and not path.islink(trajnames[traj]):
                         print(f'# Making link to: ../{traj_link} called {trajnames[traj]} in {getcwd()}')
-                        symlink('../'+traj_link,trajnames[traj])
+                        try:
+                            symlink('../'+traj_link,trajnames[traj])
+                        except FileExistsError:
+                            print(f"# Possible mid-air collision between jobs - link {trajnames[traj]} exists")
+                            
 
             # switch back to starting directory
             if mltest.traj_prefix != "" and mltest.traj_prefix is not None:
@@ -1267,16 +1302,16 @@ def mltest_driver(mltest,all_solutes,all_solvents):
             if t in mltest.ref_mol_seed_dict:
                 ref_mol_seed = mltest.ref_mol_seed_dict[t]
                 mltest.seed = sub_solu_solv_names(ref_mol_seed,mltest.calc_seed,all_solutes,all_solvents)
-                print(f'# Reference molecule seed set to {mltest.seed}')
-            mltest.which_trajs = traj_dict[t]
+                print(f'\n# Reference molecule seed set to {mltest.seed}')
+            mltest.which_trajs = [traj_dict[t]]
             plotfile = seed_state_str + '_' + mltest.calc_suffix + '_' + str(t) + '.png'
             mltest.plotfile = sub_solu_solv_names(plotfile,mltest.calc_seed,all_solutes,all_solvents)
             print(f"# Plotfile set to {mltest.plotfile}")
-            try:
-                mltest.run()
-            except Exception as e:
-                print(f'# Error when testing trajectory, continuing')
-                print(e)
+            #try:
+            mltest.run()
+            #except Exception as e:
+            #    print(f'# Error when testing trajectory, continuing')
+            #    print(e)
     else: # single trajectory to test
         if mltest.plotfile is not None:
             mltest.plotfile = sub_solu_solv_names(mltest.plotfile,mltest.calc_seed,all_solutes,all_solvents)
@@ -1287,7 +1322,7 @@ def mltest_driver(mltest,all_solutes,all_solvents):
         if os.path.isfile(test_calc_log):
             os.remove(test_calc_log)
 
-def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False):
+def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False,setup_only=False):
     from os import symlink, path, remove
     from esteem.trajectories import get_trajectory_list,targstr,merge_traj
 
@@ -1295,7 +1330,13 @@ def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False):
     task_id = parallel.get_array_task_id()
     if task_id is not None:
         try:
-            mltraj.which_trajs = [get_trajectory_list(mltraj.ntraj)[task_id]]
+            if mltraj.which_trajs is None:
+                mltraj.which_trajs = [get_trajectory_list(mltraj.ntraj)[task_id]]
+                mltraj.which_targets = [mltraj.target]
+            else:
+                traj = get_trajectory_list(mltraj.ntraj)[task_id]
+                mltraj.which_targets = [mltraj.which_targets[mltraj.which_trajs.index(traj)]]
+                mltraj.which_trajs = [mltraj.which_trajs[mltraj.which_trajs.index(traj)]]
         except:
             print(f'# Could not find an entry for task_id {task_id} in trajectory list {get_trajectory_list(mltraj.ntraj)}')
             return
@@ -1313,10 +1354,14 @@ def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False):
     # Check if we are in the right directory, create it if it does not exists
     base_path = path.basename(getcwd())
     seed_state_str = f'{mltraj.seed}_{targstr(mltraj.target)}'
-    if mltraj.calc_dir_suffix is not None:
-        traj_dir = f'{seed_state_str}_{mltraj.calc_dir_suffix}_mldyn'
+    if mltraj.traj_dir_suffix is None:
+        if mltraj.calc_dir_suffix is not None:
+            traj_dir_suffix = f'{mltraj.calc_dir_suffix}_mldyn'
+        else:
+            traj_dir_suffix = f'{mltraj.calc_suffix}_mldyn'
     else:
-        traj_dir = f'{seed_state_str}_{mltraj.calc_suffix}_mldyn'
+        traj_dir_suffix = mltraj.traj_dir_suffix
+    traj_dir = f'{seed_state_str}_{traj_dir_suffix}'
     if base_path != traj_dir:
         if not path.exists(traj_dir):
             print(f'# Creating directory {traj_dir}')
@@ -1324,6 +1369,7 @@ def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False):
                 makedirs(traj_dir)
             except FileExistsError:
                 print(f"# Possible mid-air collision between jobs - directory {traj_dir} exists")
+        print(f'# Changing directory to {traj_dir}')
         chdir(traj_dir)
 
     # Check if we need to create a symlink to or merge the initial trajectories file
@@ -1333,7 +1379,10 @@ def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False):
             traj_link = sub_solu_solv_names(mltraj.md_init_traj_link,mltraj.seed,all_solutes,all_solvents)
             if not path.isfile(init_traj) and not path.islink(init_traj):
                 print(f"# Creating symlink: {init_traj} -> ../{traj_link} ")
-                symlink('../'+traj_link,init_traj)
+                try:
+                    symlink('../'+traj_link,init_traj)
+                except FileExistsError:
+                    print(f"# Possible mid-air collision between jobs - link {init_traj} exists")
         else:
             all_traj_links = ['../'+sub_solu_solv_names(traj_link,mltraj.seed,all_solutes,all_solvents) for traj_link in mltraj.md_init_traj_link]
             if task_id is not None:
@@ -1368,11 +1417,20 @@ def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False):
             else:
                 print(f'# Geometry {geomfile_in} not found to copy')
 
+    # Retrieve solute-specific constraint from dictionary if needed
+    if isinstance(mltraj.constraints,dict):
+        if solu in mltraj.constraints:
+            mltraj.constraints = mltraj.constraints[solu]
+        else:
+            raise Exception(f"# Error: constraints is a dictionary but contains no entry for solute '{solute}'")
+
     # Set default value of calc_seed if not otherwise set
     if mltraj.calc_seed is None:
         mltraj.calc_seed = mltraj.seed
 
     # Run the MLTraj task
+    if setup_only:
+        return
     if not cleanup_only:
         mltraj.run()
     
@@ -1380,10 +1438,13 @@ def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False):
     if mltraj.carve_trajectory_radius is not None:
         # If we provided a dictionary for the radius, find the specific entry that we need
         if isinstance(mltraj.carve_trajectory_radius,dict):
-            if solv in mltraj.carve_trajectory_radius:
+            solu_solv = f'{solu}_{solv}'
+            if solu_solv in mltraj.carve_trajectory_radius:
+                mltraj.carve_trajectory_radius = mltraj.carve_trajectory_radius[solu_solv]
+            elif solv in mltraj.carve_trajectory_radius:
                 mltraj.carve_trajectory_radius = mltraj.carve_trajectory_radius[solv]
             else:
-                raise Exception(f"mltraj.carve_trajectory_radius is a dictionary but contains no entry for solvent '{solv}'")
+                raise Exception(f"mltraj.carve_trajectory_radius is a dictionary but contains no entry for '{solu_solv}' or '{solv}'")
         mltraj_cleanup(mltraj)
 
 def mltraj_cleanup(mltraj):
@@ -1392,15 +1453,19 @@ def mltraj_cleanup(mltraj):
     from esteem.trajectories import get_trajectory_list,targstr
 
     ct = ClustersTask()
+    ct.repeat_without_solute = True if mltraj.corr_traj else False
     ct.solute,ct.solvent = get_solu_solv_names(mltraj.seed)
-    ct.which_target = mltraj.target
-    for ct.which_traj in mltraj.which_trajs:
+    for (ct.which_traj,traj_target) in zip(mltraj.which_trajs,mltraj.which_targets):
+        ct.which_target = traj_target
         ct.min_snapshots = 0;
         ct.max_snapshots = mltraj.nsnap
-        ct.carved_suffix = f"{mltraj.traj_suffix}_carved"
-        ct.md_suffix = f"{targstr(ct.which_target)}_{ct.which_traj}_{mltraj.traj_suffix}"
+        ct.max_atoms = mltraj.carve_trajectory_max_atoms
+        if mltraj.carved_suffix is None:
+            mltraj.carved_suffix = "carved"
+        ct.carved_suffix = f"{mltraj.traj_suffix}_{mltraj.carved_suffix}"
+        ct.md_suffix = f"{targstr(traj_target)}_{ct.which_traj}_{mltraj.traj_suffix}"
         solvstr = f'_{ct.solvent}' if ct.solvent is not None else ''
-        traj_carved_file = f'{ct.solute}{solvstr}_{targstr(ct.which_target)}_{ct.which_traj}_{ct.carved_suffix}.traj'
+        traj_carved_file = f'{ct.solute}{solvstr}_{targstr(traj_target)}_{ct.which_traj}_{ct.carved_suffix}.traj'
         if path.exists(traj_carved_file) and path.getsize(traj_carved_file)>0:
             print(f'# Skipping carving spheres for postprocessing - {traj_carved_file} already present')
         else:
@@ -1408,14 +1473,35 @@ def mltraj_cleanup(mltraj):
         #remove(f'{ct.solute}_{ct.solvent}_{ct.md_suffix}.traj')
         if mltraj.recalculate_carved_traj:
             ct.wrapper = mltraj.snap_wrapper
-            ct.output = f"{mltraj.traj_suffix}_recalc"
+            ct.output = f"{mltraj.traj_suffix}_recalc_{mltraj.carved_suffix}"
             ct.calc_params = mltraj.snap_calc_params
-            ct.target = mltraj.snap_calc_params['target']
+            ct.target = mltraj.target #ct.which_target #mltraj.snap_calc_params['target']
             ct.nroots = mltraj.target
-            traj_recalc_file = f'{ct.solute}{solvstr}_{targstr(ct.which_target)}_{ct.which_traj}_{ct.output}.traj'
-            if path.exists(traj_recalc_file) and path.getsize(traj_recalc_file)>0:
-                print(f'# Skipping recalculating clusters in postprocessing - {traj_recalc_file} already present')
+            ct.ref_mol_dir = mltraj.ref_mol_dir
+            all_results_present = True
+            all_traj_recalc_files = {}
+            if isinstance(ct.target,list):
+               targs = ct.target
+            elif isinstance(ct.target,dict):
+               targs = ct.target
             else:
+               targs = [ct.target]
+            for targ in targs:
+                traj_recalc_file = f'{ct.solute}{solvstr}_{targstr(targ)}_{ct.which_traj}_{ct.output}.traj'
+                file_present = (path.exists(traj_recalc_file) and
+                                path.getsize(traj_recalc_file)>0)
+                all_traj_recalc_files[traj_recalc_file] = file_present
+                all_results_present = (all_results_present and file_present)
+                if mltraj.corr_traj:
+                    traj_recalc_file_nosolu = f'{ct.solute}{solvstr}_{targstr(targ)}_{ct.which_traj}_{ct.output}_nosolu.traj'
+                    file_present = (path.exists(traj_recalc_file_nosolu) and
+                                    path.getsize(traj_recalc_file_nosolu)>0)
+                    all_traj_recalc_files[traj_recalc_file_nosolu] = file_present
+                    all_results_present = (all_results_present and file_present)
+            if all_results_present:
+                print(f'# Skipping recalculating clusters in postprocessing - {list(all_traj_recalc_files)} already present')
+            else:
+                print(f'# Recalculating clusters - not all files present: {all_traj_recalc_files}')
                 ct.run()
         if mltraj.store_full_traj:
             # Remove equilibration trajectory data
@@ -1639,12 +1725,15 @@ def spectral_warp_driver(all_solutes,all_solvents,task,annotation=None):
 def spectra_driver(all_solutes,all_solvents,task,warp_params=None,cluster_spectra=[],c_fig=None,c_ax=None):
 
     import glob
+    from copy import deepcopy
     
     # Set up lists of solute-solvent pairs
     exc_suffix = task.exc_suffix
     all_pairs = list(itertools.product(all_solvents.items(),all_solutes.items()))
     all_paths = []
     for (solvent,_),(solute,_) in all_pairs:
+        if solute in all_solvents:
+            continue
         if isinstance(task.exc_suffix,dict):
             if solvent is not None:
                 exc_path = f'{solute}_{solvent}_{exc_suffix[solute]}'
@@ -1658,9 +1747,16 @@ def spectra_driver(all_solutes,all_solvents,task,warp_params=None,cluster_spectr
         all_paths.append(exc_path)
     base_path = path.basename(getcwd())
     orig_output = task.output
+    orig_files = task.files
+    orig_dir = getcwd()
+    task.trajectory_backup = deepcopy(task.trajectory)
 
     # Now plot explicit solvent spectrum
     for i,((solvent,fullsolvent),(solute,fullsolute)) in enumerate(all_pairs):
+
+        task.trajectory = deepcopy(task.trajectory_backup)
+        if solute in all_solvents:
+            continue
 
         # Find cluster spectra path names 
         exc_suffix = task.exc_suffix
@@ -1672,12 +1768,12 @@ def spectra_driver(all_solutes,all_solvents,task,warp_params=None,cluster_spectr
             exc_path = f'{solute}_{solvent}_{exc_suffix}'
         else:
             exc_path = f'{solute}_{exc_suffix}'
-        solusolvstr = f'{fullsolute} in {fullsolvent}' if solvent is not None else fullsolute
+        solusolvstr = f'{solute} in {solvent}' if solvent is not None else fullsolute
         
         if base_path in all_paths and base_path!=exc_path:
             continue
 
-        if base_path not in all_paths:
+        if base_path not in all_paths and task.files is None:
             if not path.exists(exc_path):
                 print(f'\nSkipping Spectra for: {solusolvstr}')
                 print(f'Directory {exc_path} not found')
@@ -1689,7 +1785,9 @@ def spectra_driver(all_solutes,all_solvents,task,warp_params=None,cluster_spectr
 
         # List files matching pattern:
         if task.files is not None:
-            task.files = sub_solu_solv_names(task.files,f'{solute}_{solvent}',all_solutes,all_solvents)
+            task.files = []
+            for f in orig_files:
+                task.files.append(sub_solu_solv_names(f,f'{solute}_{solvent}',all_solutes,all_solvents))
             if '*' in task.files:
                 task.files = glob.glob(task.files)
             if task.renorm == -1:
@@ -1708,7 +1806,7 @@ def spectra_driver(all_solutes,all_solvents,task,warp_params=None,cluster_spectr
                     found_solute = True
                     continue
             if found_solute:
-                chdir('..')
+                chdir(orig_dir)
                 continue
             print('Cluster files to process: ',len(task.files),task.files)
                 
@@ -1739,24 +1837,25 @@ def spectra_driver(all_solutes,all_solvents,task,warp_params=None,cluster_spectr
         if isinstance(task.line_colours,list):
             rgb = task.line_colours[i]
 
-        task.output = sub_solu_solv_names(orig_output,f'{solute}_{solvent}',all_solutes,all_solvents)
+        if orig_output is not None:
+            task.output = sub_solu_solv_names(orig_output,f'{solute}_{solvent}',all_solutes,all_solvents)
         
-        cluster_spectrum,spec,c_fig,c_ax,_,_ = task.run(c_fig,c_ax,
+        cluster_spectrum,spec,c_fig,c_ax,all_transition_origins,stick_spectrum = task.run(c_fig,c_ax,
               plotlabel=f'{fullsolute} in {fullsolvent}',rgb=rgb)
         cluster_spectra.append(cluster_spectrum)
         
+        if 'png' in task.output:
+            outdat = task.output.replace('png','dat')
+            np.savetxt(outdat,cluster_spectrum)
+            outdat = task.output.replace('png','sticks')
+            np.savetxt(outdat,stick_spectrum)
+         
         # Return to parent directory if we are looping over dirs
         if base_path not in all_paths:
-            chdir('..')
+            chdir(orig_dir)
 
 
     return cluster_spectra,c_fig,c_ax
-
-
-# # Helper functions
-
-# In[ ]:
-
 
 # return args objects with default values for each script
 from esteem.tasks import solutes, solvate, clusters, spectra

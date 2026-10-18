@@ -1,16 +1,9 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
-
-
 """Performs processing of Molecular Dynamics Trajectories to enable use of the results in further tasks
    such as extraction of cluster models centered on the solute molecule, including all solvent molecules
    within a given range, for the purpose of ML training or explicit solvent spectroscopy"""
-
-
-# In[ ]:
-
 
 class ClustersTask:
 
@@ -21,6 +14,16 @@ class ClustersTask:
         args = self.make_parser().parse_args("")
         for arg in vars(args):
             setattr(self,arg,getattr(args,arg))
+    
+    @property
+    def wrapper(self):
+        return self._wrapper
+    
+    @wrapper.setter
+    def wrapper(self,wrapper):
+        self._wrapper = wrapper
+        if hasattr(wrapper,'output'):
+            self.output = wrapper.output
 
     def run(self,dryrun=False):
         """
@@ -106,7 +109,7 @@ class ClustersTask:
         
         # Setup snapshot range
         if self.max_snapshots is None:
-            self.max_snapshots = 1e6
+            self.max_snapshots = 10000000
         if self.min_snapshots is None:
             self.min_snapshots = 0
 
@@ -120,9 +123,24 @@ class ClustersTask:
         # Check if the carved trajectory already exists
         which_targstr = targstr(self.which_target)
         solvstr = f'_{self.solvent}' if self.solvent is not None else ''
-        traj_carved_file = f'{self.solute}{solvstr}_{which_targstr}_{self.which_traj}_{input_suffix}.traj'
+        input_traj_label = self.which_traj
+        if self.subset_selection_method is not None:
+            input_suffix = f'{self.selected_suffix}'
+            if self.subset_selection_which_traj is not None:
+                input_traj_label = self.subset_selection_which_traj
+        traj_carved_file = f'{self.solute}{solvstr}_{which_targstr}_{input_traj_label}_{input_suffix}.traj'
+        if self.subset_selection_method is not None:
+            # If we did not find a pre-selected subset, reset input to carved suffix and check again
+            if not os.path.exists(traj_carved_file):
+                if self.task_id is not None:
+                    print(f'# Error: {traj_carved_file} not found')
+                    raise Exception('For a subset trajectory, clusters_setup must be run before individual task_ids.')
+                print(f'# Subset trajectory {traj_carved_file} not found. Trying to load carved trajectory.')
+                input_suffix = f'{self.carved_suffix}'
+                traj_carved_file = f'{self.solute}{solvstr}_{which_targstr}_{self.which_traj}_{input_suffix}.traj'
         # In the case where we have carved a trajectory already, skip the rest
-        if os.path.exists(traj_carved_file) and self.radius is not None:
+        if (os.path.exists(traj_carved_file) and self.radius is not None 
+                and self.subset_selection_method is None):
             if os.path.getsize(traj_carved_file)>0:
                 input_traj = self.get_input_traj(self.solute,self.solvent,self.md_suffix)
                 traj_max = min(len(input_traj),self.max_snapshots)
@@ -146,11 +164,17 @@ class ClustersTask:
                           self.boxsize,self.task_id)
             print(f'# {len(list(traj_carved))} clusters carved from full snapshots with radius {self.radius}.')
         traj_carved_present = os.path.exists(traj_carved_file) and os.path.getsize(traj_carved_file)>0
-        if (not traj_carved_present) and self.radius is None and isinstance(self.md_suffix,list):
+        if self.radius is None and isinstance(self.md_suffix,list):
             # merging required
             input_traj_names = [f'{self.solute}{solvstr}_{mds}.traj' for mds in self.md_suffix]
-            print(f'# Merging {input_traj_names} and writing to {traj_carved_file}')
-            merge_traj(input_traj_names,traj_carved_file)
+            input_traj_lengths = [len(Trajectory(inptraj)) for inptraj in input_traj_names]
+            print(f'# Input trajectory lengths: {input_traj_lengths}')
+            if not traj_carved_present:
+                print(f'# Merging {input_traj_names} and writing to {traj_carved_file}')
+                merge_traj(input_traj_names,traj_carved_file)
+        else:
+            if traj_carved_present:
+                input_traj_lengths = [len(Trajectory(traj_carved_file))]
         traj_carved_present = os.path.exists(traj_carved_file) and os.path.getsize(traj_carved_file)>0
         if (not traj_carved_present) and self.radius is None:
             # No carving or merging required, just make link to input
@@ -159,8 +183,9 @@ class ClustersTask:
             if not (os.path.isfile(f'{traj_carved_file}') or os.path.islink(f'{traj_carved_file}')):
                 print(f'# Creating link from {input_traj_name} to {traj_carved_file}')
                 os.symlink(input_traj_name,traj_carved_file)
+            input_traj_lengths = [len(Trajectory(traj_carved_file))]
         # Case where a subset is to be selected
-        if self.subset_selection_method is not None and self.radius is None:
+        if self.subset_selection_method is not None: # and self.radius is None:
             input_suffix = self.selected_suffix
             if self.subset_selection_which_traj is not None:
                 subset_selection_traj = self.subset_selection_which_traj
@@ -174,7 +199,9 @@ class ClustersTask:
                 write_subset_trajectory(traj_carved_file,traj_subset_file,nmax=self.subset_selection_nmax,
                                         method=self.subset_selection_method,
                                         min_spacing=self.subset_selection_min_spacing,
-                                        bias_beta=self.subset_selection_bias_beta)
+                                        bias_beta=self.subset_selection_bias_beta,
+                                        stde_thresh=self.subset_selection_stde_thresh,
+                                        input_traj_lengths=input_traj_lengths)
             else:
                 print(f'# Loading existing subset trajectory: {traj_subset_file}')
                 delete_traj_carved_file = False
@@ -184,17 +211,20 @@ class ClustersTask:
             # Open trajectory via link, then slice if required
             input_traj = Trajectory(traj_carved_file)
             traj_max = min(len(input_traj),self.max_snapshots)
+            self.max_snapshots = traj_max
             traj_min = max(0,self.min_snapshots)
             traj_carved = list(enumerate(input_traj[traj_min:traj_max]))
             if self.task_id is not None:
                 traj_carved = [traj_carved[self.task_id]]
-            print(f'# {len(list(traj_carved))} frames loaded')
+            print(f'# {len(list(traj_carved))} frames loaded from {traj_carved_file}[{traj_min}:{traj_max}]')
             
         writeonly = (self.output=="nw") or (self.output=="dat") or (self.output=="xyz")
         if self.calc_forces:
             mintarget = 0
             if hasattr(self,'target'):
                 if isinstance(self.target,list):
+                    target = self.target
+                elif isinstance(self.target,dict):
                     target = self.target
                 else:
                     mintarget = self.target
@@ -203,6 +233,12 @@ class ClustersTask:
                 target = list(range(0,self.nroots+1))
         else:
             target = self.nroots
+        wdir = self.output
+        if not os.path.exists(wdir):
+            try:
+                os.makedirs(wdir)
+            except FileExistsError:
+                print(f"# Possible mid-air collision between jobs - directory {wdir} exists")
         if dryrun:
             print(f'# Cluster setup completed, halting before calculation.')
             return
@@ -237,8 +273,12 @@ class ClustersTask:
                     output_traj_offset = -self.min_snapshots
             else:
                 # If we are processing just one carved frame, set range to 1 and offset to task_id
-                input_traj_range = range(0,1)
-                output_traj_offset = self.task_id
+                if self.subset_selection_method is None:
+                    input_traj_range = range(0,1)
+                    output_traj_offset = self.task_id
+                else:
+                    input_traj_range = range(self.task_id,self.task_id+1)
+                    output_traj_offset = 0
                 # If we are processing one frame directly from source, set range to task_id and offset to 0
                 if self.radius is None:
                     input_traj_range = range(self.task_id,self.task_id+1)
@@ -257,11 +297,13 @@ class ClustersTask:
             # If we are processing whole trajectory, do sanity checking of result now
             if self.task_id is None and self.ref_mol_dir is not None:
                 ref_solu, ref_solv = get_solu_solv_names(seed)
-                for targ in target[0:]:
+                for targ in target:
                     if targ==0:
                         ref_solu_t = ref_solu
                     else:
                         ref_solu_t = f'{ref_solu}_{targstr(targ)}'
+                    if "diff" in str(targ):
+                        continue
                     ref_mol_dir = self.ref_mol_dir
                     ref_mol_dir = ref_mol_dir.replace("{target}",targstr(targ))
                     ref_mol_dir = ref_mol_dir.replace("{ref_solv}",ref_solv)
@@ -270,7 +312,10 @@ class ClustersTask:
                     ref_mol_dir = ref_mol_dir.replace("{target}","gs")
                     ref_mol_dir = ref_mol_dir.replace("{ref_solv}",ref_solv)
                     ref_solv_dir = f'../{ref_mol_dir}'
-                    calc_params['target'] = targ
+                    if isinstance(calc_params['target'],dict):
+                        calc_params['calc_head'] = calc_params['target'][targ]
+                    else:
+                        calc_params['target'] = targ
                     trajname = f"{seed}_{targstr(targ)}_{traj_label}_{traj_suffix}.traj"
                     fails = sanity_check(trajname, self.wrapper, calc_params, ref_solu_dir, ref_solu_t,
                                          ref_solv_dir, ref_solv)
@@ -387,6 +432,7 @@ class ClustersTask:
         for t in input_traj[0:traj_max-traj_min]:
             nat_tot = len(t)
             nmol_solvent = int((nat_tot-nat_solute-nat_counterions)/nat_solvent)
+            t.set_constraint(None)
             carve_sphere(t,solvent_radius,kernel_radius,nat_solute,nat_solvent,
                          nat_counterions,nmol_solvent,nmol_solvent_targ,
                          rotate=self.rotate,boxsize=boxsize)
@@ -405,12 +451,12 @@ class ClustersTask:
 
         which_targstr = targstr(self.which_target)
         if task_id is not None:
-            traj_nosolu_name = f'{soluseed}_{solvseed}_{which_targstr}_{self.which_traj}_carved_nosolu_{task_id:04}.traj'
+            traj_nosolu_name = f'{soluseed}_{solvseed}_{which_targstr}_{self.which_traj}_{self.carved_suffix}_nosolu_{task_id:04}.traj'
             traj_min = 0
             traj_max = 1
             traj_carved = traj_carved[traj_min:traj_max]
         else:
-            traj_nosolu_name = f'{soluseed}_{solvseed}_{which_targstr}_{self.which_traj}_carved_nosolu.traj'
+            traj_nosolu_name = f'{soluseed}_{solvseed}_{which_targstr}_{self.which_traj}_{self.carved_suffix}_nosolu.traj'
             task_id = 0
         traj_nosolu = Trajectory(traj_nosolu_name,"w")
         nat_solu = len(read(soluseed+".xyz"))
@@ -559,7 +605,7 @@ class ClustersTask:
         parser.add_argument('--kernel','-k',default=0.0,type=float,help='Maximum distance from any atom of a solvent molecule to atom of a solute molecule for it to be included in tddft kernel')
         parser.add_argument('--max_solvent_mols','-M',default=None,type=int,help='Maximum number of solvent molecules to include (chosen randomly)')
         parser.add_argument('--max_atoms','-H',default=None,type=int,help='Maximum number of atoms to include in carved sphere')
-        parser.add_argument('--boxsize','-B',default='50.0',type=float,help='Size of box in which electronic excitation calculation is performed')
+        parser.add_argument('--boxsize','-B',default=None,help='Size of box in which electronic excitation calculation is performed (None for non-periodic calcs)')
         parser.add_argument('--rotate','-O',default=True,type=bool,help='If True, rotate the molecule to align with xy plane')
         parser.add_argument('--output','-o',default='nw',type=str,help='Format of output: takes values nw, dat, nwchem and onetep (former 2 write input files only, latter 2 perform calculation)')
         parser.add_argument('--nroots','-n',default=5,type=int,help='Number of excitations to calculate')
@@ -576,6 +622,7 @@ class ClustersTask:
         parser.add_argument('--subset_selection_nmax','-y',default=None,type=int,help='Number of frames to select in subset from input trajectory')
         parser.add_argument('--subset_selection_min_spacing','-g',default=1,type=int,help='Minimum frame spacing for selecting subset from input trajectory')
         parser.add_argument('--subset_selection_bias_beta','-a',default=20,type=int,help='Effective inverse temperature 1/kBT (in eV-1) for bias on U trajectories')
+        parser.add_argument('--subset_selection_stde_thresh','-E',default=0.02,type=float,help='Threshold committee energy standard deviation per atom for trajectory truncation')
         parser.add_argument('--subset_selection_which_traj','-J',default=None,type=str,help='Which trajectory name to read/write subset selection to')
         parser.add_argument('--repeat_without_solute','-W',default=False,type=bool,help='Repeat calculation with no solute present')
         parser.add_argument('--geom_opt_kernel','-G',default=False,type=bool,help='Geometry Optimise the kernel region')
@@ -684,7 +731,7 @@ def delete_counterions(t,solvent_radius,nat_tot,nat_solute,nat_counterions,
 def delete_excess_molecules(t,nat_tot,nat_solvent,nat_solute,nmol_solvent_targ,
                             deleted_atoms=None):
     """
-    Deletes solvent molecules
+    Deletes solvent molecules at random until nmol_solvent_targ is reached
     """
     import random
     nat_tot_cluster = len(t)
@@ -699,11 +746,14 @@ def delete_excess_molecules(t,nat_tot,nat_solvent,nat_solute,nmol_solvent_targ,
 
 def delete_furthest_molecules(t,nat_tot,nat_solvent,nat_solute,nmol_solvent_targ,
                               deleted_atoms=None):
+    """
+    Deletes furthest away solvent molecules until nmol_solvent_targ is reached
+    """
     nat_tot_cluster = len(t)
     nmol_solvent = int((nat_tot_cluster-nat_solute)/nat_solvent)
     Rij = np.zeros((nat_solvent*nmol_solvent,nat_solute))
     # Get entries in matrix of distances between all solute and solvent atoms
-    if nat_tot==nat_solute:
+    if nat_tot_cluster==nat_solute:
         for i in range(nat_solute):
             Rij[:,i] = np.zeros((0))
     else:
@@ -894,7 +944,7 @@ def dist_test(mol):
     else:
         return False
 
-def get_ref_mol_energy(wrapper,ref_mol,solv,calc_params,ref_mol_xyz,ref_mol_dir,silent=True):
+def get_ref_mol_energy(wrapper,ref_mol,solv,calc_params,ref_mol_xyz,ref_mol_dir,silent=True,dipole=False):
 
     from os import getcwd, chdir
     from ase.io import read
@@ -905,7 +955,7 @@ def get_ref_mol_energy(wrapper,ref_mol,solv,calc_params,ref_mol_xyz,ref_mol_dir,
         print(f'# Reading reference molecule from {ref_mol_xyz}')
     ref_mol_model = read(ref_mol_xyz)
     ref_mol_calc_dir = f'{ref_mol_dir}/geom/{ref_mol}'
-    ref_mol_seed = f'{ref_mol}_{solv}'
+    ref_mol_seed = f'{ref_mol}_{solv}' if solv is not None else ref_mol
     if not silent:
         print(f'# Reading reference molecule calculation from {ref_mol_calc_dir}/{ref_mol_seed}')
     orig_dir = getcwd()
@@ -919,18 +969,25 @@ def get_ref_mol_energy(wrapper,ref_mol,solv,calc_params,ref_mol_xyz,ref_mol_dir,
                 if ref_mol_model.cell.volume == 0.0:
                     from ase.geometry import Cell
                     ref_mol_model.cell = Cell([[40,0,0],[0,40,0],[0,0,40]])
-    ref_mol_energy,calc = wrapper.singlepoint(ref_mol_model,
-                ref_mol_seed,calc_params,forces=False,dipole=False,readonly=True)
+    print(f'looking for {ref_mol_seed} in {ref_mol_calc_dir}')
+    ref_mol_energy,ref_mol_dipole = wrapper.singlepoint(ref_mol_model,
+                ref_mol_seed,calc_params,forces=False,dipole=True,readonly=True)
     chdir(orig_dir)
-    return ref_mol_energy, ref_mol_model
+    if dipole:
+        return ref_mol_energy, ref_mol_dipole, ref_mol_model
+    else:
+        return ref_mol_energy, ref_mol_model
 
-def write_subset_trajectory(trajin_file,trajout_file,nmax,method='R',min_spacing=1,bias_beta=20.0):
+def write_subset_trajectory(trajin_file,trajout_file,nmax,method='R',
+                            min_spacing=1,bias_beta=20.0,stde_thresh=0.02,
+                            input_traj_lengths=None):
     from ase.io import Trajectory
     t=Trajectory(trajin_file)
     to=Trajectory(trajout_file,"w")
-    t0_en = t[0].get_potential_energy()
-    if not isinstance(t0_en,np.ndarray):
-        raise Exception(f"# Expected a trajectory with energies of type np.ndarray, got {type(t0_en)}")
+    if method!="R":
+        t0_en = t[0].get_potential_energy()
+        if not isinstance(t0_en,np.ndarray):
+            raise Exception(f"# Expected a trajectory with energies of type np.ndarray, got {type(t0_en)}")
     if nmax > len(t):
         raise Exception(f"# Not enough frames to write {nmax}: found {len(t)} in trajectory")
     fullmethod = {'R':'(R) Random',
@@ -939,17 +996,41 @@ def write_subset_trajectory(trajin_file,trajout_file,nmax,method='R',min_spacing
                   'U':f'(U) Biased by Energy Std Dev with beta={bias_beta}'}
     fullmethod = fullmethod[method]
     print(f'# Attempting to choose {nmax} frames out of {len(t)}, using method: {fullmethod} with min_spacing = {min_spacing}')
-    stde=np.zeros(len(t))
-    for i,f in enumerate(t):
-        stde[i]=np.std(f.get_potential_energy())/len(f)
+    i = 0 # how far we have got in truncated list
+    k = 0 # how far we have got in original list
+    tc = [] # list of (truncated) frames
+    stde = [] # list of std of energies
+    if method!='R':
+        for itraj,trajlen in enumerate(input_traj_lengths): # count trajectories and get length of each
+            k0 = k
+            for j in range(k0,k0+trajlen): # loop over entries
+                if method!='R':
+                    stde_j=np.std(t[k].get_potential_energy())/len(t[k])
+                else:
+                    stde_j = 0.0
+                if stde_j>stde_thresh:
+                    print(f'# Standard deviation per atom at frame {j-k0:05} of trajectory {itraj} is: {stde_j}')
+                    print(f'# This is above the threshold of {stde_thresh}')
+                    print(f'# Truncating trajectory thereafter ({trajlen-j+k0} frames discarded).')
+                    k = k0 + trajlen
+                    break
+                else:
+                    tc = tc + [t[k]]
+                    stde.append(stde_j)
+                    i = i + 1
+                    k = k + 1
+    else:
+        tc = t
+    stde = np.array(stde)
+    print(f'# Final input trajectory length: {len(tc)} {len(stde)}')
     # energy standard deviation-based sorting
     if method=='E':
         args=np.argsort(stde)
     # dipole-based sorting
     if method=='D':
-        stdd=np.zeros(len(t))
-        std_dip=np.zeros((len(t),3))
-        for i,f in enumerate(t):
+        stdd=np.zeros(len(tc))
+        std_dip=np.zeros((len(tc),3))
+        for i,f in enumerate(tc):
             std_dip[i]=np.std(f.get_dipole_moment(),axis=0)
             stdd[i] = np.sqrt(np.sum(std_dip[i]*std_dip[i]))
         args=np.argsort(stdd)
@@ -957,12 +1038,12 @@ def write_subset_trajectory(trajin_file,trajout_file,nmax,method='R',min_spacing
     if method=='U' or method=='R':
         from numpy.random import default_rng
         rng = default_rng()
-        p = np.exp(stde*bias_beta) if method=='U' else np.ones(len(t))
+        p = np.exp(stde*bias_beta) if method=='U' else np.ones(len(tc))
         p /= np.sum(p)
-        args = rng.choice(range(len(t)),size=len(t),replace=False,p=p)
+        args = rng.choice(range(len(tc)),size=len(tc),replace=False,p=p)
         args = args[::-1] if method=='U' else args
     framelist = []
-    for i in range(len(t)-1,-1,-1):
+    for i in range(len(tc)-1,-1,-1):
         if all([abs(args[i]-k) >= min_spacing for k in framelist]):
             #print(f'added frame {args[i]} as entry {len(framelist)}')
             framelist.append(args[i])
@@ -973,12 +1054,13 @@ def write_subset_trajectory(trajin_file,trajout_file,nmax,method='R',min_spacing
     #framelist = list(args[(len(t)-nmax):len(t)])
     print(f'# Chosen frames:\n# {framelist}')
     print(f'# Chosen frames sorted ascending:\n# {sorted(framelist)}')
-    stdelist = stde[framelist]
-    print(f'# Standard deviations of E for chosen frames:\n# {stdelist}')
-    print(f'# Average standard deviation of E for chosen frames: {np.mean(stdelist)}')
-    print(f'# Average standard deviation of E for all frames: {np.mean(stde)}')
+    if method!='R':
+        stdelist = stde[framelist]
+        print(f'# Standard deviations of E for chosen frames:\n# {stdelist}')
+        print(f'# Average standard deviation of E for chosen frames: {np.mean(stdelist)}')
+        print(f'# Average standard deviation of E for all frames: {np.mean(stde)}')
     for i in range(nmax):
-        to.write(t[args[-i-1]])
+        to.write(tc[args[-i-1]])
 
 def sanity_check(trajname='', wrapper=None, calc_params = {},
                  ref_solu_dir='', ref_solu='', ref_solv_dir='', ref_solv=''):
@@ -990,17 +1072,23 @@ def sanity_check(trajname='', wrapper=None, calc_params = {},
     from ase.io import Trajectory
     from esteem.trajectories import atom_energy
 
+    print(f'\n# Sanity checking results in {trajname}')
+
     # Read in Reference E, f, p
     ref_mol_xyz = f'{ref_solu_dir}/is_opt_{ref_solv}/{ref_solu}.xyz'
-    solu_energy,solu_model = get_ref_mol_energy(wrapper,ref_solu,ref_solv,calc_params,ref_mol_xyz,ref_solu_dir)
+    solu_energy,ref_solu_d,solu_model = get_ref_mol_energy(wrapper,ref_solu,
+            ref_solv,calc_params,ref_mol_xyz,ref_solu_dir,dipole=True)
     if isinstance(solu_energy,np.ndarray):
         solu_energy = np.mean(solu_energy)
+    if len(ref_solu_d.shape)==2:
+        ref_solu_d = np.mean(ref_solu_d,axis=0)
     ref_mol_xyz = f'{ref_solv_dir}/is_opt_{ref_solv}/{ref_solv}.xyz'
-    solv_energy,solv_model = get_ref_mol_energy(wrapper,ref_solv,ref_solv,calc_params,ref_mol_xyz,ref_solv_dir)
+    solv_energy,ref_solv_d,solv_model = get_ref_mol_energy(wrapper,ref_solv,
+            ref_solv,calc_params,ref_mol_xyz,ref_solv_dir,dipole=True)
     if isinstance(solv_energy,np.ndarray):
         solv_energy = np.mean(solv_energy)
-    ref_solu_d = np.linalg.norm(solu_model.get_dipole_moment())
-    ref_solv_d = np.linalg.norm(solv_model.get_dipole_moment())
+    if len(ref_solv_d.shape)==2:
+        ref_solv_d = np.mean(ref_solv_d,axis=0)
     print('# Solute reference energy, dipole: ',solu_energy,ref_solu_d)
     print('# Solvent reference energy, dipole: ',solv_energy,ref_solv_d)
 
@@ -1036,7 +1124,7 @@ def sanity_check(trajname='', wrapper=None, calc_params = {},
                 de_per_solv = e-eref
             dnorm = np.linalg.norm(d)
             fnorm = np.linalg.norm(f)/len(frame)
-            refdnorm = ref_solv_d*n+ref_solu_d
+            refdnorm = np.linalg.norm(ref_solv_d)*n+np.linalg.norm(ref_solu_d)
         except:
             de_per_solv = 0
             dnorm = 0
@@ -1045,7 +1133,7 @@ def sanity_check(trajname='', wrapper=None, calc_params = {},
         if not read_success:
             print(f'{i:04} {targ:03} {n:03} (JOB EXECUTION FAILED)')
         # Empirical thresholds currently
-        elif de_per_solv>0.85 or de_per_solv<0.0 or dnorm>refdnorm*2 or fnorm>1:
+        elif de_per_solv>0.85 or de_per_solv<-0.20 or dnorm>refdnorm*3 or fnorm>1:
             fails.append(i)
             print(f'{i:04} {targ:03} {n:03} {e:16.8f} {eref:16.8f} {de_per_solv:16.8f} {fnorm:16.8f} {dnorm:16.8f} {refdnorm:16.8f}')
 
@@ -1053,8 +1141,10 @@ def sanity_check(trajname='', wrapper=None, calc_params = {},
         howmany = 'No'
     else:
         howmany = len(fails)
-    print('# {howmany} frames in the trajectory were found to have possibly alarming energy, force or dipole values')
-    print('# Thresholds used: energy deviation < 0.85eV per solv molecule, force norm < 1eV/A/atom, dipole < 2 ref value)')
+    print(f'# {howmany} frames in the trajectory were found to have possibly alarming energy, force or dipole values')
+    print('# Thresholds used: -0.2eV < energy deviation from reference < 0.85eV (per solvent molecule)')
+    print('#                  force norm < 1eV/A/atom')
+    print('#                  dipole norm < 3 x (reference dipole norm)')
     
     def energy_check():
         # Energy Check

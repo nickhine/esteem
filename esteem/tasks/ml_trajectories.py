@@ -1,19 +1,12 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
-
-
 """Defines a task to use a Machine Learning calculator to generate
 Molecular Dynamics trajectories, and also to process the results
 to generate infrared spectra from trajectory data"""
 
 
 # # Main Routine
-
-# In[ ]:
-
-
 # Load essential modules
 import sys
 import os
@@ -34,6 +27,8 @@ class MLTrajTask:
         self.wrapper = None
         self.snap_wrapper = None
         self.snap_calc_params = None
+        self.snap_target = None
+        self.which_targets = None
         self.script_settings = None
         self.task_command = 'mltraj'
         args = self.make_parser().parse_args("")
@@ -51,8 +46,10 @@ class MLTrajTask:
         all_trajs = get_trajectory_list(self.ntraj)
         if self.which_trajs is None:
             which_trajs = all_trajs
+            self.which_targets = [self.target]*len(which_trajs)
         else:
             which_trajs = self.which_trajs
+            assert len(self.which_targets)==len(self.which_trajs)
             for traj_label in which_trajs:
                 if traj_label not in all_trajs:
                     raise Exception(f"Invalid trajectory name: {traj_label}")
@@ -70,66 +67,109 @@ class MLTrajTask:
 
         model = {}
         continuation_len = {}
-        for traj_label in which_trajs:
+        enough_data = {traj_label:False for traj_label in which_trajs}
+        offsets = {traj_label:'' for traj_label in which_trajs}
+        while not all(enough_data.values()):
+            for traj_label,traj_target in zip(which_trajs,self.which_targets):
 
-            # Find (or relax) initial geometry
-            calc_params['calc_prefix'] = f'../{self.calc_prefix}'
+                # Find (or relax) initial geometry
+                calc_params['calc_prefix'] = f'../{self.calc_prefix}'
+                if isinstance(self.target,dict):
+                    calc_params['calc_head'] = self.target[traj_target]
 
-            model[traj_label] = None
-            if self.continuation:
-                continuation_trajfile = f"{self.seed}_{targstr(self.target)}_{traj_label}_{self.traj_suffix}.traj"
-                if os.path.exists(continuation_trajfile):
-                    continuation_traj = Trajectory(continuation_trajfile)
-                    continuation_len[traj_label] = len(continuation_traj)
-                    model[traj_label] = continuation_traj[-1]
-                    print(f'# Continuation file {continuation_trajfile} found, containing {continuation_len[traj_label]} snapshots. Continuing.')
+                # Check if we have a continuation to load in
+                model[traj_label] = None
+                if self.continuation:
+                    continuation_trajfile = f"{self.seed}_{targstr(traj_target)}_{traj_label}_{self.traj_suffix}.traj"
+                    if os.path.exists(continuation_trajfile):
+                        continuation_traj = Trajectory(continuation_trajfile)
+                        continuation_len[traj_label] = len(continuation_traj)
+                        model[traj_label] = continuation_traj[-1]
+                        # This model already blew up, so increase offset and load a new one
+                        if model[traj_label].get_temperature() > 10*self.temp:
+                            offsets[traj_label] += "A"
+                            model[traj_label] = None
+                            print(f'# Continuation file {continuation_trajfile} found, containing {continuation_len[traj_label]} snapshots. Abort was flagged, restarting.')
+                        else:
+                            print(f'# Continuation file {continuation_trajfile} found, containing {continuation_len[traj_label]} snapshots. Continuing.')
+                        continuation_traj.close()
+                    else:
+                        self.continuation = False
+                        continuation_len[traj_label] = 0
+                        print(f'# No continuation file {continuation_trajfile} found, initialising from scratch')
                 else:
-                    self.continuation = False
                     continuation_len[traj_label] = 0
-                    print('# No continuation file found, initialising from scratch')
-            else:
-                continuation_len[traj_label] = 0
 
-            if model[traj_label] is None:
-                model[traj_label] = find_initial_geometry(self.seed,self.wrapper.geom_opt,
-                                                      calc_params,traj_label)                
-            if self.constraints is not None:
-                from ase.constraints import FixBondLengths, Hookean, FixInternals
-                set_constraints = []
-                for c in self.constraints:
-                    if isinstance(c, FixBondLengths):
-                        bondlength = c.bondlengths[0]
-                        atoms = c.pairs[0]
-                        model[traj_label].set_distance(atoms[0],atoms[1],bondlength,fix=0)
-                        model[traj_label].set_constraint(c)
-                    if isinstance(c, Hookean):
-                        del model[traj_label].constraints
-                        set_constraints.append(c)
-                    if isinstance(c, FixInternals):
-                        set_constraints.append(c)
-                model[traj_label].set_constraint(set_constraints)
+                # If no continuation, find initial geometry
+                if model[traj_label] is None:
+                    offset_traj_label = traj_label + offsets[traj_label]
+                    model[traj_label] = find_initial_geometry(self.seed,self.wrapper.geom_opt,
+                                                          calc_params,offset_traj_label)
+                # Set up any constraints
+                if self.constraints is not None:
+                    from ase.constraints import FixBondLengths, Hookean, FixInternals
+                    set_constraints = []
+                    for c in self.constraints:
+                        if isinstance(c, FixBondLengths):
+                            bondlength = c.bondlengths[0]
+                            atoms = c.pairs[0]
+                            model[traj_label].set_distance(atoms[0],atoms[1],bondlength,fix=0)
+                            model[traj_label].set_constraint(c)
+                        if isinstance(c, Hookean):
+                            del model[traj_label].constraints
+                            set_constraints.append(c)
+                        if isinstance(c, FixInternals):
+                            set_constraints.append(c)
+                    model[traj_label].set_constraint(set_constraints)
 
-        # Evaluate initial energies
-        for i in which_trajs:
-            if continuation_len[traj_label]>=self.nsnap:
-                continue
-            ep = self.wrapper.singlepoint(model[i],"test",calc_params)[0]
-            ek = model[i].get_kinetic_energy()
-            print(f'# Trajectory {i} initial potential energy = {ep-self.wrapper.atom_e}')
-            print(f'# Trajectory {i} initial   kinetic energy = {ek}')
+            # Evaluate initial energies
+            for traj_label in which_trajs:
+                if continuation_len[traj_label]>=self.nsnap:
+                    continue
+                ep = self.wrapper.singlepoint(model[traj_label],"test",calc_params)[0]
+                ek = model[traj_label].get_kinetic_energy()
+                print(f'# Trajectory {traj_label} initial potential energy = {ep-self.wrapper.atom_e}')
+                print(f'# Trajectory {traj_label} initial   kinetic energy = {ek}')
 
-        # Current path will be two levels down from starting path in MD run, so adjust prefix
-        calc_params['calc_prefix'] = f'../../{self.calc_prefix}'
-        for traj_label in which_trajs:
-            # Pass in routine to actually run MD into generic Snapshot MD driver
-            generate_md_trajectory(model[traj_label],self.seed,self.target,traj_label,self.traj_suffix,
-                                   wrapper=self.wrapper,count_snaps=self.nsnap,count_equil=self.nequil,
-                                   md_steps=self.md_steps,md_timestep=self.md_timestep,
-                                   md_friction=self.md_friction,store_full_traj=self.store_full_traj,
-                                   temp=self.temp,calc_params=calc_params,dynamics=self.dynamics,
-                                   snap_wrapper=self.snap_wrapper if not self.recalculate_carved_traj else None,
-                                   snap_calc_params=self.snap_calc_params if not self.recalculate_carved_traj else None,
-                                   continuation=self.continuation,debugger=self.debugger)
+            # Current path will be two levels down from starting path in MD run, so adjust prefix
+            calc_params['calc_prefix'] = f'../../{self.calc_prefix}'
+            for traj_label,traj_target in zip(which_trajs,self.which_targets):
+                if enough_data[traj_label]:
+                    continue
+                # Pass in routine to actually run MD into generic Snapshot MD driver
+                generate_md_trajectory(model[traj_label],self.seed,traj_target,traj_label,self.traj_suffix,
+                                       traj_wrapper=self.wrapper,count_snaps=self.nsnap,count_equil=self.nequil,
+                                       md_steps=self.md_steps,md_timestep=self.md_timestep,
+                                       md_friction=self.md_friction,store_full_traj=self.store_full_traj,
+                                       temp=self.temp,traj_calc_params=calc_params,dynamics=self.dynamics,
+                                       snap_target=self.snap_target if not self.recalculate_carved_traj else None,
+                                       snap_wrapper=self.snap_wrapper if not self.recalculate_carved_traj else None,
+                                       snap_calc_params=self.snap_calc_params if not self.recalculate_carved_traj else None,
+                                       continuation=self.continuation,debugger=self.debugger)
+                self.continuation = True
+                output_trajfile = f"{self.seed}_{targstr(traj_target)}_{traj_label}_{self.traj_suffix}.traj"
+                if os.path.exists(output_trajfile):
+                    output_traj = Trajectory(output_trajfile)
+                    continuation_len[traj_label] = len(output_traj)
+                    output_traj.close()
+                    print(f'# Output file {output_trajfile} now contains {continuation_len[traj_label]} of {self.nsnap} snapshots.')
+                else:
+                    # aborted during equilibration, before any snapshots were written
+                    continuation_len[traj_label] = 0
+                if continuation_len[traj_label]>=self.nsnap:
+                    enough_data[traj_label] = True
+                else:
+                    # The run was aborted (eg temperature blew up): restart from a different
+                    # initial snapshot, giving up after max_restarts attempts
+                    offsets[traj_label] += 'A'
+                    if len(offsets[traj_label]) > self.max_restarts:
+                        print(f'# Trajectory {traj_label} aborted {len(offsets[traj_label])} times: giving up '
+                              f'with {continuation_len[traj_label]} of {self.nsnap} snapshots')
+                        enough_data[traj_label] = True
+                    else:
+                        print(f'# Trajectory {traj_label} aborted: restart {len(offsets[traj_label])} of '
+                              f'{self.max_restarts} from a new initial snapshot')
+
 
 
     def make_parser(self):
@@ -147,6 +187,7 @@ class MLTrajTask:
         parser.add_argument('--calc_seed','-Z',default=None,type=str,help='Seed for the calculator')
         parser.add_argument('--calc_suffix','-C',default='',type=str,help='Suffix for the calculator (often specifies ML hyperparameters)')
         parser.add_argument('--calc_dir_suffix','-D',default=None,type=str,help='Prefix for the calculator (often specifies directory)')
+        parser.add_argument('--traj_dir_suffix','-Y',default=None,type=str,help='Prefix for the trajectory (often specifies directory)')
         parser.add_argument('--calc_prefix','-P',default='',type=str,help='Prefix for the calculator (often specifies directory)')
         parser.add_argument('--target','-t',default=0,type=int,help='Excited state index, zero for ground state')
         parser.add_argument('--md_timestep','-q',default=10*AUT,type=float,help='Timestep in ASE units')
@@ -162,11 +203,15 @@ class MLTrajTask:
         parser.add_argument('--ntraj','-n',default=1,type=int,help='Number of separate trajectories in full ensemble')
         parser.add_argument('--nsnap','-N',default=200,type=int,help='Number of snapshots to record in trajectory')
         parser.add_argument('--nequil','-e',default=10,type=int,help='Number of discarded equilibration snapshots before data is recorded')
+        parser.add_argument('--max_restarts',default=10,type=int,help='Number of times an aborted (eg blown-up) trajectory is restarted from a new initial snapshot before giving up')
         parser.add_argument('--which_trajs','-w',default=None,type=str,help='Which of the separate trajectories are to be run in this task')
         parser.add_argument('--carve_trajectory_radius','-R',default=None,type=float,help='Radius around solute to carve trajectory at')
+        parser.add_argument('--carve_trajectory_max_atoms','-m',default=None,type=float,help='Max atoms when carving trajectory')
         parser.add_argument('--recalculate_carved_traj','-J',default=False,type=bool,help='Use snap_wrapper (if present, wrapper if not) to recalculate energies and forces after carving')
         parser.add_argument('--constraints','-c',default=None,type=str,help='Constraints (ASE constraints class)')
         parser.add_argument('--dynamics','-d',default=None,type=str,help='Dynamics (ASE Dynamics class)')
+        parser.add_argument('--carved_suffix',default=None,type=str,help='Suffix of mltraj output files corresponding to the size of carved clusters')
+        parser.add_argument('--corr_traj', default=False, type=bool, help='Boolean specifying whether to carve and recalculate correction trajectories')
 
         return parser
 
@@ -175,10 +220,6 @@ class MLTrajTask:
         for arg in vars(args):
             if arg not in default_args:
                 raise Exception(f"Unrecognised argument '{arg}'")
-
-
-# In[ ]:
-
 
 def load_trajectory_dipole(seed_state_str,traj_suffix,ntraj,nsnaps,mdsteps,extension='.traj'):
     '''
@@ -238,10 +279,6 @@ def calculate_ir_spectrum(mu_t,dt,freq_scale_fac,sigma):
 
 
 # # Command-line driver
-
-# In[ ]:
-
-
 def get_parser():
     mltraj = MLTrajTask()
     return mltraj.make_parser()

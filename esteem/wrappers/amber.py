@@ -64,6 +64,9 @@ class AmberWrapper():
         
         self.acpype_charge_type = 'bcc'
         self.acpype_atom_type = 'amber'
+        self.output = "amber"
+        self.restart_ext = "rst"
+        self.input_ext = "pdb"
 
         self.amber_exe_serial = 'sander -O '
         if which('sander.MPI'):
@@ -74,7 +77,7 @@ class AmberWrapper():
         else:
             self.amber_exe_parallel = self.amber_exe_serial
 
-    def prepare_input_acpype(self,seed,netcharge=0,offset=0):
+    def prepare_input_acpype(self,seed,netcharge=0,offset=0,pref='../'):
         """Prepares input parameters and topologies for Amber calculations"""
         
         import sys
@@ -84,7 +87,7 @@ class AmberWrapper():
         store_argv = sys.argv
 
         # Load molecular structure from .xyz file
-        mol = read(f'{seed}.xyz')
+        mol = read(f'{pref}{seed}.xyz')
 
         # Convert to pdb format
         write(f'{seed}.pdb',mol)
@@ -113,11 +116,11 @@ class AmberWrapper():
 
         sys.argv = store_argv
             
-    def prepare_input(self,seed,netcharge=0,offset=0):
+    def prepare_input(self,seed,netcharge=0,offset=0,pref="../"):
         """Prepares input parameters and topologies for Amber calculations"""
 
         # Load molecular structure from .xyz file
-        mol = read(f'{seed}.xyz')
+        mol = read(f'{pref}{seed}.xyz')
 
         # Convert to pdb format
         write(f'{seed}.pdb',mol)
@@ -252,9 +255,9 @@ class AmberWrapper():
             chg = '-'
         return chg
 
-    def find_solu_center_at(self,solute):
+    def find_solu_center_at(self,solute,pref='../'):
         try:
-            at = read(f"{solute}.xyz")
+            at = read(f"{pref}{solute}.xyz")
         except:
             raise Exception(f"Failed to read xyz file {solute}.xyz")
         com=at.get_center_of_mass()
@@ -275,7 +278,7 @@ class AmberWrapper():
         else:
             raise Exception("Symbols did not match when finding center atom")
 
-    def add_solvent_box(self,solute,solvent,counterions,solvatedseed,box_size):
+    def add_solvent_box(self,solute,solvent,counterions,solvatedseed,box_size,pref='../'):
         """Loads an Amber mol2 file for a solute and solvent, and creates a solvated box"""
 
         if solute in counterions:
@@ -626,9 +629,22 @@ class AmberWrapper():
             raise RuntimeError('{} returned an error: {}'
                                 .format('awk', errorcode))
 
+    # Restore coordinates into calculator
+    def restore_from_coordinates(self,model,crdfile):
+        seed = "dummy"
+        calc_am = Amber(amber_exe=self.amber_exe_serial,
+                     infile=seed+'.in',
+                     outfile=seed+'.out',
+                     topologyfile=seed+'.prmtop',
+                     incoordfile=seed+'.crd',
+                     outcoordfile=crdfile)
+        calc_am.read_coordinates(model)
+        model.calc = calc_am
+        return model
+
     # Set up Amber calculator
     def singlepoint(self,model,seed,calc_params={},forces=False,solvent=None,
-                    readonly=False,continuation=False):
+                    readonly=False,continuation=False,dipole=False,calc=False):
         """Runs a singlepoint calculation with the Amber ASE calculator"""
         f = open(seed+'.in', 'w')
         mmin_str =  f'''
@@ -650,16 +666,20 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
         calc_am.write_coordinates(model,f'{seed}.crd')
         model.set_calculator(calc_am)
 
+        e = model.get_potential_energy()
+        res = [e]
         if forces:
-            e = model.get_potential_energy()
-            f = model.get_forces()        
-            calc_am.results['dipole'] = self.dipole(seed,calc_am.incoordfile)
-            print(calc_am.results['dipole'])
-            return e,f,calc_am
-        else:
-            return model.get_potential_energy()
+            f = model.get_forces()
+            res.append(f)
+        if dipole:        
+            d = self.dipole(seed,calc_am.incoordfile)
+            calc_am.results['dipole'] = d
+            res.append(d)
+        if calc:
+            res.append(calc_am)
+        return res
 
-    def geom_opt(self,model,seed,calc_params={},solvent=None):
+    def geom_opt(self,model,seed,calc_params={},solvent=None,driver_tol=0.01):
         """Runs a geometry optimisation calculation with the Amber ASE calculator"""
         minin_str = (f'''
     Initial minimisation
@@ -680,10 +700,10 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
                           topologyfile=f'{seed}.prmtop',
                           incoordfile=f'{seed}.crd',
                           outcoordfile='min.rst')
-        model.set_calculator(calc_min)
+        model = calc_min.read_coordinates(f'{seed}.crd.nc')
+        model.calculator= calc_min
         calc_min.write_coordinates(model,f'{seed}.crd')
         print("Pot, Kin Energy after minimisation: ", model.get_potential_energy(), model.get_kinetic_energy())
-        calc_min.read_coordinates(model,f'{seed}.crd.nc')
 
     def heatup(self,model,seed,calc_params={},nsteps=100):
         """Runs a heatup temperature-ramp calculation with the Amber ASE calculator"""
@@ -714,11 +734,11 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
                           incoordfile='min.rst',
                           outcoordfile='heat.rst')
                           #mdcoordfile='heat.mdcrd.nc')
-        model.set_calculator(calc_heat)
-
         calc_heat.write_coordinates(model,'min.rst')
+        model.set_calculator(calc_heat)
         new_pe = model.get_potential_energy()
-        calc_heat.read_coordinates(model,calc_heat.outcoordfile)
+        calc_heat.read_coordinates(model)
+        model.calculator = calc_heat
         calc_heat.write_coordinates(model,'heat.rst')
         new_ke = model.get_kinetic_energy()
         print("Pot, Kin Energy after heating: ", new_pe, new_ke)
@@ -756,7 +776,7 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
         model.set_calculator(calc_dens)
 
         new_pe = model.get_potential_energy()
-        calc_dens.read_coordinates(model,calc_dens.outcoordfile)
+        calc_dens.read_coordinates(model)
         new_ke = model.get_kinetic_energy()
         print("Pot, Kin Energy after density equilibration: ", new_pe, new_ke)
 
@@ -792,11 +812,11 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
         model.set_calculator(calc_equil)
 
         new_pe = model.get_potential_energy()
-        calc_equil.read_coordinates(model,calc_equil.outcoordfile)
+        calc_equil.read_coordinates(model)
         new_ke = model.get_kinetic_energy()
         print("Pot, Kin Energy after equilibration: ", new_pe, new_ke)
         
-    def snapshots(self,model,seed,calc_params={},nsnaps=1,nsteps=100,start=0):
+    def snapshots(self,model,seed,calc_params={},nsnaps=1,nsteps=100,start=0,nat_solu=0,nat_solv=0):
         """Runs a long MD trajectory for snapshot generation with the Amber ASE calculator"""
         # NTC = 1: SHAKE not used - no constraints
         snap_str = (f'''
@@ -813,7 +833,8 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
             f.write(snap_str)
             f.close()
         step = 0
-        trajname = seed+'.traj'
+        # output trajectory goes in parent directory
+        trajname = f'../{seed}.traj'
         if start==0:
             copyfile('equil.rst',f'snap{-1:04}.rst')
             traj = Trajectory(trajname, 'w')
@@ -839,14 +860,15 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
             
             self.reimage(seed,calc_snap.outcoordfile,f'{seed}.rst_ri.nc')
             calc_snap.results['dipole'] = self.dipole(seed,calc_snap.outcoordfile)
-            calc_snap.read_coordinates(snapout,f'{seed}.rst_ri.nc')
+            calc_snap.outcoordfile = f'{seed}.rst_ri.nc'
+            calc_snap.read_coordinates(snapout)
             traj.write(snapout,**calc_snap.results)
             #write(f'{seed}_snap{step:04}.xyz',snapout)
-
-            calc_snap.read_coordinates(model,calc_snap.outcoordfile)
+            calc_snap.outcoordfile = f'snap{step:04}.rst'
+            calc_snap.read_coordinates(model)
             new_ke = model.get_kinetic_energy()
-
-            print("Pot, Kin Energy after snapshot",str(step),":",new_pe, new_ke)
+            new_temp = model.get_temperature()
+            print("Pot Energy, Kin Energy, Temp after snapshot",str(step),":",new_pe, new_ke, new_temp)
 
     
     def traj_write(self,atoms,traj):
@@ -865,7 +887,7 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
         from ase.io import Trajectory
         from ase import units
         
-        """Runs a singlepoint calculation with the Amber ASE calculator"""
+        """Runs an md calculation with the Amber ASE calculator"""
         f = open(mdseed+'.in', 'w')
         mmin_str =  f'''
 zero step md to get energy and force

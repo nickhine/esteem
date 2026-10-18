@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
-
-
 """Defines the MACEWrapper Class"""
 import numpy as np
+from ase.io import read,write
+from os import path
 
 class MACEWrapper():
     """
@@ -13,85 +12,18 @@ class MACEWrapper():
     potential energy surface.
     """
 
-    # Class attribute: default training arguments shown for reference - not used in code
-    # as it extracts the values from MACE
-    '''
-    default_train_args =  dict(
-        E0s={},
-        MLP_irreps='16x0e',
-        amsgrad=True,
-        avg_num_neighbors=1,
-        batch_size=40,
-        checkpoints_dir='checkpoints',
-        clip_grad=10.0,
-        compute_avg_num_neighbors=True,
-        config_type_weights={"Default":1.0},
-        correlation=3,
-        default_dtype='float64',
-        device='cuda',
-        downloads_dir='downloads',
-        ema=True,
-        ema_decay=0.99,
-        energy_key='energy',
-        energy_weight=1.0,
-        error_table='PerAtomRMSE',
-        eval_interval=2,
-        forces_key='forces',
-        forces_weight=10.0,
-        gate='silu',
-        hidden_irreps='128x0e + 128x1o',
-        interaction='RealAgnosticResidualInteractionBlock',
-        interaction_first='RealAgnosticResidualInteractionBlock',
-        keep_checkpoints=False,
-        log_dir='logs',
-        log_level='INFO',
-        loss='weighted',
-        lr=0.01,
-        lr_factor=0.8,
-        lr_scheduler_gamma=0.9993,
-        max_ell=3,
-        max_num_epochs=200, 
-        model='MACE',
-        name='all_etoh_gs_MACE',
-        num_cutoff_basis=5,
-        num_interactions=2,
-        num_radial_basis=8,
-        optimizer='adam',
-        patience=2048,
-        r_max=5.0,
-        restart_latest=True,
-        results_dir='results',
-        save_cpu=False,
-        scaling='rms_forces_scaling',
-        scheduler='ReduceLROnPlateau',
-        scheduler_patience=50,
-        seed=123,
-        start_swa=1200,
-        swa=True,
-        swa_energy_weight=1000.0,
-        swa_forces_weight=1.0,
-        swa_lr=0.001,
-        test_file='test.xyz',
-        train_file='train.xyz',
-        valid_batch_size=10,
-        valid_file=None,
-        valid_fraction=0.05,
-        weight_decay=5e-07)
-    '''
-
     from mace import tools
-    default_train_args = vars(tools.build_default_arg_parser().parse_args(["--name","dummy","--train_file","train.xyz"]))
+    default_train_args = tools.build_default_arg_parser().parse_args(["--name","dummy","--train_file","train.xyz"])
     
     def __init__(self,**kwargs):
         """Sets up instance attributes for MACEWrapper """
         from copy import deepcopy
         self.train_args = deepcopy(self.default_train_args)
-        self.train_args['max_num_epochs'] = -1
-
-        # Allow overrides for this instance of the class
-        for kw in self.train_args:
-            if kw in kwargs:
-                self.train_args[kw] = kwargs[kw]
+        self.train_args.max_num_epochs = -1
+        self.train_args.model = 'EnergyDipolesMACE'
+        self.train_args.loss = 'energy_forces_dipole'
+        self.train_args.error_table = 'EnergyDipoleRMSE'
+        self.train_args.restart_latest = True
 
         # Make a set of default loading arguments by copying in training arguments
         self.load_args = {}
@@ -102,12 +34,30 @@ class MACEWrapper():
         self.atom_e = 0.0
         self.atom_energies = {}
         self.atoms_on_load = None
-    
+        self.output = "mace"
+        # Use a MACE foundation model instead of a trained one: (family, model), eg
+        # ('polar', 'polar-1-m') loads mace.calculators.mace_polar('polar-1-m')
+        self.foundation_model = None
+        self.foundation_kwargs = {}
+        # Total charge written to atoms.info['charge'], for charge-aware models (eg MACE-POLAR),
+        # used when the task does not supply one
+        self.charge = 0
+
     def calc_filename(self,seed,target,prefix='',suffix=''):
-        if target is None or target == 0:
-            calcfn = seed+"_gs_"+suffix
+        if isinstance(target,dict):
+            calcfn = seed+"_"
+            for targ in target:
+                if targ=="diff":
+                    continue
+                calcfn += "es"+str(targ) if targ!=0 else "gs"
+            calcfn += "_"+suffix
         else:
-            calcfn = seed+"_es"+str(target)+"_"+suffix
+            if target is None or target == 0:
+                calcfn = f"{seed}_gs_{suffix}"
+            elif isinstance(target,str):
+                calcfn = f"{seed}_{target}_{suffix}"
+            else:
+                calcfn = f"{seed}_es{str(target)}_{suffix}"
             
         calcfn = prefix + calcfn
             
@@ -136,42 +86,39 @@ class MACEWrapper():
         if self.calc_params is None:
             self.calc_params = {'target': target,'calc_prefix': prefix,
                                 'calc_suffix': suffix,'calc_seed': seed}
-            
+
         if self.calc is not None: 
             return self.calc
-        try:
-            from mace.calculators import MACECalculator,EnergyDipoleMACECalculator
-        except:
-            from mace.calculators import MACECalculator
-        import numpy as np
-        from ase.io import read
-        from os import path
+        if self.foundation_model is not None:
+            import mace.calculators
+            family, model = self.foundation_model
+            self.calc = getattr(mace.calculators,f'mace_{family}')(model=model,**self.foundation_kwargs)
+            return self.calc
+        from mace.calculators import MACECalculator
 
         # Find checkpoint file(s) for calculator
         calctarget = self.calc_params['target']
         if isinstance(suffix,dict) or isinstance(target,list):
             self.calc = []
-        suffixes = suffix if isinstance(suffix,dict) else {suffix:self.train_args['seed']}
+        suffixes = suffix if isinstance(suffix,dict) else {suffix:self.train_args.seed}
+        if isinstance(calctarget,list):
+            targets = calctarget
+        if isinstance(calctarget,dict):
+            targets = ""
+            for targ in calctarget:
+                if targ=="diff":
+                    continue
+                targets += "es"+str(targ) if targ!=0 else "gs"
+            targets = [targets]
+        else:
+            targets = [calctarget]
         targets = calctarget if isinstance(calctarget,list) else [calctarget]
         for suff in suffixes:
             for targ in targets:
                 dirname = self.calc_filename(seed,targ,prefix=prefix,suffix=dir_suffix)
                 calcfn = self.calc_filename(seed,targ,prefix="",suffix=suff)
-                modelfile = f"{dirname}/{calcfn}_swa.model"
-                if path.exists(modelfile):
-                    checkpoint = modelfile
-                else:
-                    modelfile = f"{dirname}/{calcfn}.model"
-                    if path.exists(modelfile):
-                        checkpoint = modelfile
-                    else:
-                        checkpoints_dir=f"{dirname}/checkpoints"
-                        checkpoint = f"{checkpoints_dir}/{calcfn}_run-{suffixes[suff]}.model"
-                print(f'# Loading Calculator from: {checkpoint} with args: {self.load_args}',flush=True)
-                try:
-                    calc = EnergyDipoleMACECalculator(checkpoint,device="cuda",default_dtype='float64')
-                except:
-                    calc = MACECalculator(checkpoint,device="cuda",default_dtype='float64',model_type='EnergyDipoleMACE')
+                modelfile = self.find_best_model(dirname,calcfn,suffixes[suff])
+                calc = MACECalculator(modelfile,device="cuda",default_dtype='float64',model_type='EnergyDipoleMACE')
                 if isinstance(suffix,dict) or isinstance(calctarget,list):
                     self.calc.append(calc)
                 else:
@@ -179,20 +126,46 @@ class MACEWrapper():
 
         return self.calc
 
-    def traj_to_extxyz(self,trajfile,outfilename):
+    def traj_to_extxyz(self,trajfile,outfilename,use_json=False):
+        """
+        Converts a ASE Trajectory object to a extxyz format text file
+        Adds "REF_" to the data tags so that ASE does not nuke them
+
+        trajfile: str or list
+
+        outfilename: str
+
+        """
 
         from ase.io import Trajectory
-        from esteem import trajectories
-
-        traj = Trajectory(trajfile)
-        
         from ase.io.extxyz import write_xyz
-        f=open(outfilename,"w")
-        write_xyz(f,traj)
-        f.close()
+        import json
 
-        return outfilename, len(traj)
-   
+        if not isinstance(trajfile,list):
+            trajs = [Trajectory(trajfile)]
+        else:
+            trajs = [Trajectory(tr) for tr in trajfile]
+            assert all([len(tr)==len(trajs[0]) for tr in trajs])
+        with open(outfilename,"w") as f:
+            for i,t in enumerate(trajs[0]):
+                tp = t.copy()
+                if not use_json:
+                    tp.info["REF_energy"] = t.calc.results["energy"]
+                    tp.info["REF_dipole"] = t.calc.results["dipole"]
+                    # forces may be (natoms,3), or (ntargets,natoms,3) from a multi-target singlepoint
+                    forces = np.asarray(t.calc.results["forces"])
+                    tp.arrays["REF_forces"] = forces[0] if forces.ndim == 3 else forces
+                else:
+                    en = np.array([traj[i].calc.results["energy"] for traj in trajs])
+                    tp.info["REF_energy"] = "_JSON " + json.dumps(en.tolist())
+                    dip = np.stack([traj[i].calc.results["dipole"] for traj in trajs])
+                    tp.info["REF_dipole"] = "_JSON " + json.dumps(dip.tolist()) 
+                    fo = np.stack([traj[i].calc.results["forces"] for traj in trajs])
+                    fo = fo.transpose(1, 0, 2)
+                    tp.info["REF_forces"] = "_JSON " + json.dumps(fo.tolist())
+                write_xyz(f,tp)
+        return outfilename, len(trajs[0])
+
     def reset_loss(self,seed,prefix="",suffix="",target=None):
         """
         Runs training for MACE model using an input trajectory as training points
@@ -207,99 +180,130 @@ class MACEWrapper():
         
         """
 
-        from os import path
-
         # Not sensible to try training in other directory than current, so prefix is
         # suppressed here but used elsewhere (eg for retrieving trajs)
         label = self.calc_filename(seed,target,prefix="",suffix=suffix)
-        
+
+    def find_best_model(self,dirname,calcfn,seed_suffix):
+        """
+        MACE keeps changing its mind about the naming scheme for the finished model.
+        So we loop over all the possibilities and try them all.
+        We can probably remove this nonsense eventually but keep it for now
+        dirname: str
+        calcfn: str
+        seed_suffix: str
+        """
+        best_model = None
+        modelfiles = []
+        for swastr in ["_stagetwo","_swa",""]:
+            for dirstr in [f"{dirname}/",f"{dirname}/checkpoints/"]:
+                for suffix in ["",f"_run-{seed_suffix}"]:
+                    modelfiles.append(f"{dirstr}{calcfn}{suffix}{swastr}.model")
+        for modelfile in modelfiles:
+            found=False
+            if path.exists(modelfile):
+                found=True
+                best_model = modelfile
+                print(modelfile,' found')
+                break
+        if best_model is None:
+            print(f'ERROR: No model found among: {modelfiles}')
+        return best_model
+
     def train(self,seed,prefix="",suffix="",dir_suffix="",trajfile="",validfile=None,testfile=None,
-              target=None,restart=False,**kwargs):
+              targets_in=None,restart=False,**kwargs):
         """
         Runs training for MACE model using an input trajectory as training points
 
         seed: str
-        
         target: int
-
         suffix: str
-
         trajfile: str
-
         restart: bool
-
         kwargs: dict
-
         """
         
-        from os import path
-
         # Not sensible to try training in other directory than current, so prefix is
         # suppressed here but used elsewhere (eg for retrieving trajs)
-        dirname = self.calc_filename(seed,target,prefix="",suffix=dir_suffix)
+        dirname = self.calc_filename(seed,targets_in,prefix="",suffix=dir_suffix)
 
         # Sort out optional arguments to see if any overrides to defaults have been supplied
         from copy import deepcopy
         import os
         train_args = deepcopy(self.train_args)
-        for kw in train_args:
-            if kw in kwargs:
-                train_args[kw] = kwargs[kw]
 
         # Check if training already complete
-        calcfn = self.calc_filename(seed,target,prefix="",suffix=suffix)
-        finished_model = None
-        modelfile = f"{dirname}/{calcfn}_swa.model"
-        if path.exists(modelfile):
-            finished_model = modelfile
-        else:
-            modelfile = f"{dirname}/{calcfn}.model"
-            if path.exists(modelfile):
-                finished_model = modelfile
-            else:
-                checkpoints_dir=f"{dirname}/checkpoints"
-                modelfile = f"{checkpoints_dir}/{calcfn}_run-{train_args['seed']}.model"
-                if path.exists(modelfile):
-                    finished_model = modelfile
-        if finished_model is not None:
-            print(f'# Skipping training as finished model {finished_model} already exists')
+        calcfn = self.calc_filename(seed,targets_in,prefix="",suffix=suffix)
+        best_model = self.find_best_model(dirname,calcfn,train_args.seed)
+        if best_model is not None:
+            print(f'# Skipping training as finished model {best_model} already exists')
             print(f'# Delete this if training is intended to be restarted / extended')
             return
+
+        use_json = False
+        if not isinstance(targets_in,dict):
+            # if we supplied a single target, convert to a dictionary
+            targets = {targets_in:str(targets_in)}
+            heads = None
+        elif train_args.model=="ExcitedMACE":
+            targets = targets_in.copy()
+            if "diff" in targets:
+                del targets["diff"]
+            heads = None
+            use_json = True
+            print(targets_in)
+        else:
+            # if we supplied multiple targets set up heads dictionary
+            targets = targets_in
+            heads = {}
+            for target in targets:
+                targetstr = targets[target]
+                heads[targetstr] = {}
 
         # Convert trajectories from .traj to .xyz format
         convtrajfile = {'train':trajfile}
         if validfile is not None:
             convtrajfile['valid'] = validfile
         else: # assume we want to use a validation fraction of 5%
-            del train_args['valid_file']
-            train_args['valid_fraction'] = 0.05
+            del train_args.valid_file
+            if not hasattr(train_args,'valid_fraction'):
+                train_args.valid_fraction = 0.05
         if testfile is not None:
             convtrajfile['test'] = testfile
         for key in convtrajfile:
-            trajf = convtrajfile[key]
-            print(f'# Converting trajectory {trajf} to extxyz format as {key} file')
-            extxyzfile = self.calc_filename(seed,target,prefix=dirname+"/",suffix=suffix)+f"_{key}.xyz"
-            extxyzfile, ntraj = self.traj_to_extxyz(trajf,extxyzfile)
-            print(f'# Wrote {ntraj} frames to {extxyzfile} in extxyz format')
-            extxyzfile = self.calc_filename(seed,target,prefix="",suffix=suffix)+f"_{key}.xyz"
-            train_args[f'{key}_file'] = extxyzfile
-            if key=='train':
-                if 'test' not in convtrajfile:
-                    train_args['test_file'] = extxyzfile
-                if self.train_args['max_num_epochs']<0:
-                    train_args['max_num_epochs'] = int(round(200000*train_args['batch_size']/ntraj/50)*50)
+            if not use_json:
+                trajfile_dict = convtrajfile[key]
+                targets_loop = targets
+            else:
+                from esteem.trajectories import targstr
+                all_targs = "".join(targstr(t) for t in targets)
+                trajfile_dict = {all_targs: [convtrajfile[key][targets[target]] for target in targets]}
+                targets_loop = {all_targs:all_targs}
+            for target in targets_loop:
+                targetstr = targets_loop[target]
+                trajf = trajfile_dict[targetstr]
+                print(f'# Converting trajectory {trajf} to extxyz format as {key} file for target {targetstr}')
+                extxyzfile = self.calc_filename(seed,target,prefix=dirname+"/",suffix=suffix)+f"_{key}.xyz"
+                extxyzfile, ntraj = self.traj_to_extxyz(trajf,extxyzfile,use_json=use_json)
+                print(f'# Wrote {ntraj} frames to {extxyzfile} in extxyz format')
+                extxyzfile = self.calc_filename(seed,target,prefix="",suffix=suffix)+f"_{key}.xyz"
+                if heads is not None:
+                    heads[targetstr][f'{key}_file'] = extxyzfile
+                else:
+                    setattr(train_args,f'{key}_file',extxyzfile)
+                if key=='train':
+                    if 'test' not in convtrajfile:
+                        train_args.test_file = extxyzfile
+                    if self.train_args.max_num_epochs<0:
+                        train_args.max_num_epochs = int(round(200000*train_args.batch_size/ntraj/50)*50)
         
         # Open atom_traj
         from ase.io import Trajectory
-        atom_traj = Trajectory(f'{seed}_atoms_{suffix}.traj')
+        atom_traj = Trajectory(f'{dirname}/{seed}_atoms_{suffix}.traj')
         
         # Now switch working directory to ensure all outputs are together
         orig_dir = os.getcwd()
         os.chdir(dirname)
-
-        # Set up input data
-        train_args['name'] = self.calc_filename(seed,target,prefix="",suffix=suffix)
-        train_args['device'] = 'cuda'
 
         # Calculate E0s from atom_traj
         from esteem.trajectories import atom_energies
@@ -309,53 +313,57 @@ class MACEWrapper():
         E0s = {}
         for sym in atom_en:
             E0s[atomic_numbers[sym]] = atom_en[sym]
-        train_args['E0s'] = E0s
+        if heads is not None:
+            for target in targets:
+                targetstr = targets[target]
+                if target!='diff':
+                    heads[targetstr]['E0s'] = str(E0s)
+                else:
+                    heads[targetstr]['E0s'] = str({Z:0 for Z in E0s})
+        else:
+            train_args.E0s = str(E0s)
+        # Use the elements with E0s as the element table, so that elements in the atoms
+        # trajectory but absent from the training data (eg O from a water reference)
+        # do not give a mismatch between atomic energies and node attributes
+        if getattr(train_args,'atomic_numbers',None) is None:
+            train_args.atomic_numbers = str(sorted(E0s))
+
+        # Set up input data
+        train_args.name = self.calc_filename(seed,targets_in,prefix="",suffix=suffix)
+        train_args.device = 'cuda'
+        train_args.heads = str(heads) if heads is not None else heads
+        print('# Setting heads to:',train_args.heads)
         
         # Some fixes to the input parameter list that prevent breakage
-        if train_args['start_swa'] is None:
-            train_args['start_swa'] = train_args['max_num_epochs'] // 4 * 3
-        for arg in ['num_channels','max_L']:
-            if arg in train_args:
-                if train_args[arg] is None:
-                    del train_args[arg]
-        for arg in ['wandb_project','wandb_entity','wandb_name']:
-            if arg in train_args:
-                if train_args[arg]=="":
-                    del train_args[arg]
-        if 'wandb_log_hypers' in train_args:
-            del train_args['wandb_log_hypers']
-        for arg in ['save_cpu','restart_latest','keep_checkpoints','ema','swa','amsgrad','wandb']:
-            if arg in train_args:
-                if train_args[arg] is not True:
-                    del train_args[arg]
-                else:
-                    train_args[arg] = ""
+        if train_args.start_swa is None:
+            train_args.start_swa = train_args.max_num_epochs // 4 * 3
 
         # Write config.txt
-        import sys
-        store_argv = sys.argv
-        config_file = self.calc_filename(seed,target,prefix="",suffix=suffix)+'_config.txt'
+        config_file = self.calc_filename(seed,targets_in,prefix="",suffix=suffix)+'_config.txt'
         print(f'# Writing MACE configuration to {config_file}')
         with open(config_file,"w") as f:
-            for kw in train_args:
-                eq = '=' if train_args[kw]!="" else ""
-                f.write(f'--{kw}{eq}{train_args[kw]}\n')
-        #sys.argv = ['train.py',config_file]
+            for kw in train_args.__dict__:
+                eq = '=' if getattr(train_args,kw)!="" else ""
+                f.write(f'--{kw}{eq}{getattr(train_args,kw)}\n')
         
-        sys.argv = ['run_train.py']
-        for kw in train_args:
-            sys.argv.append(f'--{kw}');
-            if train_args[kw]!="":
-                sys.argv.append(f'{train_args[kw]}')
-        
-        extxyzfile = train_args[f'train_file']
+        extxyzfile = train_args.train_file
         print(f'# Training MACE model using trajectory {extxyzfile} with parameters:')
         print('#',train_args)
-        import scripts.run_train
-        scripts.run_train.main()
-        sys.argv = store_argv
+
+        from mace.cli import run_train
+        run_train.run(train_args)
         
         os.chdir(orig_dir)
+
+    def check_head(self,calc_ml,head):
+        if isinstance(calc_ml,list):
+            head_found = [head in calc.models[0].heads for calc in calc_ml]
+            heads_list = [calc.models[0].heads for calc in calc_ml]
+        else:
+            head_found = head in calc_ml.models[0].heads
+            heads_list = calc_ml.models[0].heads
+        if not head_found:
+            raise Exception(f"Head {head} not found in MACE calculator heads list: {heads_list}")
     
     def traj_write(self,atoms,traj):
         kw = {#'dipole': atoms.get_dipole_moment(),
@@ -363,6 +371,117 @@ class MACEWrapper():
               'energy': atoms.get_potential_energy(),
               'forces': atoms.get_forces()}
         traj.write(atoms,**kw)
+
+    def restore_from_coordinates(self,model,crdfile):
+        model = read(crdfile,index=-1)
+        return model
+
+    def heatup(self,model,seed,calc_params={},nsteps=100):
+        """
+        Runs a heating up Molecular Dynamics calculation with the MACE ASE calculator.
+
+        model: ASE Atoms
+
+        seed: str
+        
+        calc_params: dict
+        
+        nsteps: int
+        """
+
+        if not hasattr(self,'dynamics') or self.dynamics is None:
+            from types import SimpleNamespace
+            self.dynamics = SimpleNamespace()
+            self.dynamics.type = "LANG"
+            self.dynamics.friction = self.friction
+            self.dynamics.new_traj = True
+        nramp = 10
+        models_ramped = []
+        for iramp in range(nramp):
+            ramp_temp = self.temp0*(iramp+1)/nramp
+            self.dynamics = self.run_md(model,seed+"_heat",calc_params,nsteps/nramp,self.dt,1,ramp_temp,dynamics=self.dynamics)
+            models_ramped.append(model.copy())
+            write('heat.xyz',models_ramped)
+
+    def densityequil(self,model,seed,calc_params={},nsteps=100):
+        """
+        Runs a density equilibration Molecular Dynamics calculation with the MACE ASE calculator.
+        model: ASE Atoms
+        seed: str
+        calc_params: dict
+        nsteps: int
+        """
+
+        if ((not hasattr(self,'dynamics') or self.dynamics is None) or
+            (self.dynamics.type!="NPT")):
+            from types import SimpleNamespace
+            self.dynamics = SimpleNamespace()
+            self.dynamics.type = "NPT"
+            self.dynamics.friction = self.friction
+            self.dynamics.ttime = self.ttime
+            from ase import units
+            self.dynamics.pfactor = 2*1.06e9*(units.J/units.m**3)*self.ttime**2
+            self.dynamics.new_traj = True
+        self.dynamics = self.run_md(model,seed+"_dens",calc_params,nsteps,self.dt,1,self.temp0,dynamics=self.dynamics)
+        write('density.xyz',model)
+
+    def equil(self,model,seed,calc_params={},nsteps=100):
+        """
+        Runs an equilibration Molecular Dynamics calculation with the MACE ASE calculator.
+        model: ASE Atoms
+        seed: str
+        calc_params: dict
+        nsteps: int
+        """
+
+        if ((not hasattr(self,'dynamics') or self.dynamics is None) or
+            (self.dynamics.type!="LANG")):
+            from types import SimpleNamespace
+            self.dynamics = SimpleNamespace()
+            self.dynamics.type = "LANG"
+            self.dynamics.friction = self.friction
+            self.dynamics.new_traj = True
+        self.dynamics = self.run_md(model,seed+"_equil",calc_params,nsteps,self.dt,1,self.temp0,dynamics=self.dynamics)
+        write('equil.xyz',model)
+
+    def snapshots(self,model,seed,calc_params={},nsnaps=1,nsteps=100,start=0,nat_solu=0,nat_solv=0):
+        """
+        Runs a density equilibration Molecular Dynamics calculation with the MACE ASE calculator.
+        model: ASE Atoms
+        seed: str
+        calc_params: dict
+        nsteps: int
+        """
+        from ase.io import Trajectory
+
+        trajname = seed+'.traj'
+        if start==0:
+            traj = Trajectory(trajname, 'w')
+        else:
+            traj = Trajectory(trajname)
+            prevframe = len(traj)
+            print(f'# Found trajectory file {trajname} containing {prevframe} frames.')
+            if prevframe != start+1:
+                raise Exception(f'Error: This does not agree with the resumption point {start}.')
+            traj.close()
+            traj = Trajectory(trajname, 'a')
+        if True:
+            #((not hasattr(self,'dynamics') or self.dynamics is None) or
+            #(self.dynamics.type!="LANG")):
+            from types import SimpleNamespace
+            self.dynamics = SimpleNamespace()
+            self.dynamics.type = "LANG"
+            self.dynamics.friction = self.friction
+            self.dynamics.new_traj = True
+        snapout = model.copy()
+        for step in range(start,nsnaps):
+            self.dynamics = self.run_md(snapout,seed+"_snaps",calc_params,nsteps,self.dt,1,self.temp0,dynamics=self.dynamics)
+            from esteem.tasks.clusters import reimage_cluster
+            snap_reimage = snapout.copy()
+            if snapout.cell.volume > 0.0:
+                reimage_cluster(snap_reimage,nat_solv,nat_solu)
+            traj.write(snap_reimage)
+            write(f'snap{step:04}.xyz',snap_reimage)
 
     def run_md(self,model,mdseed,calc_params,md_steps,md_timestep,superstep,temp,
                  solvent=None,charge=0,restart=False,readonly=False,constraints=None,dynamics=None,
@@ -406,6 +525,11 @@ class MACEWrapper():
 
         # Load the MACE Calculator
         calc_ml = self.load(calc_seed,target,prefix=prefix,suffix=suffix,dir_suffix=dir_suffix)
+        model.info['charge'] = charge if charge else self.charge
+        if isinstance(target,dict):
+            head = calc_params['calc_head']
+            self.check_head(calc_ml,head)
+            model.info["head"] = head
         model.calc = calc_ml
 
         # Initialise velocities if this is first step, otherwise inherit from model
@@ -434,10 +558,10 @@ class MACEWrapper():
                     dynamics.set_friction(friction)
                     dynamics.set_temperature(temperature_K=temp)
             if dyn_type=="NPT" and type(dynamics)!=npt.NPT:
-                ttime = dynamics.friction
-                pfactor = None #1.06e9*(units.J/units.m**3)*ttime**2 # Bulk modulus for ethanol
+                ttime = dynamics.ttime
+                pfactor = dynamics.pfactor #None #1.06e9*(units.J/units.m**3)*ttime**2 # Bulk modulus for ethanol
                 dynamics = npt.NPT(model, timestep=md_timestep, temperature_K=temp, externalstress=0,
-                                   pfactor=pfactor,ttime=ttime)
+                                   pfactor=pfactor,ttime=ttime,mask=np.eye(3,dtype=bool))
             dynamics.new_traj = new_traj
             dynamics.friction = friction
             dynamics.type = dyn_type
@@ -483,12 +607,17 @@ class MACEWrapper():
         suffix = calc_params['calc_suffix']
         dir_suffix = calc_params['calc_dir_suffix']
         prefix = calc_params['calc_prefix']
-        
+       
         from ase.optimize import BFGS
         from ase.units import Hartree, Bohr
 
         # Load the appropriate MACE Calculator
         calc_ml = self.load(calc_seed,target,prefix=prefix,suffix=suffix,dir_suffix=dir_suffix)
+        model.info['charge'] = charge if charge else self.charge
+        if isinstance(target,dict):
+            head = calc_params['calc_head']
+            self.check_head(calc_ml,head)
+            model.info["head"] = head
         model.calc = calc_ml
 
         # Create instance of BFGS optimizer, run it and return results
@@ -500,6 +629,8 @@ class MACEWrapper():
             fmax = 0.00045*fac
         if driver_tol=='loose':
             fmax = 0.00450*fac
+        if driver_tol=='veryloose':
+            fmax = 0.1*fac
         if driver_tol=='tight':
             fmax = 0.000015*fac
             
@@ -541,6 +672,11 @@ class MACEWrapper():
 
         # Load the appropriate MACE  Calculator
         calc_ml = self.load(calc_seed,target,prefix=prefix,suffix=suffix,dir_suffix=dir_suffix)
+        model_opt.info['charge'] = charge if charge else self.charge
+        if isinstance(target,dict):
+            head = calc_params['calc_head']
+            self.check_head(calc_ml,head)
+            model_opt.info["head"] = head
         model_opt.calc = calc_ml
 
         # Create instance of Vibrations class, run it and return results
@@ -558,8 +694,9 @@ class MACEWrapper():
         #print(freqs)
         return ir
 
-    def singlepoint(self,model,seed,calc_params,solvent=None,charge=0,spin=0,forces=False,dipole=True,
-                    readonly=False,continuation=False,cleanup=True):
+    def singlepoint(self,model,seed,calc_params,solvent=None,charge=0,spin=0,
+                    forces=False,dipole=False,calc=False,readonly=False,continuation=False,
+                    cleanup=True):
         """
         Runs a singlepoint calculation with the MACE ASE calculator
 
@@ -586,13 +723,18 @@ class MACEWrapper():
         
         # Load the appropriate MACE Calculator(s)
         calc_ml = self.load(calc_seed,target,prefix=prefix,suffix=suffix,dir_suffix=dir_suffix)
+        model.info['charge'] = charge if charge else self.charge
+        if isinstance(target,dict):
+            head = calc_params['calc_head']
+            self.check_head(calc_ml,head)
+            model.info["head"] = head
         if isinstance(calc_ml,list):
             e_calc = []
             f_calc = []
             d_calc = []
-            for calc in calc_ml:
-                calc.results = {}
-                model.calc = calc
+            for tcalc in calc_ml:
+                tcalc.results = {}
+                model.calc = tcalc
                 e_calc.append(model.get_potential_energy())
                 if forces:
                     f_calc.append(model.get_forces())
@@ -609,27 +751,26 @@ class MACEWrapper():
                 f_calc = np.array(f_calc)
                 model.calc.results["forces"] = f_calc
                 model.calc.results["forces_std"] = np.std(f_calc,axis=1)
+            model.calc = calc_ml
         else:
             model.calc = calc_ml
             e_calc = model.get_potential_energy()
             if forces:
                 f_calc = model.get_forces()
             if dipole:
-                d_calc = model.get_dipole_moment()
+                # some models (eg MACE-POLAR foundation models) do not provide a dipole
+                if 'dipole' in calc_ml.implemented_properties:
+                    d_calc = model.get_dipole_moment()
+                else:
+                    d_calc = None
+        res = [e_calc]
         if forces:
-            if dipole:
-                return e_calc, f_calc, d_calc, calc_ml
-            else:
-                return e_calc, f_calc, calc_ml
-        else:
-            if dipole:
-                return e_calc, d_calc, calc_ml
-            else:
-                return e_calc, calc_ml
-
-
-# In[ ]:
-
+            res.append(f_calc)
+        if dipole:
+            res.append(d_calc)
+        if calc:
+            res.append(calc_ml)
+        return res
 
 
 

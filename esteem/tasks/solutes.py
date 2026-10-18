@@ -1,22 +1,15 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
-
-
 """Runs DFT and TDDFT calculations on Solute (or Solvent) molecules, in implicit solvent"""
 
-
 # # Main driver routine
-
-# In[ ]:
-
-
 class SolutesTask:
 
     def __init__(self,**kwargs):
         self.wrapper = None
-        self.script_settings = None        
+        self.script_settings = None
+        self.task_command = "solutes"
         default_args = self.make_parser().parse_args("")
         # Set values of all parameters (defaults unless overridden)
         for arg in vars(default_args):
@@ -145,24 +138,31 @@ class SolutesTask:
             String for directory name where xyz files will be written (eg "xyz"). Created if not present
         """
         from os import path, makedirs
+        from ase.io import write
         import subprocess
 
         # Download sdf file from cactus.nci.nih.gov
         if not path.exists(out_path):
             makedirs(out_path)
         for seed in namelist:
-            # TODO: use urllib here
-            wget_str = ("wget -O \""+out_path+"/" + seed + ".xyz\" " +
-                        "\"https://cactus.nci.nih.gov/chemical/structure/" + 
-                        namelist[seed] + "/file?format=xyz\"")
             if not path.exists(out_path+"/"+seed+".xyz"):
-                print(wget_str)
-                errorcode = subprocess.call(wget_str, shell=True)
-                if errorcode:
-                    raise RuntimeError('{} returned an error: {}'
-                                                .format('wget', errorcode))
+                if False:
+                    # TODO: use urllib here
+                    wget_str = ("wget -O \""+out_path+"/" + seed + ".xyz\" " +
+                                "\"https://cactus.nci.nih.gov/chemical/structure/" + 
+                                namelist[seed] + "/file?format=xyz\"")
+                    print(wget_str)
+                    errorcode = subprocess.call(wget_str, shell=True)
+                    if errorcode:
+                        raise RuntimeError('{} returned an error: {}'
+                                                    .format('wget', errorcode))
+                else:
+                    from ase.data.pubchem import pubchem_atoms_conformer_search
+                    all_conformers = pubchem_atoms_conformer_search(namelist[seed])
+                    write(f'{out_path}/{seed}.xyz',all_conformers)
+                    
             else:
-                print("Skipping download: "+out_path+"/"+seed+".xyz already exists")
+                print(f'Skipping download: {out_path}/{seed}.xyz already exists')
 
         # strip out long names and convert to list
         shortnames = [x for x in namelist]
@@ -177,6 +177,34 @@ class SolutesTask:
         if isinstance(solvent,dict):
             return solvent['solvent']
 
+    def get_solute(self,seed,target,infile,outfile,task,sol_str,in_path,baseseed):
+        from ase.io import read, write
+        from os import path
+        if not path.exists(infile):
+            # Try basename without _esX
+            if target is not None and target !=0:
+                infile = f'{in_path}/{baseseed}.xyz'
+            if not path.exists(infile):
+                print(f'Skipping {task} {sol_str}for: {seed} - no input file')
+                return (None, None, None)
+        solute = read(infile,index=slice(0,None))
+        nconf = len(solute)
+        if nconf>1:
+            print(f'Input file contains {nconf} conformers')
+        if path.exists(outfile):
+            solute_done = read(outfile,index=slice(0,None))
+            nconf_done = len(solute_done)
+            if nconf_done == nconf:
+                print(f'Skipping {task} {sol_str}for: {seed} - output file already present')
+                return (None, None, None)
+            else:
+                print(f'Continuing {task} {sol_str}for: {seed} - output file contains {nconf_done} conformers')
+                solute[0:nconf_done] = solute_done[0:nconf_done]
+        else:
+            nconf_done = 0
+            
+        return solute,nconf,nconf_done
+        
     # Optimize geometries of solute selection
     def geom_opt_all(self,solute_names,in_path,out_path,geom_opt_func,calc_params,
                      driver_tol='default',solvent=None,charges={}):
@@ -205,61 +233,64 @@ class SolutesTask:
         from ase.io import read, write
         from os import path, makedirs, getcwd, chdir
 
+        if solvent is not None:
+            sol_str = f'in {self.solvstr(solvent)} solvent '
+        else:
+            sol_str = ''
+
         # Make directory for optimised structures
         if not path.exists(out_path):
             makedirs(out_path)
-        sol_str = ''
         target = calc_params['target']
-        if solvent is not None:
-            sol_str = f'in {self.solvstr(solvent)} solvent '
 
         for seed in solute_names:
             if target is not None and target!=0:
                 baseseed = seed
-                seed = seed+"_es"+str(target)
-            if seed in charges:
-                charge = charges[seed]
+                seed = f'{seed}_es{str(target)}'
+            else:
+                baseseed = seed
+            # charges are keyed by the molecule name, not the excited-state seed
+            if baseseed in charges:
+                charge = charges[baseseed]
             else:
                 charge = 0
-            infile = in_path+"/"+seed+".xyz"
-            outfile = out_path+"/"+seed+".xyz"
-            if not path.exists(infile):
-                # Try basename without _esX
-                if target is not None and target !=0:
-                    infile = in_path+"/"+baseseed+".xyz"
-                if not path.exists(infile):
-                    print(f'Skipping geometry optimisation {sol_str}'+
-                          f' for: {seed} - no input file')
-                    continue
-            solute_opt = read(infile)
-            if  path.exists(outfile):
-                print(f'Skipping geometry optimisation {sol_str}'+
-                      f' for: {seed} - output file already present')
+            infile = f'{in_path}/{seed}.xyz'
+            outfile = f'{out_path}/{seed}.xyz'
+            task = "geometry optimisation"
+            solute,nconf,nconf_done = self.get_solute(seed,target,infile,outfile,task,sol_str,in_path,baseseed)
+            if solute is None:
                 continue
-            print(f'Geometry optimization {sol_str}for: {seed}')
-            label = seed
             origdir = getcwd()
             wdir = f'geom/{seed}'
             if not path.exists(wdir):
                 makedirs(wdir)
             chdir(wdir)
-            if solvent is not None:
-                label = label+"_"+self.solvstr(solvent)
-            try:
-                geom_opt_func(solute_opt,label,calc_params,driver_tol,solvent,charge)
-            except KeyboardInterrupt:
-                raise Exception('Keyboard Interrupt')
-            except SyntaxError:
-                raise Exception('Syntax Error')
+            for iconf in range(nconf_done,nconf):
+                if nconf>1:
+                    confstr = f' conformer {iconf}'
+                    confsuff = f'_c{iconf}'
+                else:
+                    confstr = ''
+                    confsuff = ''
+                print(f'Geometry optimization {sol_str}for: {seed}{confstr}')
+                label = seed+confsuff
+                if solvent is not None:
+                    label = f'{label}_{self.solvstr(solvent)}'
+                try:
+                    geom_opt_func(solute[iconf],label,calc_params,driver_tol,solvent=solvent,charge=charge)
+                except KeyboardInterrupt:
+                    raise Exception('Keyboard Interrupt')
+                except SyntaxError:
+                    raise Exception('Syntax Error')
+                if '' in solute[iconf].info:
+                    del solute[iconf].info['']
+                write(f'{origdir}/{outfile}',solute[0:iconf+1])
 
             chdir(origdir)
-            print('Writing to ',outfile)
-            if '' in solute_opt.info:
-                del solute_opt.info['']
-            write(outfile,solute_opt)
+            print(f'Writing to {outfile}')
+            write(outfile,solute)
 
     # Attempt to find best rotamer for each solute
-
     def find_best_rotas(self,solute_names,in_path,out_path,singlepoint_func,
                         geom_opt_func,calc_params,solvent=None,charges={}):
         """
@@ -369,14 +400,14 @@ class SolutesTask:
                     driver_tol = 'loose'
                     opt = 0
                     try:
-                        energy,_ = singlepoint_func(sol_opt_rota[rota],label,calc_params,charge)
+                        energy,_ = singlepoint_func(sol_opt_rota[rota],label,calc_params,charge=charge)
                         if rota==0:
                             energy_rota.append(energy)
                         if rota>0:
                             if energy<energy_rota[0]+opt_thresh:
                                 opt = 1
                                 energy, forces, positions = geom_opt_func(sol_opt_rota[rota],
-                                                label+"_geom",calc_params,driver_tol,charge)
+                                                label+"_geom",calc_params,driver_tol,charge=charge)
                                 write(label+'.xyz',sol_opt_rota[rota])
                             energy_rota.append(energy)
                         print(rota,':',flip,energy_rota[rota],'opt=',opt)
@@ -388,11 +419,6 @@ class SolutesTask:
 
                 min_energy, best_rota = min( (energy_rota[i],i) for i in xrange(len(energy_rota)) )
                 write(outfile,sol_opt_rota[best_rota])
-
-    # Attempt to rotate molecules to lie in xy-plane
-    # with long axis along x, short axis along y
-    # and central C(=O) atom put at (10,10,10)
-    from esteem.tasks.clusters import rotate_and_center_solute
 
     def rotate_all_to_xy_plane(self,solute_names,in_path,out_path,target=None):
         """
@@ -421,8 +447,8 @@ class SolutesTask:
             infile = in_path+"/"+seed+".xyz"
             outfile = out_path+"/"+seed+".xyz"
             if not path.exists(infile):
-                print('Skipping rotate and centre operation for: ',seed,
-                      ' - no input file')
+                print(f'Skipping rotate and centre operation for: {seed}',
+                      '- no input file')
                 continue
             try:
                 rot = read(infile,0)
@@ -430,11 +456,15 @@ class SolutesTask:
                 print(f'Could not read file: {infile}')
                 continue
             if rot.get_chemical_symbols().count('C') < 2:
-                print('Skipping rotate and centre operation for: ',seed,
-                      ' - not enough C atoms')
+                print(f'Skipping rotate and centre operation for: {seed}',
+                      '- not enough C atoms')
                 write(outfile,rot)
                 continue
             try:
+                # Attempt to rotate molecules to lie in xy-plane
+                # with long axis along x, short axis along y
+                # and central C(=O) atom put at (10,10,10)
+                from esteem.tasks.clusters import rotate_and_center_solute
                 rot = rotate_and_center_solute(rot)
             except Exception as e:
                 raise Exception(f'Rotate and centre failed for {seed} with exception: {e}')
@@ -554,9 +584,13 @@ class SolutesTask:
         charges: dict
             Keys are strings corresponding to some or all of the entries in solute names, entries are net charges on each molecule
         """
-        from ase.io import read
+        from ase.io import read, write
         from os import path, makedirs, getcwd, chdir
 
+        if solvent is not None:
+            sol_str = f'in {self.solvstr(solvent)} solvent '
+        else:
+            sol_str = ''
         target = calc_params['target']
         method = 'tddft'
         wdir = f'{out_path}'
@@ -572,20 +606,11 @@ class SolutesTask:
 
             # Find input and check if output already exists
             infile = f'{in_path}/{seed}.xyz'
-            outfile = f'{out_path}/{seed}/{seed}_{method}'
-            if not path.exists(infile):
-                print(f'Skipping {method} excitations for: {seed} - no input file')
+            outfile = f'{out_path}/{seed}.xyz'
+            task = f'{method} excitations'
+            solute,nconf,nconf_done = self.get_solute(seed,target,infile,outfile,task,sol_str,in_path,seed)
+            if solute is None:
                 continue
-            readonly = False
-            if path.exists(f'{outfile}.out') or path.exists(f'{outfile}.nwo'):
-                print(f'Skipping recalculation of {method} excitations for: ',seed,
-                      ',',self.solvstr(solvent),' - output file already present')
-                readonly = True
-            else:
-                print(f'{method} excitations for: {seed}')
-
-            # Read the geometry
-            solute=read(infile)
 
             # Check if output directory exists, create it if not, and change to it
             origdir = getcwd()
@@ -593,23 +618,33 @@ class SolutesTask:
             if not path.exists(wdir):
                 makedirs(wdir)
             chdir(wdir)
+            for iconf in range(nconf_done,nconf):
+                if nconf>1:
+                    confstr = f' conformer {iconf}'
+                    confsuff = f'_c{iconf}'
+                else:
+                    confstr = ''
+                    confsuff = ''
+                print(f'Excitation Calculation {sol_str}for: {seed}{confstr}')
 
-            # Now run the excitations function of the wrapper
-            try:
-                excit_func(solute,f'{seed}_{method}',calc_params,nroots,solvent,charge,readonly=readonly,
-                           plot_homo=plot_homo,plot_lumo=plot_lumo,plot_trans_den=plot_trans_den)
-            except KeyboardInterrupt:
-                raise Exception('Keyboard Interrupt')
-            except SyntaxError as e:
-                raise Exception('Syntax Error:',e)
-            except Exception as e:
-                print('Excited state calculation failed for: ',seed)
-                print('Exception was: ',e)
+                # Now run the excitations function of the wrapper
+                label = f'{seed}{confsuff}_{method}'
+                readonly = iconf < nconf_done
+                try:
+                    excit_func(solute[iconf],label,calc_params,nroots,solvent,charge,readonly=readonly,
+                               plot_homo=plot_homo,plot_lumo=plot_lumo,plot_trans_den=plot_trans_den)
+                except KeyboardInterrupt:
+                    raise Exception('Keyboard Interrupt')
+                except SyntaxError as e:
+                    raise Exception('Syntax Error:',e)
+                except Exception as e:
+                    print('Excited state calculation failed for: ',seed)
+                    import traceback
+                    traceback.print_exception(e)
+                write(origdir+"/"+outfile,solute[0:iconf+1])
             chdir(origdir)
 
     # Calculate vibrational frequencies of all molecules
-
-
     def calc_vib_freq(self,solute_names,in_path,out_path,freq_func,
                       calc_params,solvent=None,charges={}):
         """
@@ -632,9 +667,13 @@ class SolutesTask:
         charges: dict
             Keys are strings corresponding to some or all of the entries in solute names, entries are net charges on each molecule
         """
-        from ase.io import read
+        from ase.io import read, write
         from os import path, makedirs, getcwd, chdir
 
+        if solvent is not None:
+            sol_str = f'in {self.solvstr(solvent)} solvent '
+        else:
+            sol_str = ''
         wdir = f'{out_path}'
         target = calc_params['target']
         if not path.exists(wdir):
@@ -646,32 +685,37 @@ class SolutesTask:
                 charge = 0
             if target is not None and target!=0:
                 seed = seed+"_es"+str(target)
+            method = 'freq'
+            task = 'vibrational frequencies'
             infile = f'{in_path}/{seed}.xyz'
-            outfile = f'{out_path}/{seed}/{seed}_freq'
-            if not path.exists(infile):
-                print('Skipping Vibrational Frequencies for: ',seed,
-                      ' - no input file')
+            outfile = f'{out_path}/{seed}.xyz'
+            solute,nconf,nconf_done = self.get_solute(seed,target,infile,outfile,task,sol_str,in_path,seed)
+            if solute is None:
                 continue
-            if path.exists(outfile+".out") or path.exists(outfile+".nwo"):
-                print('Skipping Vibrational Frequencies for: ',seed,
-                      ' - output file already present')
-                continue
-            solute=read(infile)
-            print('Vibrational Frequencies for: ',seed)
             origdir = getcwd()
             wdir = f'{out_path}/{seed}'
             if not path.exists(wdir):
                 makedirs(wdir)
             chdir(wdir)
-            try:
-                freq_func(solute,f"{seed}_freq",calc_params,solvent,charge)
-            except KeyboardInterrupt:
-                raise Exception('Keyboard Interrupt')
-            except SyntaxError:
-                raise Exception('Keyboard Interrupt')
-            except Exception as e:
-                print('Vibrational Frequencies failed for: ',seed)
-                print('Exception was: ',e)
+            for iconf in range(nconf_done,nconf):
+                if nconf>1:
+                    confstr = f' conformer {iconf}'
+                    confsuff = f'_c{iconf}'
+                else:
+                    confstr = ''
+                    confsuff = ''
+                label = f'{seed}{confsuff}_{method}'
+                print(f'Vibrational Frequencies {sol_str}for: {seed}{confstr}')
+                try:
+                    freq_func(solute[iconf],label,calc_params,solvent,charge)
+                except KeyboardInterrupt:
+                    raise Exception('Keyboard Interrupt')
+                except SyntaxError:
+                    raise Exception('Keyboard Interrupt')
+                except Exception as e:
+                    print(f'Vibrational Frequencies {sol_str}failed for: {seed}')
+                    print('Exception was: ',e)
+                write(origdir+"/"+outfile,solute[0:iconf+1])
             chdir(origdir)
 
     # Create a parser for the solutes program
@@ -719,10 +763,6 @@ class SolutesTask:
         for arg in vars(args):
             if arg not in default_args:
                 raise Exception(f"Unrecognised argument '{arg}'")
-
-
-# In[ ]:
-
 
 def get_parser():
     return SolutesTask().make_parser()

@@ -1,0 +1,418 @@
+#!/bin/bash
+#SBATCH --partition=compute
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --time=48:00:00
+#SBATCH --mem=1000mb
+#SBATCH --account=su007-ndmh
+#SBATCH --job-name=cate_meth_MACEacu_nohup
+
+export OMP_NUM_THREADS=1
+origdir=`pwd`
+#module purge; module load GCC/11.3.0 CUDA/11.7.0 OpenMPI/4.1.4 PyTorch/1.12.1-CUDA-11.7.0
+
+# Selection method
+M="u"
+# All states
+TALL=("gs" "es1" "es2")
+# Number of states
+NT=3
+TGS=("gs")
+# Base of name of script
+scrbase="cate_ml"
+scr=$scrbase".py"
+# Base solute_solvent seed
+SM="cate"
+SV="meth"
+# Seed name to be used by mltrain and mltest (solvent-specific)
+SA="all_"$SV
+# All the seeds we loop over for mltraj, mlclus
+SALL=($SM"_"$SV $SV"_"$SV)
+# Number of seeds
+NS=2
+# Trajectory characters for initial traj, A=Initial Training Set, B=Validation Set
+AALL=("A")
+# Trajectory characters for mltraj, U=U-picked AL Training Set
+UALL=("U")
+# Number of generations
+G=2
+# Number of Calculators
+C=3
+# Number of Configs to run DFT on per cluster job
+SMAX=5
+# Number of new cluster training configs per generation
+NC=100
+# Method
+W="MACE"
+# Atoms method
+DFT="orca"
+# Initial clusters name
+IC="solvR2.5"
+# MD name
+MDSTR="md"
+# Functional in solutes task
+FUNC="PBE0"
+
+mkscr=$SA"_make_AL_scripts.py"
+# import functions for script writing
+cat <<EOT > $mkscr
+from esteem.active_learning import setup_scripts
+from esteem.parallel import make_sbatch
+from esteem.wrappers.mace import MACEWrapper
+from esteem.parallel import get_default_script_settings
+script_settings=get_default_script_settings(MACEWrapper())
+EOT
+# commands to write scripts for the various seeds and targets
+for SP in ${SALL[@]}; do
+   for TT in ${TALL[@]}; do
+      echo 'setup_scripts("'$scrbase'","'$SP'","'$TT'","'$C'","'$W'ac'$M'","'$W'",script_settings,make_sbatch,"'$SA'")' >> $mkscr
+   done
+done
+
+# perform solutes tasks
+if true; then
+   for TT in ${TALL[@]}; do # loop over targets
+      echo Solutes task for $TT"_"$FUNC
+      python $scr scripts ${SALL[0]} $TT"_"$FUNC
+      sbatch --wait ${SALL[0]}"_"$TT"_"$FUNC"_solutes_sub" &
+   done
+   wait
+fi
+
+# perform solvate tasks
+if true; then
+  python $scr solvate ${SALL[0]} $MDSTR | tee -a $SP"_"$MDSTR"_setup.log"
+  for SP in ${SALL[@]}; do # loop over seeds
+      echo Solvate task for $SP
+      for TT in ${TGS[@]}; do # loop over targets
+          cd $SP"_"$MDSTR
+          sbatch --wait $SP"_"$MDSTR"_sub" &
+          cd $origdir
+      done
+  done
+  wait
+fi
+
+# perform initial clusters tasks
+if true; then
+  # run mlclus to set up directory and symlinks for clusters run
+  for SP in $SA; do # only need one seed as setup runs for all
+      echo Clusters Setup for $SP initial
+      for TT in ${TGS[@]}; do # loop over targets
+	  if [ $SP == ${SALL[NS-1]} ] && [ $TT != ${TALL[0]} ]; then continue; fi
+	  # run a clus job to setup clusters scripts
+	  for UU in ${AALL[@]}; do # loop over B and A
+              python $scr mlclus $SP $IC"_"$UU | tee -a $SP"_"$IC"_"$UU"_setup.log"
+	  done
+	  # move log file to first directory to clean up
+	  if [ -d ${SALL[0]}"_"$IC ]; then
+	      mv $SP"_"$IC"_"$UU"_setup.log" ${SALL[0]}"_"$IC
+          fi
+      done
+  done
+  for SP in ${SALL[@]}; do # loop over seeds
+      echo Clusters Carve for $SP initial
+      for TT in ${TGS[@]}; do # loop over states
+	  if [ $SP == ${SALL[NS-1]} ] && [ $TT != ${TALL[0]} ]; then continue; fi
+          # move to clusters directory
+          cd $SP"_"$IC
+          # carve the input trajectory
+	  for UU in ${AALL[@]}; do # loop over B and A
+              python ../$scr mlclus_setup $SP $IC"_"$UU | tee -a $SP"_"$IC"_"$UU"_mlclus_carve.log"
+          done
+	  cd $origdir
+      done
+  done
+  for SP in ${SALL[@]}; do # loop over seeds
+      echo Clusters Run for $SP initial
+      for TT in ${TGS[@]}; do # loop over targets
+	  if [ $SP == ${SALL[NS-1]} ] && [ $TT != ${TALL[0]} ]; then continue; fi
+          # move to clusters directory
+          cd $SP"_"$IC
+	  # submit the cluster jobs for A
+          sbatch --wait --array=0-$((NC-1)):$SMAX $SP"_"$IC"_"${AALL[0]}"_sub" &
+	  cd $origdir
+      done
+  done
+  wait
+fi
+if false; then
+  for SP in ${SALL[@]}; do # loop over seeds
+      echo Clusters Assemble for $SP initial
+      for TT in ${TGS[@]}; do # loop over targets
+	  if [ $SP == ${SALL[NS-1]} ] && [ $TT != ${TALL[0]} ]; then continue; fi
+      # move to clusters directory
+	  if [ -e $SP"_"$IC ]; then
+          cd $SP"_"$IC
+	      # assemble the completed trajectories (write over old log in this case)
+    	  # (we must avoid keeping any previous failed attempts to not trigger
+	      # the FAILS check below)
+          for UU in ${AALL[@]}; do
+              python ../$scr mlclus $SP $IC"_"$UU | tee $SP"_"$IC"_"$UU"_mlclus_assemble.log"
+          done
+          # Clean up DFT directory
+          if ! grep -q "FAIL"  $SP"_"$IC"_"$UU"_mlclus_assemble.log"; then
+              rm $DFT"/"*".gbw" $DFT"/"*".cis"
+                  tar -czf $DFT".tar.gz" $DFT --remove-files 
+              rm slurm*
+          else
+              FAILS=true
+              echo "FAILs detected in "$SP"_"$IC"_"$UU"_mlclus_assemble.log"
+    	  fi
+          cd $origdir
+      else
+          echo "Folder "$SP"_"$IC" not found"
+	      FAILS=true
+      fi
+      done
+  done
+  if [ "$FAILS" = true ]; then
+      echo "Aborting due to previous FAILs"
+      exit
+  fi
+fi
+
+if false; then
+   exit # quit for now, until previous bits verified to be working and deactivated
+fi
+
+# do atoms calculation
+if false; then
+   python $scr atoms ${SALL[0]} $DFT
+   mv ${SALL[0]}"_atoms_"$DFT".traj" $SA"_atoms_"$DFT".traj"
+fi
+
+# write AL scripts
+if true; then
+   python $mkscr
+fi
+
+# setup mltrain and mltest folders
+if true; then
+   for TT in ${TALL[@]}; do # loop over targets
+       echo Setup Training directory for $SA $TT
+       X=0 
+       python $scr mltrain_setup $SA $TT"_"$W"ac"$X$M"a" | tee -a $SA"_"$TT"_"$W"ac"$X$M"a_mltrain_setup.log"
+       # move training script and setup log into folder
+       if [ -d $SA"_"$TT"_"$W"ac" ]; then
+           mv $SA"_"$TT"_"$W"ac"$X$M"a_mltrain_setup.log" $SA"_"$TT"_"$W"ac"$M"_mltrain_sub" $SA"_"$TT"_"$W"ac"
+       fi
+       # move test script into folder
+       if [ ! -e $SA"_"$TT"_"$W"ac_test" ]; then
+          mkdir $SA"_"$TT"_"$W"ac_test"
+       fi
+       mv $SA"_"$TT"_"$W"ac"$M"_mltest_sub" $SA"_"$TT"_"$W"ac"$M"_mlfinaltest_sub" $SA"_"$TT"_"$W"ac_test"
+   done
+fi
+
+# setup mltraj folders
+if true; then
+  for SP in ${SALL[@]}; do # loop over seeds
+      for TT in ${TALL[@]}; do # loop over targets
+          echo Setup Trajectories directory for $SP $TT
+	  if [ $SP == ${SALL[NS-1]} ] && [ $TT == ${TALL[NT-1]} ]; then continue; fi
+	  X=0 
+          python $scr mltraj_setup $SP $TT"_"$W"ac"$X$M"ax3" | tee -a $SP"_"$TT"_"$W"ac"$X$M"a_mltraj_setup.log"
+	  # move scripts and setup log into folder
+	  if [ -d $SP"_"$TT"_"$W"ac_mldyn" ]; then
+	      mv $SP"_"$TT"_"$W"ac"$M"_mltraj_sub" $SP"_"$TT"_"$W"ac"$X$M"a_mltraj_setup.log" $SP"_"$TT"_"$W"ac_mldyn"
+	      mv $SP"_"$TT"_"$W"ac"$M"_specdyn_sub" $SP"_"$TT"_"$W"ac"$M"_spectra_sub" $SP"_"$TT"_"$W"ac_mldyn"
+          fi
+      done
+  done
+fi
+
+if true; then
+   exit # quit for now, until previous bits verified to be working and deactivated
+fi
+
+# loop over AL iterations
+for ((X=0;X<=$G;X++))
+do 
+  # loop over random seeds
+  # restart every 3 iterations, otherwise copy checkpoint files to new names
+  if [ $((X%4)) -gt 0 ]; then
+     for TT in ${TALL[@]}; do
+         for f in $SA"_"$TT"_"$W"ac/checkpoints/"$SA"_"$TT"_"$W"ac"$((X-1))$M*.pt
+         do
+             cp $f `echo $f | sed 's/ac'$((X-1))'/ac'$X'/g'`
+         done
+     done
+  fi
+  # initiate or continue the training
+  echo Training Iteration $X for $SA calculators
+  for TT in ${TALL[@]}; do # loop over states
+      # submit a job for each random seed
+      cd $SA"_"$TT"_"$W"ac"
+      sbatch --wait --array=$((X*10))-$((X*10+C-1)) $SA"_"$TT"_"$W"ac"$M"_mltrain_sub" &
+      cd $origdir
+  done
+  wait
+  # error check for training (check calculators exist)
+  FAILS=false
+  for TT in ${TALL[@]}; do # loop over states
+      MODELFILES=$SA"_"$TT"_"$W"ac/"$SA"_"$TT"_"$W"ac"$((X-1))$M[a-z]"_stagetwo.model"
+      NMODEL=`echo $MODELFILES | wc -w`
+      if [ ! $NMODEL -eq $C ]; then
+          echo "Not enough final model files found for "$SA" "$TT": "$MODELFILES
+          FAILS=true
+      fi
+  done
+  if [ "$FAILS" = true ]; then
+      echo "Aborting due to previous FAILs"
+      exit
+  fi
+
+  # run mltraj with committee of calculators
+  for SP in ${SALL[@]}; do # loop over seeds
+      echo Trajectories for Generation $X for $SP
+      for TT in ${TALL[@]}; do # loop over targets
+	      if [ $SP == ${SALL[NS-1]} ] && [ $TT != ${TALL[0]} ]; then continue; fi
+	      cd $SP"_"$TT"_"$W"ac_mldyn"
+          # submit a mltraj job for each random seed
+          sbatch --wait --array=$((X*10))-$((X*10+C-1)) $SP"_"$TT"_"$W"ac"$M"_mltraj_sub" &
+	      cd $origdir
+      done
+  done
+  wait
+  # error check for mltraj (check mltraj_recalc_carved.traj exists)
+  FAILS=false
+  for SP in ${SALL[@]}; do # loop over seeds
+      for TT in ${TALL[@]}; do # loop over states
+          if [ $SP == ${SALL[NS-1]} ] && [ $TT != ${TALL[0]} ]; then continue; fi
+          TRAJFILES=`ls $SP"_"$TT"_"$W"ac_mldyn/"$SP"_"$TT"_"[A-Z]_$W"ac"$X$M[a-z]"_mldyn_recalc_carved.traj"`
+          NTRAJ=`echo $TRAJFILES | wc -w`
+          if [ ! $NTRAJ -eq $C ]; then
+              echo "Not enough trajectory files  found for "$SP" "$TT": "$TRAJFILES
+              FAILS=true
+          fi
+      done
+  done
+  if [ "$FAILS" = true ]; then
+      echo "Aborting due to previous FAILs"
+      exit
+  fi
+  # run mlclus to set up directory and symlinks for clusters run
+  for SP in $SA; do # any seed will do here
+      echo Clusters Setup for Generation $X for $SP
+      for TT in ${TALL[@]}; do # loop over targets
+	  # run a mlclus job to setup clusters scripts
+	  for UU in ${UALL[@]}; do # loop over U and Q
+              python $scr mlclus $SP $TT"_"$W"ac"$X$M"_"$UU | tee -a $SP"_"$TT"_"$W"ac"$X$M"_setup.log"
+	  done
+	  # move setup log to first directory to clean up
+	  if [ -d ${SALL[0]}"_"$TT"_"$W"ac_mlclus" ]; then
+	      mv $SP"_"$TT"_"$W"ac"$X$M"_setup.log" ${SALL[0]}"_"$TT"_"$W"ac_mlclus"
+	  fi
+      done
+  done
+  for SP in ${SALL[@]}; do # loop over seeds
+      echo Clusters Carve for Generation $X for $SP
+      for TT in ${TALL[@]}; do # loop over states
+	      if [ $SP == ${SALL[NS-1]} ] && [ $TT != ${TALL[0]} ]; then continue; fi
+          # move to clusters directory
+          cd $SP"_"$TT"_"$W"ac_mlclus"
+          # carve the input trajectory
+	      for UU in ${UALL[@]}; do # loop over U and Q
+              python ../$scr mlclus_setup $SP $TT"_"$W"ac"$X$M"_"$UU | tee -a $SP"_"$TT"_"$W"ac"$X$M"_"$UU"_mlclus_carve.log"
+          done
+	  cd $origdir
+      done
+  done
+  for SP in ${SALL[@]}; do # loop over seeds
+      echo Clusters Run for Generation $X for $SP
+      for TT in ${TALL[@]}; do # loop over targets
+	  if [ $SP == ${SALL[NS-1]} ] && [ $TT != ${TALL[0]} ]; then continue; fi
+          # move to clusters directory
+          cd $SP"_"$TT"_"$W"ac_mlclus"
+          # submit the cluster jobs for U
+          sbatch --wait --array=0-$((NC-1)):$SMAX $SP"_"$TT"_"$W"ac"$X$M"_"${UALL[0]}"_sub" &
+          cd $origdir
+      done
+  done
+  wait
+  FAILS=false
+  for SP in ${SALL[@]}; do # loop over seeds
+      echo Clusters Assemble Generation $X for $SP
+      for TT in ${TALL[@]}; do # loop over targets
+          if [ $SP == ${SALL[NS-1]} ] && [ $TT != ${TALL[0]} ]; then continue; fi
+          # move to clusters directory
+          cd $SP$"_"$TT"_"$W"ac_mlclus"
+          # assemble the completed trajectories
+          for UU in ${UALL[@]}; do
+              python ../$scr mlclus $SP $TT"_"$W"ac"$X$M"_"$UU | tee -a $SP"_"$TT"_"$W"ac"$X$M"_"$UU"_mlclus_assemble.log"
+          done
+          # Clean up DFT directory
+          if ! grep -q "FAIL"  $SP"_"$TT"_"$W"ac"$X$M"_"$UU"_mlclus_assemble.log"; then
+              rm $DFT"_ac"$X$M"/"*".gbw" $DFT"_ac"$X$M"/"*".cis"
+              tar -czf $DFT"_ac"$X$M".tar.gz" $DFT"_ac"$X$M --remove-files 
+              rm slurm*
+          else
+              FAILS=true
+              echo "FAILs detected in "$SP"_"$TT"_"$W"ac"$X$M"_"$UU"_mlclus_assemble.log"
+          fi
+          cd $origdir
+      done
+  done
+  if [ "$FAILS" = true ]; then
+      echo "Aborting due to previous FAILs"
+      exit
+  fi
+
+  # test the calculators on the assembled trajectory
+  echo Testing for Generation $X for $SA calculators
+  for TT in ${TALL[@]}; do
+      cd $SA"_"$TT"_"$W"ac_test"
+      sbatch --wait --array=$((X*10))-$((X*10+C-1)) $SA"_"$TT"_"$W"ac"$M"_mltest_sub" &
+      cd $origdir
+  done
+  wait
+  if true; then
+     exit # quit for now, until previous bits verified to be working and this can be deactivated
+  fi
+done
+
+# test all the calculators on the final generation's trajectory sample
+for ((X=0;X<=$G;X++)); do
+  echo Testing for Generation $X for $SA calculators on final trajectory
+  for TT in ${TALL[@]}; do
+      cd $SA"_"$TT"_"$W"ac_test"
+      sbatch --wait --array=$((X*10))-$((X*10+C-1)) $SA"_"$TT"_"$W"ac"$M"_mlfinaltest_sub" &
+      cd $origdir
+  done
+done
+exit
+
+# run mltraj task for spectroscopy with committee of calculators
+if true; then
+  X=$G
+  for SP in ${SALL[@]}; do # loop over seeds
+      if [ $SP == ${SALL[NS-1]}  ]; then continue; fi # skip solvent
+      echo Spectroscopy Trajectories for Generation $X for $SP
+      for TT in ${TALL[@]}; do # loop over targets
+          cd $SP"_"$TT"_"$W"ac_mldyn"
+          # submit a mltraj job for each random seed
+          sbatch --wait --array=$((X*10))-$((X*10+C-1)) $SP"_"$TT"_"$W"ac"$M"_specdyn_sub" &
+	  cd $origdir
+      done
+  done
+  wait
+fi
+# run spectra tasks
+if true; then
+  X=$G
+  for SP in ${SALL[@]}; do # loop over seeds
+      if [ $SP == ${SALL[NS-1]}  ]; then continue; fi # skip solvent
+      echo Spectroscopy Trajectories for Generation $X for $SP
+      for TT in ${TALL[@]}; do # loop over targets
+          cd $SP"_"$TT"_"$W"ac_mldyn"
+          # submit a mltraj job for each random seed
+          sbatch --wait --array=$((X*10)) $SP"_"$TT"_"$W"ac"$M"_spectra_sub" &
+	  cd $origdir
+      done
+  done
+  wait
+fi
+
+echo Job Complete

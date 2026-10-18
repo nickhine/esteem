@@ -35,6 +35,7 @@ class NWChemWrapper():
         self.freq_block = {'temp': f'1 300'}
         self.dftblock_excitations = {'maxiter': 120,'tolerances': 'tight', 'grid': 'xfine'}
         self.dftblock_qmd = {'maxiter': 120}
+        self.output = "nwchem"
 
     def setup(self,nprocs=None,nwchem_cmd=None,nwchem_top=None):
         """Sets up the internal variables of the NWChemWrapper class, including run command"""
@@ -428,16 +429,13 @@ class NWChemWrapper():
         if writeonly:
             calc_nw.write_input(atoms=model)
             return 0
+        print("Reading excitations")
         if readonly:
             calc_nw.read_results()
-            print("Reading excitations")        
-            s_excit = self.read_excitations(calc_nw)
-            #model.set_array('singlet_excitations',s_excit)
             energy = calc_nw.get_property('energy',atoms=model,allow_calculation=False)
         else:
             energy = model.get_potential_energy()
-            print("Reading excitations")        
-            s_excit = self.read_excitations(calc_nw)
+        s_excit = self.read_excitations(calc_nw.label+'.nwo')
         if plot_trans_den is not None:
             for iexc in range(min(plot_trans_den,nroots)):
                 self._add_dplot_trans_den(calc_nw,iexc+1)
@@ -466,10 +464,9 @@ class NWChemWrapper():
             self.cleanup(label)
         return s_excit, energy
 
-    def read_excitations(self,calc):
+    def read_excitations(self,filename):
         """Read Excitations from nwchem calculator."""
 
-        filename = calc.label+'.nwo'
         file = open(filename, 'r')
         lines = file.readlines()
         file.close()
@@ -510,9 +507,7 @@ class NWChemWrapper():
                         trans_lines.append(tl)
                         if root == nroots:
                             break
-        calc.results['excitations'] = np.array(s_excit,ndmin=2)
-        calc.results['transition_origins'] = trans_lines
-        return s_excit
+        return np.array(s_excit,ndmin=2),trans_lines
 
     def read_freq(self,calc):
         """Read Vibrational Frequencies and Normal Modes from results of nwchem calculator."""
