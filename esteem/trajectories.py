@@ -739,6 +739,7 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
         frame.calc = intraj[i].calc
         iout = i + output_traj_offset
         cont = False
+        prevtarg = None
         frame_failed = False
         for itarg,targ in enumerate(all_targets):
             label = f"{seed}_{targstr(targ)}_{traj_label}_{traj_suffix}{iout:04}"

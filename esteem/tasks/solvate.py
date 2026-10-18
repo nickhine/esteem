@@ -449,7 +449,7 @@ def get_parser():
 if __name__ == '__main__':
     # Parse command line values
     from esteem.wrappers import amber
-    args = make_parser().parse_args()
+    args = get_parser().parse_args()
     print(args)
     solv = SolvateTask()
     solv.wrapper = amber.AmberWrapper()

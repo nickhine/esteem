@@ -161,8 +161,8 @@ class QMDTrajTask:
         # Notes on defaults:
         # 1 a.u. = 0.02419 fs, 100 steps of 10 aut = 24fs between snapshots
 
-    def validate_args(args):
-        default_args = make_parser().parse_args("")
+    def validate_args(self, args):
+        default_args = self.make_parser().parse_args("")
         for arg in vars(args):
             if arg not in default_args:
                 raise Exception(f"Unrecognised argument '{arg}'")
@@ -186,10 +186,14 @@ if __name__ == '__main__':
     qm_wrapper.nwchem_setup()
 
     # Parse command line arguments
-    parser = make_parser()
+    parser = get_parser()
     args = parser.parse_args()
     print(args)
     
     # Run main program
-    main(args,qm_wrapper)
+    qmd = QMDTrajTask()
+    for arg in vars(args):
+        setattr(qmd,arg,getattr(args,arg))
+    qmd.wrapper = qm_wrapper
+    qmd.run()
 

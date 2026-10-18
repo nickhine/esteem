@@ -188,11 +188,11 @@ class AmberWrapper():
         try:
             f_in = open(infile, 'r')
         except IOError:
-            raise ReadError(f'Could not open mol2 file {infile}')
+            raise IOError(f'Could not open mol2 file {infile}')
         try:
             f_out = open(outfile, 'w')
         except IOError:
-            raise ReadError(f'Could not open mol2 file {outfile}')
+            raise IOError(f'Could not open mol2 file {outfile}')
 
         line = next(f_in)
         while line:
@@ -400,11 +400,11 @@ class AmberWrapper():
         try:
             f_in = open(infile, 'r')
         except IOError:
-            raise ReadError('Could not open pdb file "%s"' % infile)
+            raise IOError('Could not open pdb file "%s"' % infile)
         try:
             f_out = open(outfile, 'w')
         except IOError:
-            raise ReadError('Could not open pdb file "%s"' % outfile)
+            raise IOError('Could not open pdb file "%s"' % outfile)
 
         line = next(f_in)
         f_out.write(line)
@@ -498,7 +498,7 @@ class AmberWrapper():
         if errorcode:
             raise RuntimeError('{} returned an error: {}'
                                 .format('makeANG_RST', errorcode))
-        fix_RST_rk(RST_file,rk2,rk3,r1,r2,r3,r4)
+        self.fix_RST_rk(RST_file,rk2,rk3,r1,r2,r3,r4)
 
     def fix_RST_rk(self,RST_file,rk2,rk3,r1,r2,r3,r4):
         outfile = RST_file
@@ -507,11 +507,11 @@ class AmberWrapper():
         try:
             f_in = open(infile, 'r')
         except IOError:
-            raise ReadError('Could not open RST file "%s"' % infile)
+            raise IOError('Could not open RST file "%s"' % infile)
         try:
             f_out = open(outfile, 'w')
         except IOError:
-            raise ReadError('Could not open RST file "%s"' % outfile)
+            raise IOError('Could not open RST file "%s"' % outfile)
 
         for line in f_in:
             fields = line.strip().split()
@@ -539,11 +539,11 @@ class AmberWrapper():
         try:
             f_in = open(infile, 'r')
         except IOError:
-            raise ReadError('Could not open RST file "%s"' % infile)
+            raise IOError('Could not open RST file "%s"' % infile)
         try:
             f_out = open(outfile, 'w')
         except IOError:
-            raise ReadError('Could not open RST file "%s"' % outfile)
+            raise IOError('Could not open RST file "%s"' % outfile)
 
         for line in f_in:
             fields = line.strip().split()

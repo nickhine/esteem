@@ -376,8 +376,9 @@ def range_sep_driver(all_solutes,all_solvents,task,wrapper):
     basis = "6-311++G**"
     charges={"AH2QS": -1, "AQS": -1}
     rs_range = [0.05,0.1,0.15,0.2,0.25,0.3]
-    energy,calc,evals,occs=find_range_sep(solutes,"is_opt_watr","rs_opt",nw,basis=basis,
-                                          func=func,solvent=solvent,charges=charges,
+    energy,calc,evals,occs=task.find_range_sep(solutes,"is_opt_watr","rs_opt",wrapper,
+                                          {'basis': basis, 'func': func, 'target': None},
+                                          solvent=solvent,charges=charges,
                                           rs_range=rs_range,all_readonly=True)
     ehomo = {}
     elumo = {}
@@ -1255,14 +1256,14 @@ def mltest_driver(mltest,all_solutes,all_solvents):
 
     if isinstance(mltest.wrapper,amp.AMPWrapper):
         calcfn = mltest.wrapper.calc_filename(mltest.seed,mltest.target,prefix=mltest.calc_prefix,suffix=mltest.calc_suffix)
-        calc_file = calcfn+ml_wrapper.calc_ext
-        mltest.calc_suffix = suffix+"_test"
-        calcfn = ml_wrapper.calc_filename(mltest.seed,mltest.target,prefix=mltest.calc_prefix,suffix=mltest.calc_suffix)
-        test_calc_file = calcfn+ml_wrapper.calc_ext
-        test_calc_log = calcfn+ml_wrapper.log_ext
-        if os.path.isfile(calc_file):
+        calc_file = calcfn+mltest.wrapper.calc_ext
+        mltest.calc_suffix = mltest.calc_suffix+"_test"
+        calcfn = mltest.wrapper.calc_filename(mltest.seed,mltest.target,prefix=mltest.calc_prefix,suffix=mltest.calc_suffix)
+        test_calc_file = calcfn+mltest.wrapper.calc_ext
+        test_calc_log = calcfn+mltest.wrapper.log_ext
+        if path.isfile(calc_file):
             print(f"# Copying {calc_file} to {test_calc_file} for testing")
-            shutil.copyfile(calc_file,test_calc_file)
+            copyfile(calc_file,test_calc_file)
         else:
             raise Exception("# Calculator file does not exist: ",calc_file)
     
@@ -1356,8 +1357,9 @@ def mltest_driver(mltest,all_solutes,all_solvents):
         mltest.run()
     
     if isinstance(mltest.wrapper,amp.AMPWrapper):
-        if os.path.isfile(test_calc_log):
-            os.remove(test_calc_log)
+        from os import remove
+        if path.isfile(test_calc_log):
+            remove(test_calc_log)
 
 def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False,setup_only=False):
     from os import symlink, path, remove
@@ -1463,7 +1465,7 @@ def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False,setup_only=
         if solu in mltraj.constraints:
             mltraj.constraints = mltraj.constraints[solu]
         else:
-            raise Exception(f"# Error: constraints is a dictionary but contains no entry for solute '{solute}'")
+            raise Exception(f"# Error: constraints is a dictionary but contains no entry for solute '{solu}'")
 
     # Set default value of calc_seed if not otherwise set
     if mltraj.calc_seed is None:

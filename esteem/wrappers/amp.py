@@ -23,7 +23,7 @@ class AMPWrapper():
         if target is None or target == 0:
             calcfn = seed+"_gs_"+suffix
         else:
-            calcfn = args.seed+"_es"+str(target)+"_"+suffix
+            calcfn = seed+"_es"+str(target)+"_"+suffix
             
         calcfn = prefix + calcfn
             
@@ -69,6 +69,7 @@ class AMPWrapper():
 
         """
 
+        from amp import Amp
         from amp.descriptor.gaussian import Gaussian
         from amp.model.neuralnetwork import NeuralNetwork
         from amp.model import LossFunction
@@ -165,6 +166,7 @@ class AMPWrapper():
         #print(f'constraints: {model.constraints}')
         
         if readonly:
+            from ase.io import read
             model = read(mdseed+".xyz") # Read final image
             model.calc = calc_ml
             model.get_potential_energy() # Recalculate energy for final image
@@ -293,13 +295,8 @@ class AMPWrapper():
         readonly: bool
         """
         
-        calc_seed = calc_params['calc_seed']
-        target = calc_params['target']
-        suffix = calc_params['calc_suffix']
-        prefix = calc_params['calc_prefix']
-
         # Load the appropriate AMP Calculator
-        calc_ml = self.load(seed,target,prefix=prefix,suffix=suffix)
-        model_opt.calc = calc_ml
+        calc_ml = self.load(seed,target,suffix=suffix)
+        model.calc = calc_ml
         return model.get_potential_energy(), model.get_forces()
 

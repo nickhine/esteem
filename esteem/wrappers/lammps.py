@@ -302,12 +302,12 @@ class LAMMPSWrapper():
     def minimise(self,solvated,minimised,seed):
         """Runs a geometry optimisation calculation with the LAMMPS ASE calculator"""
 
-        calc_min = LAMMPS(files=lammps_files)
-        calc_min.set(**lammps_params)
-        model.calc = calc_min
+        calc_min = LAMMPS(files=self.lammps_files)
+        calc_min.set(**self.lammps_params_amberconv)
+        minimised.calc = calc_min
         calc_min.set(minimize='1.0e-4 1.0e-6 1000 4000')
 
-        return model.get_potential_energy()
+        return minimised.get_potential_energy()
         minimised.set_calculator(calc_min)
         print("Energy after minimisation: ", minimised.get_potential_energy())
 
@@ -337,7 +337,7 @@ class LAMMPSWrapper():
         # NTC = 2, NTF = 2: hydrogens constrained at this stage
         # irest = 1 (restart from previous simulation)
 
-        calc_dens = LAMMPS(files=lammps_files,parameters=lammps_params)
+        calc_dens = LAMMPS(files=self.lammps_files,parameters=self.lammps_params_amberconv)
         densityeq.calc = calc_dens
         print("Energy after density equilibration: ", densityeq.get_potential_energy())
 
@@ -348,7 +348,7 @@ class LAMMPSWrapper():
         # Energies at this stage no longer comparable to previous steps
         # due to extra DOFs
 
-        calc_equil = LAMMPS(files=lammps_files,parameters=lammps_params)
+        calc_equil = LAMMPS(files=self.lammps_files,parameters=self.lammps_params_amberconv)
         equbd.calc = calc_equil
         print("Energy after equilibration:",  equbd.get_potential_energy())
 
@@ -359,7 +359,7 @@ class LAMMPSWrapper():
         step = 0
         trajname = seed+'.traj'
         traj = Trajectory(trajname, 'w')
-        calc_snap = LAMMPS(files=lammps_files,parameters=lammps_params)
+        calc_snap = LAMMPS(files=self.lammps_files,parameters=self.lammps_params_amberconv)
         for step in range(nsnaps):
             snapin.calc = calc_snap
             print("Energy after snapshot",str(step),":",  snapin.get_potential_energy())

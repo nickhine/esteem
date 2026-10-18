@@ -340,6 +340,7 @@ class PhysNetWrapper():
 
         from ase.md import Langevin, npt
         from ase.io import Trajectory
+        from ase import units
 
         # Check for existing settings, retain them if present
         if hasattr(dynamics,"new_traj"):
@@ -436,6 +437,7 @@ class PhysNetWrapper():
         #print(f'constraints: {model.constraints}')
 
         if readonly:
+            from ase.io import read
             model = read(mdseed+".xyz") # Read final image
             model.calc = calc_ml
             model.get_potential_energy() # Recalculate energy for final image

@@ -536,6 +536,7 @@ class ClustersTask:
 
 
     def write_traj_xyz(self,seed,traj_carved):
+        from ase.io import write
         for i,t in traj_carved:
             frameseed = f'{seed}{i:04}'
             write(frameseed+".xyz",t)
@@ -681,8 +682,8 @@ class ClustersTask:
 
         return parser
 
-    def validate_args(args):
-        default_args = make_parser().parse_args(['--solute','a','--solvent','b'])
+    def validate_args(self, args):
+        default_args = self.make_parser().parse_args(['--solute','a','--solvent','b'])
         for arg in vars(args):
             if arg not in default_args:
                 raise Exception(f"Unrecognised argument '{arg}'")
@@ -1206,7 +1207,7 @@ def sanity_check(trajname='', wrapper=None, calc_params = {},
         # Forces check
         return fails
     
-    def dipole_moment_check():
+    def dipole_moment_check(p, ref_solv_p):
         # Dipole moment check
         # Should never be greater then n times the magnitude of the dipole of a single solvent molecule
         # where n is the number of solvent molecules

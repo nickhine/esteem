@@ -326,9 +326,9 @@ class OnetepWrapper():
         excitations = np.array(excitations)
         return excitations, None
 
-    from os import path
     def cleanup(self,seed):
         # Cleanup temporary files from a ONETEP job
+        from os import path, remove
         for b in ("tightbox_ngwfs","dkn"):
             for p in ("","vacuum_"):
                 for q in ("","_cond"):
