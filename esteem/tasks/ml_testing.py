@@ -241,8 +241,8 @@ class MLTestingTask:
 
         return parser
 
-    def validate_args(args):
-        default_args = make_parser().parse_args(['--seed','a'])
+    def validate_args(self, args):
+        default_args = self.make_parser().parse_args(['--seed','a'])
         for arg in vars(args):
             if arg not in default_args:
                 raise Exception(f"Unrecognised argument '{arg}'")
@@ -312,9 +312,9 @@ if __name__ == '__main__':
     mltest = MLTestingTask()
    
     # Parse command line values
-    args = mltrain.make_parser().parse_args()
+    args = get_parser().parse_args()
     for arg in vars(args):
-        setattr(mltrain,arg,getattr(args,arg))
+        setattr(mltest,arg,getattr(args,arg))
     print('#',args)
     mltest.wrapper = wrappers.amp.AMPWrapper()
 

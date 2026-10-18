@@ -441,9 +441,9 @@ class NWChemWrapper():
                 self._add_dplot_trans_den(calc_nw,iexc+1)
                 calc_nw.calculate(model)
         if plot_homo is not None:
-            if isinstance(plothomo,int):
+            if isinstance(plot_homo,int):
                 irange = range(plot_homo)
-            elif isinstance(plothomo,list):
+            elif isinstance(plot_homo,list):
                 irange = plot_homo
             else:
                 raise Exception(f'Unrecognised type for plot_homo: {type(plot_homo)}')
@@ -451,9 +451,9 @@ class NWChemWrapper():
                 self._add_dplot_orb(calc_nw,ih+1)
                 calc_nw.calculate(model)
         if plot_lumo is not None:
-            if isinstance(plotlumo,int):
-                irange = range(plotlumo)
-            elif isinstance(plotlumo,list):
+            if isinstance(plot_lumo,int):
+                irange = range(plot_lumo)
+            elif isinstance(plot_lumo,list):
                 irange = plot_lumo
             else:
                 raise Exception(f'Unrecognised type for plot_lumo: {type(plot_lumo)}')

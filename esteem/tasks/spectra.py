@@ -420,7 +420,7 @@ class SpectraTask:
         return parser
 
     def validate_args(self):
-        default_args = make_parser().parse_args("")
+        default_args = self.make_parser().parse_args("")
         for arg in vars(self):
             if arg not in default_args:
                 raise Exception(f"Unrecognised argument '{arg}'")

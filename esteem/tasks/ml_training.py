@@ -213,8 +213,8 @@ class MLTrainingTask:
         
         return parser
 
-    def validate_args(args):
-        default_args = make_parser().parse_args(['--seed','a'])
+    def validate_args(self, args):
+        default_args = self.make_parser().parse_args(['--seed','a'])
         for arg in vars(args):
             if arg not in default_args:
                 raise Exception(f"Unrecognised argument '{arg}'")

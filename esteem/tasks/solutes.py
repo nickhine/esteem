@@ -359,7 +359,7 @@ class SolutesTask:
         charges: dict
             Keys are strings corresponding to some or all of the entries in solute names, entries are net charges on each molecule
         """
-        from os import path, makedirs
+        from os import path, makedirs, getcwd, chdir
         from ase.io import read, write
 
         # Hard-coded logic for what constitutes a rotatable bond
@@ -460,7 +460,7 @@ class SolutesTask:
                         print('Rotamer energy calculation failed for: ',seed)
                 chdir(origdir)
 
-                min_energy, best_rota = min( (energy_rota[i],i) for i in xrange(len(energy_rota)) )
+                min_energy, best_rota = min( (energy_rota[i],i) for i in range(len(energy_rota)) )
                 write(outfile,sol_opt_rota[best_rota])
 
     def rotate_all_to_xy_plane(self,solute_names,in_path,out_path,target=None):
@@ -521,7 +521,7 @@ class SolutesTask:
 
     def find_range_sep(self,solute_names,in_path,out_path,wrapper,
                        calc_params,solvent=None,charges={},rs_range=[0.1,0.2,0.3],all_readonly=False):
-        '''
+        r'''
         Optimises the range separation parameter gamma in a range-separated Hybrid functional with
         Yukawa-switching.
         See 'Using optimally tuned range separated hybrid functionals in ground-state
@@ -538,6 +538,9 @@ class SolutesTask:
         so J^2 = \Sum_i=0^1 [eps_H[N+i] + E(N-1+i) - E(N+i)]^2
                = [eps_H[N] + E(N-1) - E(N)]^2 + [eps_H[N+1] + E(N) - E(N+1)]^2 
         '''
+        from os import path, makedirs, getcwd, chdir
+        from ase.io import read
+        from ase.units import Ha
         wdir = f'{out_path}'
         if not path.exists(wdir):
             makedirs(wdir)
@@ -803,7 +806,7 @@ class SolutesTask:
         return parser
 
     def validate_args(self,args):
-        default_args = make_parser().parse_args("")
+        default_args = self.make_parser().parse_args("")
         for arg in vars(args):
             if arg not in default_args:
                 raise Exception(f"Unrecognised argument '{arg}'")
@@ -813,7 +816,7 @@ def get_parser():
 
 # Main program
 if __name__ == '__main__':
-    args = make_parser().parse_args()
+    args = get_parser().parse_args()
     if (args.target==0):
         args.target = None
     print(args)
@@ -832,7 +835,7 @@ if __name__ == '__main__':
     namelist = {x[0]: x[1] for x in namelist}
     
     # download xyz files from cactus if not already present
-    namelist = get_xyz_files(namelist,"xyz")
+    namelist = sols.get_xyz_files(namelist,"xyz")
     
     # run main driver
     from esteem.wrappers import nwchem

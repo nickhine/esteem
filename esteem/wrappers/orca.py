@@ -327,16 +327,19 @@ class ORCAWrapper():
         if self.scf_block is not None:
             calc_orca.parameters['orcablocks'] += self.scf_block
         if hasattr(self,"sym_thresh"):
-            sym_block = "%sym SymThresh {sym_thresh} end\n"
+            sym_block = f"\n%sym SymThresh {self.sym_thresh} end\n"
             calc_orca.parameters['orcablocks'] += sym_block
-        
+
         if len(model_opt.constraints)>0:
-            constraint_str = "%geom Constraints\n"
-            for constr in model.constraints:
+            from ase.constraints import FixAtoms
+            constraint_str = "\n%geom Constraints\n"
+            for constr in model_opt.constraints:
                 if isinstance(constr,FixAtoms):
-                    constraint_str = ( constraint_str + 
-                                      '{ C' + ' '.join([str(i) for i in constr.index]) + 'C }\n')
-            constraint_str = constraint_str + "end\nend\n"
+                    # fix the Cartesian position of each atom (ORCA atom indices start at 0)
+                    for i in constr.index:
+                        constraint_str = constraint_str + f'  {{ C {i} C }}\n'
+            constraint_str = constraint_str + "  end\nend\n"
+            calc_orca.parameters['orcablocks'] += constraint_str
         # Set up spin
         #calc_orca.set(mult=int(2*spin+1))
         # Set up charge
@@ -496,7 +499,7 @@ end
         if solvent is not None:
             self._add_solvent(calc_orca,solvent)
         if self.scf_block is not None:
-            calc.parameters['orcablocks'] += self.scf_block
+            calc_orca.parameters['orcablocks'] += self.scf_block
         model.calc = calc_orca
         if writeonly:
             calc_orca.write_input(atoms=model)
