@@ -8,6 +8,7 @@
 
 import numpy as np
 
+
 class ezFCFWrapper():
     """
     Writes input xml files for ezFCF, runs them, and reads results
@@ -34,9 +35,9 @@ class ezFCFWrapper():
 
         # Initialise data to empty list
         self.data = []
-    
-    def write_job_params(self,xmlF):
-        
+
+    def write_job_params(self, xmlF):
+
         job_params_str = f"""<input
   job = "harmonic_pes">
 
@@ -56,8 +57,8 @@ class ezFCFWrapper():
  -->
  """
         xmlF.write(job_params_str)
-        
-    def write_parallel_approximation(self,xmlF,opt=True):
+
+    def write_parallel_approximation(self, xmlF, opt=True):
         optstr = "OPT_" if opt else ""
         paral_str = f"""
 <{optstr}parallel_approximation
@@ -87,7 +88,7 @@ class ezFCFWrapper():
 """
         xmlF.write(paral_str)
 
-    def write_dushinsky_rotations(self,xmlF,opt=False):
+    def write_dushinsky_rotations(self, xmlF, opt=False):
         optstr = "OPT_" if opt else ""
         dush_str = f"""<{optstr}dushinsky_rotations target_state="1"
       max_vibr_excitations_in_initial_el_state = "{self.max_vib_init}"
@@ -116,56 +117,56 @@ class ezFCFWrapper():
 
  -->\n\n"""
         xmlF.write(dush_str)
-    
+
     def run(self):
         import subprocess
         ezfcf_command = (f"{self.exec} {self.xml_filename} > {self.xml_filename}.out")
-        #print(ezfcf_command)
+        # print(ezfcf_command)
         errorcode = subprocess.call(ezfcf_command, shell=True)
         if errorcode:
             print(f'ezFCF process failed with errorcode: {errorcode}')
-             #aise Exception(f'ezFCF process failed with errorcode: {errorcode}')
-    
+             # aise Exception(f'ezFCF process failed with errorcode: {errorcode}')
+
     def results_exist(self):
         from os import path
         return True if path.exists(f"{self.xml_filename}.spectrum_dushinsky") else False
-    
+
     def read(self):
         results_file = f"{self.xml_filename}.spectrum_dushinsky"
         if not self.results_exist():
             print(f"# Results file {results_file} not found")
-            #raise Exception(f"Results file {results_file} not found")
+            # raise Exception(f"Results file {results_file} not found")
         try:
-            spec = np.loadtxt(results_file,usecols=(0,1))
-            if spec.shape==(2,):
-                spec = np.array([spec],ndmin=2)
+            spec = np.loadtxt(results_file, usecols=(0, 1))
+            if spec.shape == (2,):
+                spec = np.array([spec], ndmin=2)
         except:
-            spec = None #[[0.0,-1.0]]
+            spec = None  # [[0.0,-1.0]]
         return spec
-    
-    def add_model_data(self,model,linear=False):
+
+    def add_model_data(self, model, linear=False):
         data = {}
-        nat = np.count_nonzero(model.get_tags()==1)
+        nat = np.count_nonzero(model.get_tags() == 1)
         data['NAtoms'] = nat
         data['ifLinear'] = linear
-        data['Geometry'] = "".join([at.symbol + " " + ' '.join(map(str, at.position)) + "\n" 
-                                    for at in model if at.tag==1])
+        data['Geometry'] = "".join([at.symbol + " " + ' '.join(map(str, at.position)) + "\n"
+                                    for at in model if at.tag == 1])
         data['geometry_units'] = "angstr"
         data['if_normal_modes_weighted'] = False
-        data['atoms_list'] = " ".join([at.symbol for at in model if at.tag==1])
+        data['atoms_list'] = " ".join([at.symbol for at in model if at.tag == 1])
         nmodes = len(model.info['modes'])
         nmstr = ""
-        for k in range(0,nmodes,3):
+        for k in range(0, nmodes, 3):
             for iat in range(nat):
-                for dk in range(0,min(3,nmodes-k)):
+                for dk in range(0, min(3, nmodes - k)):
                     kk = k + dk
-                    mode = model.info['modes'][kk][iat*3:iat*3+3]
-                    nmstr += " ".join(map(str,mode)) + " "
+                    mode = model.info['modes'][kk][iat * 3:iat * 3 + 3]
+                    nmstr += " ".join(map(str, mode)) + " "
                 nmstr += "\n"
             nmstr += "\n"
         data['NormalModes'] = nmstr
         freqs = np.real(model.info['freqs'])[0:]
-        data['Frequencies'] = "\n".join(map(str,freqs))
+        data['Frequencies'] = "\n".join(map(str, freqs))
 
         self.data.append(data)
 
@@ -184,7 +185,7 @@ class ezFCFWrapper():
   ______________________________________________________________________
 
  -->\n\n""")
-    
+
         state_n = 0
         for dat in self.data[1:]:
             state_n += 1
@@ -200,7 +201,7 @@ class ezFCFWrapper():
         xmlF.write('</input>\n')
 
     # Adapted from make_xml.py in the ezFCF distrbution
-    def write_state_xml_file(self,xmlF, data: dict, which_state: str):
+    def write_state_xml_file(self, xmlF, data: dict, which_state: str):
         """ Write the state to the xml file. """
         # To improve readability, each item of the data dictionary is unpacked to a variable.
 
@@ -243,9 +244,9 @@ class ezFCFWrapper():
         xmlF.write('  </normal_modes>\n\n')
 
         if is_linear:
-            normal_modes = " ".join([f"{str(nm)}" for nm in range(3*no_atoms - 5)])
+            normal_modes = " ".join([f"{str(nm)}" for nm in range(3 * no_atoms - 5)])
         else:
-            normal_modes = " ".join([f"{str(nm)}" for nm in range(3*no_atoms - 6)])
+            normal_modes = " ".join([f"{str(nm)}" for nm in range(3 * no_atoms - 6)])
 
         if which_state == "target":
             xmlF.write('  <OPT_manual_normal_modes_reordering\n')
@@ -261,7 +262,3 @@ class ezFCFWrapper():
 
 
 # In[ ]:
-
-
-
-

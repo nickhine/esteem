@@ -96,7 +96,7 @@ class OpenQPWrapper():
             lines += ["type=rohf", "multiplicity=3", "",
                       "[tdhf]", "type=mrsf", f"nstate={mrsf_nstate}"]
         else:
-            mult = int(2*spin+1)
+            mult = int(2 * spin + 1)
             lines += [f"type={'rhf' if mult == 1 else 'rohf'}", f"multiplicity={mult}"]
         lines.append("")
         if grad_state is not None:
@@ -147,18 +147,18 @@ class OpenQPWrapper():
                 if line.strip().startswith("Excited state index:"):
                     state = int(words[-1])
                 elif words[:1] == ["D_ex"] and state is not None:
-                    dipoles[state] = np.array([float(w) for w in words[1:4]])*Debye
+                    dipoles[state] = np.array([float(w) for w in words[1:4]]) * Debye
                     state = None
         return dipoles
 
     def _state_energy(self, results, state, mrsf):
         """Total energy (eV) of a state: for MRSF, reference energy + td_energies[state]"""
         if not mrsf:
-            return results['energy']*Hartree
+            return results['energy'] * Hartree
         td = results.get('td_energies')
         if td is None or state >= len(td) or td[state] is None:
             raise Exception(f'# MRSF state {state} not available in OpenQP results')
-        return (results['energy'] + td[state])*Hartree
+        return (results['energy'] + td[state]) * Hartree
 
     def singlepoint(self, model, label, calc_params={}, solvent=None, charge=0, spin=0,
                     forces=False, dipole=False, continuation=False, readonly=False, calc=False,
@@ -194,7 +194,7 @@ class OpenQPWrapper():
             f_all = None
         else:
             # One run gives the gradients of every target (MRSF state numbering starts at 1 for S0)
-            grad_states = [t+1 for t in targets] if mrsf else None
+            grad_states = [t + 1 for t in targets] if mrsf else None
             if grad_states is not None and len(grad_states) == 1:
                 grad_states = grad_states[0]
             results = self._read_json(label) if readonly else None
@@ -204,30 +204,30 @@ class OpenQPWrapper():
                 results = self._run(label)
             energies = [self._state_energy(results, t, mrsf) for t in targets]
             if isinstance(grad_states, list):
-                f_all = [-np.loadtxt(f"{label}.grad_{s}").reshape(-1, 3)*Hartree/Bohr
+                f_all = [-np.loadtxt(f"{label}.grad_{s}").reshape(-1, 3) * Hartree / Bohr
                          for s in grad_states]
             else:
-                f_all = [-np.array(results['grad']).reshape(-1, 3)*Hartree/Bohr]
+                f_all = [-np.array(results['grad']).reshape(-1, 3) * Hartree / Bohr]
 
         if mrsf:
             # Energies (eV) of every MRSF state solved for, including spare roots, kept with
             # the frame so the output trajectories record eg the S1-S2 gap near crossings
             td = results.get('td_energies') or []
-            model.info['mrsf_energies'] = [float((results['energy'] + e)*Hartree) if e is not None
+            model.info['mrsf_energies'] = [float((results['energy'] + e) * Hartree) if e is not None
                                            else float('nan') for e in td]
             # S0->Sn transition dipoles (e*Angstrom) for n = 1, 2, ...: row n-1 is S0->Sn
             tdm = results.get('td_trans_dipole')
             if tdm is not None:
-                tdm = np.array(tdm)*Bohr
+                tdm = np.array(tdm) * Bohr
                 model.info['mrsf_trans_dipoles'] = [tdm[:, 0, n].tolist() for n in range(1, tdm.shape[1])]
 
         d_all = [np.full(3, np.nan) for t in targets]
         if dipole and forces and mrsf:
             state_dipoles = self._read_state_dipoles(label)
-            missing = [t for t in targets if t+1 not in state_dipoles]
+            missing = [t for t in targets if t + 1 not in state_dipoles]
             if missing:
                 raise Exception(f'# No OpenQP dipole for targets {missing} in {label}.log')
-            d_all = [state_dipoles[t+1] for t in targets]
+            d_all = [state_dipoles[t + 1] for t in targets]
 
         if isinstance(target, list):
             e_calc = np.array(energies)
@@ -280,8 +280,8 @@ class OpenQPWrapper():
         else:
             # istate numbers states as [properties] grad does: MRSF S0 is 1
             self._write_input(model_opt, label, basis, xc, charge, spin, "optimize",
-                              mrsf_nstate=(state+1+self.mrsf_spare_roots if mrsf else None),
-                              opt_state=(state+1 if mrsf else 0))
+                              mrsf_nstate=(state + 1 + self.mrsf_spare_roots if mrsf else None),
+                              opt_state=(state + 1 if mrsf else 0))
             results = self._run(label)
             for src, dest in opt_files.items():
                 if path.isfile(src):
@@ -291,7 +291,7 @@ class OpenQPWrapper():
                     raise Exception(f"# OpenQP geometry optimisation did not converge for {label}")
         model_opt.positions = np.loadtxt(opt_files['opt.xyz'], skiprows=2, usecols=(1, 2, 3)).reshape(-1, 3)
         energy = self._state_energy(results, state, mrsf)
-        forces = -np.array(results['grad']).reshape(-1, 3)*Hartree/Bohr if 'grad' in results else None
+        forces = -np.array(results['grad']).reshape(-1, 3) * Hartree / Bohr if 'grad' in results else None
         from ase.calculators.singlepoint import SinglePointCalculator
         model_opt.calc = SinglePointCalculator(model_opt, energy=energy, forces=forces)
         return energy, forces, model_opt.positions
@@ -314,23 +314,23 @@ class OpenQPWrapper():
             results = self._read_json(label)
         else:
             self._write_input(model, label, basis, xc, charge, spin, "energy",
-                              mrsf_nstate=nroots+1, solvent=solvent)
+                              mrsf_nstate=nroots + 1, solvent=solvent)
             if writeonly:
                 return 0
             results = self._run(label)
         td = results.get('td_energies')
-        if td is None or len(td) < nroots+1:
+        if td is None or len(td) < nroots + 1:
             raise Exception(f'# MRSF excitations not available in OpenQP results for {label}')
         dip = results.get('td_trans_dipole')
         s_excit = []
-        for root in range(1, nroots+1):
+        for root in range(1, nroots + 1):
             if td[root] is None or td[0] is None:
                 continue
             de = td[root] - td[0]   # Hartree
-            osc = (2.0/3.0*de*float(np.sum(np.array(dip)[:, 0, root]**2))
+            osc = (2.0 / 3.0 * de * float(np.sum(np.array(dip)[:, 0, root]**2))
                    if dip is not None else None)
-            s_excit.append((root, de*Hartree, osc))
-            print(f'# Excitation {root}: {de*Hartree:10.5f} eV, f = {osc}')
+            s_excit.append((root, de * Hartree, osc))
+            print(f'# Excitation {root}: {de * Hartree:10.5f} eV, f = {osc}')
         return s_excit, self._state_energy(results, 0, True)
 
     def run_md(self, *args, **kwargs):

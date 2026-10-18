@@ -2,7 +2,6 @@
 # coding: utf-8
 
 
-
 """
 Settings and script-writers to run ESTEEM tasks in serial or parallel
 """
@@ -14,7 +13,7 @@ Settings and script-writers to run ESTEEM tasks in serial or parallel
 from copy import deepcopy
 
 gnu_parallel_declarations = (f'NJOBS=$((${{SLURM_NTASKS}}/${{TASKS_PER_PROG}}))\n' +
-    f'PARALLEL_OPTS="-N 1 --delay .5 -j ${{NJOBS}} --joblog parallel-${{SLURM_JOBID}}.log"\n' )
+                             f'PARALLEL_OPTS="-N 1 --delay .5 -j ${{NJOBS}} --joblog parallel-${{SLURM_JOBID}}.log"\n')
 # pipefail inside each parallel job, so parallel's exit status counts failures of python (not tee)
 gnu_parallel_command = "seq $SLURM_ARRAY_TASK_ID $(($SLURM_ARRAY_TASK_ID+99)) | parallel $PARALLEL_OPTS 'set -o pipefail; export SLURM_ARRAY_TASK_ID={}; python"
 
@@ -49,19 +48,19 @@ nanosim_1core['ntask'] = 1
 nanosimd_1node = {'partition': 'nanosimd',
                   'nodes': 1,
                   'ntask': 1,
-                  'ncpu':  8,
+                  'ncpu': 8,
                   'time': '48:00:00',
                   'mem': '14000mb',
                   'declarations': '',
                   'endmatter': ''}
 nanosimd_8mpi = {'partition': 'nanosimd',
-                  'nodes': 1,
-                  'ntask': 8,
-                  'ncpu':  1,
-                  'time': '48:00:00',
-                  'mem': '14000mb',
-                  'declarations': '',
-                  'endmatter': ''}
+                 'nodes': 1,
+                 'ntask': 8,
+                 'ncpu': 1,
+                 'time': '48:00:00',
+                 'mem': '14000mb',
+                 'declarations': '',
+                 'endmatter': ''}
 nanosim_1core = deepcopy(nanosim_1node)
 nanosim_1core['ntask'] = 1
 
@@ -95,14 +94,14 @@ archer2_16node = deepcopy(archer2_1node)
 archer2_16node['nodes'] = 16
 
 avon_tf = '\nmodule purge; module load GCC/10.3.0 CUDA/11.3.1 OpenMPI/4.1.1 TensorFlow/2.6.0\n\n'
-avon_1gpu =     {'partition': 'gpu',
-                 'gres': 'gpu:quadro_rtx_6000:1',
-                 'nodes': 1,
-                 'ntask': 1,
-                 'ncpu': 12,
-                 'time': '24:00:00',
-                 'declarations': avon_tf,
-                 'endmatter': ''}
+avon_1gpu = {'partition': 'gpu',
+             'gres': 'gpu:quadro_rtx_6000:1',
+             'nodes': 1,
+             'ntask': 1,
+             'ncpu': 12,
+             'time': '24:00:00',
+             'declarations': avon_tf,
+             'endmatter': ''}
 
 avon_intel = '\nmodule purge; module load iccifort/2019.5.281 impi/2019.7.217 NWChem Python\n\n'
 avon_1node_intel = {'nodes': 1,
@@ -122,38 +121,39 @@ avon_1node_gnu = {'nodes': 1,
 avon_1node_100 = deepcopy(avon_1node_gnu)
 parallel_tasks_per_prog = 32
 avon_1node_100['declarations'] += f'TASKS_PER_PROG={parallel_tasks_per_prog}\n' + gnu_parallel_declarations
-avon_1node_100['command'] =  gnu_parallel_command
+avon_1node_100['command'] = gnu_parallel_command
 
 sulis_tf = '\nmodule purge; module load GCC/10.3.0 CUDA/11.3.1 OpenMPI/4.1.1 TensorFlow/2.6.0-CUDA-11.3.1\n\n'
 sulis_pyt = '\nmodule purge; module load GCC/11.3.0 CUDA/11.7.0 OpenMPI/4.1.4 PyTorch/1.12.1-CUDA-11.7.0 matplotlib netCDF\n\n'
 # TODO: NWChem module line for Sulis - copied from avon_intel, not checked on Sulis
 sulis_intel = avon_intel
 
-sulis_1node =   {'account': 'su007-ndmh',
-                 'partition': 'compute',
-                 'nodes': 1,
-                 'ntask': 128,
-                 'ncpu': 1,
-                 'time': '24:00:00',
-                 'declarations': sulis_pyt,
-                 'endmatter': ''}
+sulis_1node = {'account': 'su007-ndmh',
+               'partition': 'compute',
+               'nodes': 1,
+               'ntask': 128,
+               'ncpu': 1,
+               'time': '24:00:00',
+               'declarations': sulis_pyt,
+               'endmatter': ''}
 
-sulis_1gpu =    {'account': 'su007-ndmh-gpu',
-                 'partition': 'gpu',
-                 'gres': 'gpu:ampere_a100:1',
-                 'nodes': 1,
-                 'ntask': 1,
-                 'ncpu': 32,
-                 'time': '24:00:00',
-                 'declarations': sulis_pyt,
-                 'endmatter': ''}
+sulis_1gpu = {'account': 'su007-ndmh-gpu',
+              'partition': 'gpu',
+              'gres': 'gpu:ampere_a100:1',
+              'nodes': 1,
+              'ntask': 1,
+              'ncpu': 32,
+              'time': '24:00:00',
+              'declarations': sulis_pyt,
+              'endmatter': ''}
 sulis_3gpu = deepcopy(sulis_1gpu)
 sulis_3gpu['gres'] = 'gpu:ampere_a100:3'
 
 sulis_1node_100 = deepcopy(sulis_1node)
 parallel_tasks_per_prog = 32
 sulis_1node_100['declarations'] += f'TASKS_PER_PROG={parallel_tasks_per_prog}\n' + gnu_parallel_declarations
-sulis_1node_100['command'] =  gnu_parallel_command
+sulis_1node_100['command'] = gnu_parallel_command
+
 
 def get_default_script_settings(wrapper):
 
@@ -176,36 +176,36 @@ def get_default_script_settings(wrapper):
             script_settings = deepcopy(nanosimd_8mpi)
         elif "stan" in host:
             script_settings = deepcopy(nanosim_1node)
-        if isinstance(wrapper,(ORCAWrapper,OpenQPWrapper)):
+        if isinstance(wrapper, (ORCAWrapper, OpenQPWrapper)):
             wrapper.setup()
             script_settings['declarations'] = script_settings['declarations'] + bash_loop_declarations
             script_settings['endmatter'] = script_settings['endmatter'] + bash_loop_endmatter
-        if isinstance(wrapper,OnetepWrapper):
+        if isinstance(wrapper, OnetepWrapper):
             wrapper.setup(onetep_cmd='~/onetep/bin/onetep.csc',
-                                   set_pseudo_path='/storage/nanosim/NCP17_PBE_OTF/',
-                                   set_pseudo_suffix="_NCP17_PBE_OTF.usp")
+                          set_pseudo_path='/storage/nanosim/NCP17_PBE_OTF/',
+                          set_pseudo_suffix="_NCP17_PBE_OTF.usp")
 
     elif "avon" in host:
         # avon
         script_settings = deepcopy(avon_1node_gnu)
         script_settings['ntask'] = 48
         script_settings['ncpu'] = 1
-        if isinstance(wrapper,OnetepWrapper):
+        if isinstance(wrapper, OnetepWrapper):
             wrapper.setup(onetep_cmd='~/onetep/bin/onetep.avon',
-                                   set_pseudo_path='~/NCP17_PBE_OTF/',
-                                   set_pseudo_suffix="_NCP17_PBE_OTF.usp")
-        if isinstance(wrapper,PhysNetWrapper):
+                          set_pseudo_path='~/NCP17_PBE_OTF/',
+                          set_pseudo_suffix="_NCP17_PBE_OTF.usp")
+        if isinstance(wrapper, PhysNetWrapper):
             script_settings = deepcopy(avon_1gpu)
-        if isinstance(wrapper,MACEWrapper):
+        if isinstance(wrapper, MACEWrapper):
             script_settings = deepcopy(avon_1gpu)
-        if isinstance(wrapper,(ORCAWrapper,OpenQPWrapper)):
+        if isinstance(wrapper, (ORCAWrapper, OpenQPWrapper)):
             script_settings = deepcopy(avon_1node_gnu)
             script_settings['declarations'] = script_settings['declarations'] + bash_loop_declarations
             script_settings['endmatter'] = script_settings['endmatter'] + bash_loop_endmatter
-        if isinstance(wrapper,NWChemWrapper):
+        if isinstance(wrapper, NWChemWrapper):
             script_settings = deepcopy(avon_1node_intel)
             script_settings['declarations'] = avon_intel
-        if isinstance(wrapper,AmberWrapper):
+        if isinstance(wrapper, AmberWrapper):
             script_settings = deepcopy(avon_1node_gnu)
 
     elif "sulis" in host:
@@ -213,43 +213,44 @@ def get_default_script_settings(wrapper):
         script_settings = deepcopy(sulis_1node)
         script_settings['ntask'] = 128
         script_settings['ncpu'] = 1
-        if isinstance(wrapper,OnetepWrapper):
+        if isinstance(wrapper, OnetepWrapper):
             wrapper.setup(onetep_cmd='~/onetep/bin/onetep.sulis',
-                                   set_pseudo_path='~/NCP17_PBE_OTF/',
-                                   set_pseudo_suffix="_NCP17_PBE_OTF.usp")
-        if isinstance(wrapper,PhysNetWrapper):
+                          set_pseudo_path='~/NCP17_PBE_OTF/',
+                          set_pseudo_suffix="_NCP17_PBE_OTF.usp")
+        if isinstance(wrapper, PhysNetWrapper):
             script_settings = deepcopy(sulis_1gpu)
-        if isinstance(wrapper,MACEWrapper):
+        if isinstance(wrapper, MACEWrapper):
             script_settings = deepcopy(sulis_1gpu)
-        if isinstance(wrapper,(ORCAWrapper,OpenQPWrapper)):
+        if isinstance(wrapper, (ORCAWrapper, OpenQPWrapper)):
             script_settings = deepcopy(sulis_1node)
             script_settings['declarations'] = script_settings['declarations'] + bash_loop_declarations
             script_settings['endmatter'] = script_settings['endmatter'] + bash_loop_endmatter
-        if isinstance(wrapper,NWChemWrapper):
+        if isinstance(wrapper, NWChemWrapper):
             script_settings = deepcopy(sulis_1node)
             script_settings['declarations'] = sulis_intel
-        if isinstance(wrapper,AmberWrapper):
+        if isinstance(wrapper, AmberWrapper):
             script_settings = deepcopy(sulis_1node)
 
     elif "uan" in host or "nid" in host:
         # ARCHER2
-        if isinstance(wrapper,OnetepWrapper):
+        if isinstance(wrapper, OnetepWrapper):
             wrapper.setup(onetep_cmd='/work/e89/e89/ndmh3/onetep/bin/onetep.archer2',
-                                   mpirun='srun --hint=nomultithread --distribution=block:block',
-                                   set_pseudo_path='/work/e89/e89/ndmh3/NCP17_PBE_OTF/',
-                                   set_pseudo_suffix="_NCP17_PBE_OTF.usp")
+                          mpirun='srun --hint=nomultithread --distribution=block:block',
+                          set_pseudo_path='/work/e89/e89/ndmh3/NCP17_PBE_OTF/',
+                          set_pseudo_suffix="_NCP17_PBE_OTF.usp")
             wrapper.excitations_params['fftbox_batch_size'] = 16
         script_settings = deepcopy(archer2_1node)
         script_settings['ntask'] = 16
         script_settings['ncpu'] = 8
-    
+
     else:
-        raise Exception(f"Hostname {host} not recognised for automatic parallelisation setup.\n"+
-                          "Please edit definitions in drivers.py or setup parallelisation manually.")
-        
+        raise Exception(f"Hostname {host} not recognised for automatic parallelisation setup.\n" +
+                        "Please edit definitions in drivers.py or setup parallelisation manually.")
+
     return script_settings
 
-def make_sbatch(seed,task='',**kwargs):
+
+def make_sbatch(seed, task='', **kwargs):
     """
     Writes a SLURM sbatch script for a task
     
@@ -261,12 +262,12 @@ def make_sbatch(seed,task='',**kwargs):
         ``account``, ``partition``, ``qos``, ``nodes``, ``ntask``, ``ncpu``,
         ``time``, ``mem``, ``execpath``, ``target``, ``jobname``
     """
-    
+
     # Other defaults
-    slurm_command="python"
+    slurm_command = "python"
     target = None
     execpath = ""
-    slurm_preamble='#!/bin/bash\n'
+    slurm_preamble = '#!/bin/bash\n'
     slurm_declarations = "\n"
     slurm_endmatter = ""
 
@@ -317,22 +318,22 @@ def make_sbatch(seed,task='',**kwargs):
     else:
         slurm_exec = ""
     if 'logdir' in kwargs:
-        slurm_logdir = kwargs['logdir']+"/"
+        slurm_logdir = kwargs['logdir'] + "/"
     else:
         slurm_logdir = ""
     if 'target' in kwargs:
         target = kwargs['target']
 
-    slurm_jobargs=f'{task} {seed}'
+    slurm_jobargs = f'{task} {seed}'
     if target is not None:
         # if target is a string representing an integer, convert to an integer
-        if isinstance(target,str):
+        if isinstance(target, str):
             if target.isdigit():
                 target = int(target)
         # if it is an integer, write ground/excited state string for job names
-        if isinstance(target,int):
+        if isinstance(target, int):
             if int(target) == 0:
-                targstr= "_gs"
+                targstr = "_gs"
             else:
                 targstr = f"_es{target}"
         # otherwise just append to jobnames
@@ -340,7 +341,7 @@ def make_sbatch(seed,task='',**kwargs):
             targstr = f"_{target}"
         slurm_jobargs = f'{slurm_jobargs} {target}'
     else:
-        targstr=""
+        targstr = ""
     if 'scriptname' in kwargs:
         slurm_scriptname = kwargs['scriptname']
     else:
@@ -348,10 +349,10 @@ def make_sbatch(seed,task='',**kwargs):
     if 'jobname' in kwargs:
         slurm_jobname = kwargs['jobname']
     else:
-        slurm_jobname=f'{seed}{targstr}_{task}'
+        slurm_jobname = f'{seed}{targstr}_{task}'
     slurm_preamble += f'#SBATCH --job-name={slurm_jobname}\n'
     if slurm_command.endswith("python"):
-        slurm_exec=f'{execpath}{slurm_scriptname}.py'
+        slurm_exec = f'{execpath}{slurm_scriptname}.py'
 
     if 'num_threads' in kwargs:
         slurm_num_threads = kwargs['num_threads']
@@ -370,7 +371,6 @@ def make_sbatch(seed,task='',**kwargs):
         slurm_postfix += "'\n"
     else:
         slurm_postfix += "\n"
-        
 
     with open(f'{slurm_jobname}_sub', 'w') as f:
         f.write(slurm_preamble)
@@ -382,7 +382,7 @@ def make_sbatch(seed,task='',**kwargs):
 # In[ ]:
 
 
-def make_pbs(seed,dest='local',task='solutes',execpath='',ncpu=None,target=None):
+def make_pbs(seed, dest='local', task='solutes', execpath='', ncpu=None, target=None):
     """
     Writes a PBS script for a task. Possibly out-of-date (not recently used)
     
@@ -394,31 +394,31 @@ def make_pbs(seed,dest='local',task='solutes',execpath='',ncpu=None,target=None)
         ``account``, ``partition``, ``nodes``, ``ntask``, ``ncpu``, ``time``, ``mem``,
         ``execpath``, ``target``, ``jobname``
     """
-    
+
     if target is not None:
         if target == 0:
-            targstr= "gs"
+            targstr = "gs"
         else:
             targstr = f"es{target}"
-    if dest=='archer':
-        pbs_acct="e89-warp"
-        pbs_queue="compute"
-        pbs_nodes=10
-        pbs_ntask=4
-        pbs_ncpu=6
-        pbs_mem=2679
-        pbs_time="24:00:00"
+    if dest == 'archer':
+        pbs_acct = "e89-warp"
+        pbs_queue = "compute"
+        pbs_nodes = 10
+        pbs_ntask = 4
+        pbs_ncpu = 6
+        pbs_mem = 2679
+        pbs_time = "24:00:00"
     else:
         raise Exception(f'Destination {dest} not recognised')
-    
-    pbs_jobname=f'{seed}_{task}'
-    pbs_jobargs=f'{task}'
-    if dest=='archer':
-        pbs_command="python3"
+
+    pbs_jobname = f'{seed}_{task}'
+    pbs_jobargs = f'{task}'
+    if dest == 'archer':
+        pbs_command = "python3"
     else:
-        pbs_command="python"
-    pbs_exec=f'{execpath}{seed}.py'
-    pbs_options=f'''#!/bin/bash
+        pbs_command = "python"
+    pbs_exec = f'{execpath}{seed}.py'
+    pbs_options = f'''#!/bin/bash
 #PBS -N {pbs_jobname}
 #PBS -l select={pbs_nodes}
 #PBS -A {pbs_acct}
@@ -430,7 +430,7 @@ def make_pbs(seed,dest='local',task='solutes',execpath='',ncpu=None,target=None)
 
 '''
 
-    pbs_setup=f'''
+    pbs_setup = f'''
 # Make sure any symbolic links are resolved to absolute path
 export PBS_O_WORKDIR=$(readlink -f $PBS_O_WORKDIR)
 
@@ -479,7 +479,7 @@ from os import environ
 
 
 def get_array_task_id():
-    
+
     task_id = None
 
     # Try to find from SLURM
@@ -499,5 +499,3 @@ def get_array_task_id():
         task_id = tmp
 
     return task_id
-    
-

@@ -11,6 +11,7 @@ import sys
 
 from esteem.tasks.spectra import wavelength_eV_conv as hc
 
+
 class SpecPyCodeWrapper():
     """
     Writes input files for Spectroscopy Python Code, runs them, and reads results
@@ -58,9 +59,9 @@ class SpecPyCodeWrapper():
                  chromophore_model="MD",
                  exec_path="/storage/nanosim/Spectroscopy_python_code/",
                  ncores=4):
-        
-        self.input_filename = input_filename 
-        self.rootname = rootname 
+
+        self.input_filename = input_filename
+        self.rootname = rootname
         self.ncores = ncores
         self.num_trajs = 0
         self.solvent_model = solvent_model
@@ -85,13 +86,13 @@ class SpecPyCodeWrapper():
 
         # Initialise data to empty list
         self.data = []
-    
+
     def write_input_file(self):
-        inpf = open(self.input_filename,"w")
-        
+        inpf = open(self.input_filename, "w")
+
         self.args = {"SOLVENT_MODEL": str(self.solvent_model).upper(),
                      "SOLVENT_REORG": self.solvent_reorg,
-                     "MD_ROOTNAME": self.rootname+"_",
+                     "MD_ROOTNAME": self.rootname + "_",
                      "MD_OUTPUT_SUFFIX": self.md_output_suffix,
                      "THIRD_ORDER_CUMULANT": str(self.third_order_cumulant).upper(),
                      "NUM_STEPS": self.num_steps,
@@ -109,25 +110,25 @@ class SpecPyCodeWrapper():
         for arg in self.args:
             inpf.write(f"{arg} {self.args[arg]}\n")
         inpf.close()
-    
+
     def run(self):
         import importlib
-        store_argv = sys.argv        
-        sys.argv = ['generate_spectra.py',self.input_filename,self.ncores]
+        store_argv = sys.argv
+        sys.argv = ['generate_spectra.py', self.input_filename, self.ncores]
         print(f'# Executing Spectroscopy Python Code from input file {self.input_filename} with parameters:')
-        print('#',self.args)
+        print('#', self.args)
         reload = True if "generate_spectra" in sys.modules else False
         import generate_spectra
         if reload:
             print("Attempting to reload...")
-            importlib.reload(generate_spectra) 
+            importlib.reload(generate_spectra)
         sys.argv = store_argv
 
     def trajs_exist(self):
         from os import path
         all_trajs_exist = True
         for i in range(self.num_trajs):
-            filename = f'{self.rootname}_traj{str(i+1)}.dat'
+            filename = f'{self.rootname}_traj{str(i + 1)}.dat'
             if not path.exists(filename):
                 all_trajs_exist = False
                 print(f'# No file found: {filename}')
@@ -135,33 +136,33 @@ class SpecPyCodeWrapper():
 
     def results_exist(self):
         from os import path
-        if self.method=="CUMULANT":
+        if self.method == "CUMULANT":
             results_file = f"{self.rootname}_{self.md_output_suffix}MD_cumulant_spectrum.dat"
         else:
             results_file = f"{self.rootname}_{self.md_output_suffix}MD_ensemble_spectrum.dat"
         return True if path.exists(results_file) else False
-    
+
     def read(self):
-        if self.method=="CUMULANT":
+        if self.method == "CUMULANT":
             results_file = f"{self.rootname}_{self.md_output_suffix}MD_cumulant_spectrum.dat"
         else:
             results_file = f"{self.rootname}_{self.md_output_suffix}MD_ensemble_spectrum.dat"
         if not self.results_exist():
             print(f"# Results file {results_file} not found")
-            #raise Exception(f"Results file {results_file} not found")
+            # raise Exception(f"Results file {results_file} not found")
         try:
-            spec = np.loadtxt(results_file,usecols=(0,1))
-            spec[:,0] = hc/spec[:,0]
-            if spec.shape==(2,):
-                spec = np.array([spec],ndmin=2)
+            spec = np.loadtxt(results_file, usecols=(0, 1))
+            spec[:, 0] = hc / spec[:, 0]
+            if spec.shape == (2,):
+                spec = np.array([spec], ndmin=2)
         except:
             spec = None
         return spec
-    
-    def write_excitations(self,excitations):
-        filename = f'{self.rootname}_traj{str(self.num_trajs+1)}.dat'
+
+    def write_excitations(self, excitations):
+        filename = f'{self.rootname}_traj{str(self.num_trajs + 1)}.dat'
         print(f'# Writing to excitations to {filename}')
-        excf = open(filename,"w")
+        excf = open(filename, "w")
         for e in excitations:
             excf.write(f'{e[0][1]} {e[0][2]}\n')
         self.num_trajs += 1
@@ -169,7 +170,3 @@ class SpecPyCodeWrapper():
 
 
 # In[ ]:
-
-
-
-

@@ -11,30 +11,31 @@ from os.path import isfile, dirname, abspath, join
 from os import environ
 import numpy as np
 
+
 class OnetepWrapper():
     """Sets up and runs the ONETEP Calculator (via ASE) for DFT and TDDFT calculations"""
-    
+
     def __init__(self):
         """Sets up instance attributes for OnetepWrapper """
-        
+
         self.dielectric = {}
-        self.dielectric.update(dict.fromkeys(['wat', 'wate', 'water', 'watr'], ["Water",80.4,1.33]))
-        self.dielectric.update(dict.fromkeys(['meth', 'methanol', 'meoh'], ["Methanol",32.63,1.329]))
-        self.dielectric["wate"] = ["Water",80.4,1.33]
-        self.dielectric["acet"] = ["Acetonitrile",36.6,1.344]
-        self.dielectric["actn"] = ["Acetone",20.7,1.359]
-        self.dielectric["ammo"] = ["Ammonia",22.4,1.33]
-        self.dielectric["etoh"] = ["Ethanol",24.3,1.361]
-        self.dielectric["dich"] = ["CH2Cl2",9.08,1.424]
-        self.dielectric["tech"] = ["CCl4",2.24,1.466]
-        self.dielectric["dmfu"] = ["DMF",38.3,1.43]
-        self.dielectric["dmso"] = ["DMSO",47.2,1.479]
-        self.dielectric["pyri"] = ["Pyridine",12.5,1.51]
-        self.dielectric["thff"] = ["THF",7.25,1.407]
-        self.dielectric["chlf"] = ["Chloroform",4.9,1.45]
-        self.dielectric["hexa"] = ["Hexane",1.89,1.375]
-        self.dielectric["tolu"] = ["Toluene",2.4,1.497]
-        self.dielectric["cycl"] = ["Cyclohexane",2.02,1.4262]
+        self.dielectric.update(dict.fromkeys(['wat', 'wate', 'water', 'watr'], ["Water", 80.4, 1.33]))
+        self.dielectric.update(dict.fromkeys(['meth', 'methanol', 'meoh'], ["Methanol", 32.63, 1.329]))
+        self.dielectric["wate"] = ["Water", 80.4, 1.33]
+        self.dielectric["acet"] = ["Acetonitrile", 36.6, 1.344]
+        self.dielectric["actn"] = ["Acetone", 20.7, 1.359]
+        self.dielectric["ammo"] = ["Ammonia", 22.4, 1.33]
+        self.dielectric["etoh"] = ["Ethanol", 24.3, 1.361]
+        self.dielectric["dich"] = ["CH2Cl2", 9.08, 1.424]
+        self.dielectric["tech"] = ["CCl4", 2.24, 1.466]
+        self.dielectric["dmfu"] = ["DMF", 38.3, 1.43]
+        self.dielectric["dmso"] = ["DMSO", 47.2, 1.479]
+        self.dielectric["pyri"] = ["Pyridine", 12.5, 1.51]
+        self.dielectric["thff"] = ["THF", 7.25, 1.407]
+        self.dielectric["chlf"] = ["Chloroform", 4.9, 1.45]
+        self.dielectric["hexa"] = ["Hexane", 1.89, 1.375]
+        self.dielectric["tolu"] = ["Toluene", 2.4, 1.497]
+        self.dielectric["cycl"] = ["Cyclohexane", 2.02, 1.4262]
 
         self.singlepoint_params = {
             'task': 'SINGLEPOINT',
@@ -52,46 +53,46 @@ class OnetepWrapper():
         }
 
         self.excitations_params = {
-            'ngwf_threshold_orig': 1.4e-6, 
-            'lnv_threshold_orig': 2e-7, 
-            'maxit_palser_mano': 600, 
-            'do_properties': False, 
-            'fftbox_batch_size': 14, 
-            'write_forces': False, 
-            'write_denskern': True, 
-            'write_tightbox_ngwfs': True, 
-            'read_denskern': False, 
-            'read_tightbox_ngwfs': False, 
-            'output_detail': "NORMAL", 
-            'cond_energy_gap': '0.1 eV', 
-            'cond_num_states': 20, 
-            'cond_num_extra_its': 4, 
-            'cube_format': False, 
-            'lr_tddft_analysis': True, 
-            'lr_tddft_RPA': True, 
-            'lr_tddft_init_random': False, 
-            'lr_tddft_write_kernels': True, 
-            'lr_tddft_write_densities': False, 
-            'lr_tddft_restart': False, 
+            'ngwf_threshold_orig': 1.4e-6,
+            'lnv_threshold_orig': 2e-7,
+            'maxit_palser_mano': 600,
+            'do_properties': False,
+            'fftbox_batch_size': 14,
+            'write_forces': False,
+            'write_denskern': True,
+            'write_tightbox_ngwfs': True,
+            'read_denskern': False,
+            'read_tightbox_ngwfs': False,
+            'output_detail': "NORMAL",
+            'cond_energy_gap': '0.1 eV',
+            'cond_num_states': 20,
+            'cond_num_extra_its': 4,
+            'cube_format': False,
+            'lr_tddft_analysis': True,
+            'lr_tddft_RPA': True,
+            'lr_tddft_init_random': False,
+            'lr_tddft_write_kernels': True,
+            'lr_tddft_write_densities': False,
+            'lr_tddft_restart': False,
             'lr_tddft_num_conv_states': 0,
-            'lr_tddft_homo_num': 60, 
-            'lr_tddft_lumo_num': 60, 
-            'lr_tddft_maxit_cg': 120 }
+            'lr_tddft_homo_num': 60,
+            'lr_tddft_lumo_num': 60,
+            'lr_tddft_maxit_cg': 120}
 
         self.solvent_params = {
             'is_implicit_solvent': True,
-            'is_auto_solvation' : True,
-            'is_smeared_ion_rep': True }
-        
+            'is_auto_solvation': True,
+            'is_smeared_ion_rep': True}
+
         self.paw = False
         self.pseudo_path = ""
         self.pseudo_suffix = ""
         self.output = "onetep"
 
-    def setup(self,nprocs=None,mthreads=None,onetep_cmd=None,mpirun=None,
-              set_pseudo_path=None,set_pseudo_suffix=None):
+    def setup(self, nprocs=None, mthreads=None, onetep_cmd=None, mpirun=None,
+              set_pseudo_path=None, set_pseudo_suffix=None):
         """Sets up the internal variables of the OnetepWrapper Class"""
-        
+
         # Set up pseudopotential/PAW information
         if set_pseudo_path is None:
             self.pseudo_path = '~/JTH_PBE/'
@@ -119,32 +120,32 @@ class OnetepWrapper():
             if mthreads is not None:
                 mthread_cmd = f'export OMP_NUM_THREADS={mthreads}; '
         if mpirun == "aprun":
-            mthread_cmd = '' # already set in script
+            mthread_cmd = ''  # already set in script
             try:
                 nproc_cmd = environ["APRUN_ARGS"]
             except KeyError:
                 nproc_cmd = ""
         environ["ASE_ONETEP_COMMAND"] = f'{mthread_cmd}{mpirun} {nproc_cmd} {onetep_cmd} PREFIX.dat >> PREFIX.out 2> PREFIX.err'
-   
+
     # Adjust this function to define complex behaviour of NGWF counts
-    def _set_cond_ngwfs(self,model,calc_on):
-        tags = ["" if i==0 else str(i) for i in model.get_tags()]
+    def _set_cond_ngwfs(self, model, calc_on):
+        tags = ["" if i == 0 else str(i) for i in model.get_tags()]
         all_species = set(zip(model.get_chemical_symbols(), tags))
         species_ngwf_number_cond = {}
         for s in all_species:
             cond_ngwf_count = -1
-            if s[1]=="1":
-                if s[0]=='H':
+            if s[1] == "1":
+                if s[0] == 'H':
                     cond_ngwf_count = -1
-                if s[0]=='C' or s[0]=='O' or s[0]=='N':
+                if s[0] == 'C' or s[0] == 'O' or s[0] == 'N':
                     cond_ngwf_count = -1
-            if s[1]=="":
+            if s[1] == "":
                 cond_ngwf_count = -1
             if cond_ngwf_count >= 0:
-                species_ngwf_number_cond[s[0]+s[1]] = cond_ngwf_count
+                species_ngwf_number_cond[s[0] + s[1]] = cond_ngwf_count
         calc_on.set(species_ngwf_number_cond=species_ngwf_number_cond)
 
-    def unpack_params(self,calc_params):
+    def unpack_params(self, calc_params):
         if 'ngwf_rad' in calc_params:
             ngwf_rad = calc_params['ngwf_rad']
         else:
@@ -165,16 +166,16 @@ class OnetepWrapper():
             energy_range = calc_params['energy_range']
         else:
             raise Exception("Target excitation not specified in energy_range")
-        return ngwf_rad,cutoff,xc,energy_range,target
+        return ngwf_rad, cutoff, xc, energy_range, target
 
-    def singlepoint(self,model,label,calc_params,solvent=None,charge=0,
-                    forces=False,restart=False,readonly=False,writeonly=False,calconly=False):
+    def singlepoint(self, model, label, calc_params, solvent=None, charge=0,
+                    forces=False, restart=False, readonly=False, writeonly=False, calconly=False):
         """Runs a singlepoint calculation with the ONETEP ASE calculator"""
         calc_on = Onetep(label=label)
-        ngwf_rad,cutoff,func,energy_range,target = self.unpack_params(calc_params)
-        if (model.cell==0.0).all():
+        ngwf_rad, cutoff, func, energy_range, target = self.unpack_params(calc_params)
+        if (model.cell == 0.0).all():
             model.center(10)
-            print('Added cell:\n',model.cell)
+            print('Added cell:\n', model.cell)
         if self.pseudo_path is not None:
             calc_on.set(pseudo_path=self.pseudo_path)
         if self.pseudo_suffix is not None:
@@ -196,24 +197,24 @@ class OnetepWrapper():
             return calc_on
         if readonly:
             calc_on.read_results()
-            energy = calc_on.get_property('energy',atoms=model,allow_calculation=False)
+            energy = calc_on.get_property('energy', atoms=model, allow_calculation=False)
             if forces:
-                model_forces = calc_on.get_property('forces',atoms=model,allow_calculation=False)
+                model_forces = calc_on.get_property('forces', atoms=model, allow_calculation=False)
         else:
             if forces:
                 model_forces = model.get_forces()
             energy = model.get_potential_energy()
 
         return energy, model_forces
-    
-    def geom_opt(self,model_opt,label,calc_params,driver_tol='default',
-                 solvent=None,charge=0,readonly=False,writeonly=False,calconly=False):
+
+    def geom_opt(self, model_opt, label, calc_params, driver_tol='default',
+                 solvent=None, charge=0, readonly=False, writeonly=False, calconly=False):
         """Runs a Geometry Optimisation calculation with the ONETEP ASE calculator"""
         calc_on = Onetep(label=label)
-        ngwf_rad,cutoff,func,energy_range,target = self.unpack_params(calc_params)
-        if (model_opt.cell==0.0).all():
+        ngwf_rad, cutoff, func, energy_range, target = self.unpack_params(calc_params)
+        if (model_opt.cell == 0.0).all():
             model_opt.center(10)
-            print('Added cell:\n',model_opt.cell)
+            print('Added cell:\n', model_opt.cell)
         if self.pseudo_path is not None:
             calc_on.set(pseudo_path=self.pseudo_path)
         if self.pseudo_suffix is not None:
@@ -233,23 +234,23 @@ class OnetepWrapper():
             return calc_on
         if readonly:
             calc_on.read_results()
-            energy = calc_on.get_property('energy',atoms=model_opt,allow_calculation=False)
-            model_forces = calc_on.get_property('forces',atoms=model_opt,allow_calculation=False)
+            energy = calc_on.get_property('energy', atoms=model_opt, allow_calculation=False)
+            model_forces = calc_on.get_property('forces', atoms=model_opt, allow_calculation=False)
         else:
             model_forces = model_opt.get_forces()
             energy = model_opt.get_potential_energy()
 
         return energy, model_forces, model_opt.positions
 
-    def excitations(self,model,label,calc_params={},nroots=1,solvent=None,charge=0,writeonly=False,
-                    readonly=False,continuation=False,cleanup=False,
-                    plot_homo=None,plot_lumo=None,plot_trans_den=None):
+    def excitations(self, model, label, calc_params={}, nroots=1, solvent=None, charge=0, writeonly=False,
+                    readonly=False, continuation=False, cleanup=False,
+                    plot_homo=None, plot_lumo=None, plot_trans_den=None):
         """Calculates TDDFT excitations with the ONETEP ASE calculator"""
         calc_on = Onetep(label=label)
-        ngwf_rad,cutoff,func,energy_range,target = self.unpack_params(calc_params)
-        if (model.cell==0.0).all():
+        ngwf_rad, cutoff, func, energy_range, target = self.unpack_params(calc_params)
+        if (model.cell == 0.0).all():
             model.center(10)
-            print('Added cell:\n',model.cell)
+            print('Added cell:\n', model.cell)
         if self.pseudo_path is not None:
             calc_on.set(pseudo_path=self.pseudo_path)
         if self.pseudo_suffix is not None:
@@ -268,14 +269,14 @@ class OnetepWrapper():
         calc_on.set(cond_energy_range=energy_range)
         calc_on.set(**self.excitations_params)
         # Setup tags on kernel species, if supplied
-        if any(model.get_tags()>0):
-            tags = ["" if i==0 else str(i) for i in model.get_tags()]
+        if any(model.get_tags() > 0):
+            tags = ["" if i == 0 else str(i) for i in model.get_tags()]
             all_species = set(zip(model.get_chemical_symbols(), tags))
-            tddft_kernel_species = [s[0]+s[1] for s in all_species if s[1]!=""]
+            tddft_kernel_species = [s[0] + s[1] for s in all_species if s[1] != ""]
             tddft_kernel_str = [('%s' % sp) for sp in tddft_kernel_species]
             calc_on.set(species_tddft_kernel=[tddft_kernel_str])
             # TODO: setup LDOS groups
-            self._set_cond_ngwfs(model,calc_on)
+            self._set_cond_ngwfs(model, calc_on)
         if solvent is not None:
             calc_on.set(**self.solvent_params)
             if solvent not in self.dielectric.keys():
@@ -288,22 +289,22 @@ class OnetepWrapper():
             return 0
         if readonly:
             calc_on.read_results()
-            gs_energy = calc_on.get_property('energy',atoms=model,
+            gs_energy = calc_on.get_property('energy', atoms=model,
                                              allow_calculation=False)
         else:
             gs_energy = model.get_potential_energy()
 
-        excitations = self.read_excitations(calc_on.label+'.out')
-        energies = np.array([gs_energy]*(len(excitations)+1))
-        energies[1:] = energies[1:] + excitations[:,1]
+        excitations = self.read_excitations(calc_on.label + '.out')
+        energies = np.array([gs_energy] * (len(excitations) + 1))
+        energies[1:] = energies[1:] + excitations[:, 1]
 
         if (cleanup):
             self.cleanup(label)
 
-        return excitations,energies
+        return excitations, energies
 
-    def read_excitations(self,filename):
-        
+    def read_excitations(self, filename):
+
         import numpy as np
         from ase.units import Hartree
 
@@ -318,26 +319,25 @@ class OnetepWrapper():
                 line = out.readline()
                 while line:
                     words = line.split()
-                    if len(words)==0 or 'Transition:' in words[0]:
+                    if len(words) == 0 or 'Transition:' in words[0]:
                         break
                     nE = nE + 1
-                    excitations.append([nE,float(words[1])*Hartree,float(words[2])])
+                    excitations.append([nE, float(words[1]) * Hartree, float(words[2])])
                     line = out.readline()
         excitations = np.array(excitations)
         return excitations, None
 
-    def cleanup(self,seed):
+    def cleanup(self, seed):
         # Cleanup temporary files from a ONETEP job
         from os import path, remove
-        for b in ("tightbox_ngwfs","dkn"):
-            for p in ("","vacuum_"):
-                for q in ("","_cond"):
-                    s = p+b+q
-                    print(seed+"."+s)
-                    if path.isfile(seed+"."+s):
-                        remove(seed+"."+s)
+        for b in ("tightbox_ngwfs", "dkn"):
+            for p in ("", "vacuum_"):
+                for q in ("", "_cond"):
+                    s = p + b + q
+                    print(seed + "." + s)
+                    if path.isfile(seed + "." + s):
+                        remove(seed + "." + s)
         for s in ["_dl_mg_log.txt"]:
-            print(seed+s)
-            if path.isfile(seed+"."+s):
-                remove(seed+"."+s) 
-
+            print(seed + s)
+            if path.isfile(seed + "." + s):
+                remove(seed + "." + s)

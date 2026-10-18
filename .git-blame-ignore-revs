@@ -1,0 +1,5 @@
+# Commits skipped by git blame: mass reformatting with no code changes.
+# Use locally with: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Whitespace cleanup with autopep8
+f2fa012968b78e97875440dcc35b783d295b9f96

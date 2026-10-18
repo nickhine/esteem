@@ -27,7 +27,7 @@ import shutil
 #    dipole = charge*Angstroms
 #    electric field = volts/Angstrom
 
-# See http://ambermd.org/tutorials/basic/tutorial1/section3.htm 
+# See http://ambermd.org/tutorials/basic/tutorial1/section3.htm
 # and http://ambermd.org/tutorials/advanced/tutorial3/section1.htm for details
 
 # From J. Chem. Phys. 148, 024110 (2018)
@@ -46,6 +46,7 @@ import shutil
 # performed using a 2 fs time-step and a Langevin thermostat
 # with a collision frequency of 1 ps^-1
 
+
 class LAMMPSWrapper():
     """Sets up the LAMMPS Calculator (via ASE) for Molecular Dynamics runs"""
 
@@ -58,36 +59,36 @@ class LAMMPSWrapper():
         self.ntt = 3         # Langevin thermostat
         self.gamma_ln = 1    # Collision frequency 1ps^-1
         self.dt = 0.002      # 2 fs timestep
-        self.restraints = '' # Line to add to inputs for restraints
+        self.restraints = ''  # Line to add to inputs for restraints
         self.ntb = 0         # Periodic box
         self.ntp = 0         # Periodic box
 
         # Common files (all run types will use same potentials, presumably, so use instance attribute to store)
-        self.lammps_files  = ["watr_converted.lmp"]
+        self.lammps_files = ["watr_converted.lmp"]
         # Store a dictionary of common params, then merge dictionary with specifics for a given run?
         self.lammps_params_amberconv = {"keep_tmp_files": True,
-                              "tmp_dir": ".",
-                              "units": "real",
-                              "atom_style": "full",
-                              "dimension": "3",
-                              "boundary": "p p p",
-                              "kspace_style": "pppm 1e-8",
-                              "bond_style": "hybrid harmonic",
-                              "angle_style": "hybrid harmonic",
-                              "special_bonds": "lj 0.0 0.0 1.0 coul 0.0 0.0 1.0",
-                              #"read_data": "watr_converted.lmp",
-                              "pair_style": f"lj/cut/coul/long {self.cut} {self.cut}",
-                              "pair_modify": "tail yes",
-                              "pair_coeff": ["1 1   0.2104000   3.0664734","2 2   0.0000000   0.0000000"],
-                              "pair_modify": ["tail yes", "mix arithmetic"]
-                             }
+                                        "tmp_dir": ".",
+                                        "units": "real",
+                                        "atom_style": "full",
+                                        "dimension": "3",
+                                        "boundary": "p p p",
+                                        "kspace_style": "pppm 1e-8",
+                                        "bond_style": "hybrid harmonic",
+                                        "angle_style": "hybrid harmonic",
+                                        "special_bonds": "lj 0.0 0.0 1.0 coul 0.0 0.0 1.0",
+                                        # "read_data": "watr_converted.lmp",
+                                        "pair_style": f"lj/cut/coul/long {self.cut} {self.cut}",
+                                        "pair_modify": "tail yes",
+                                        "pair_coeff": ["1 1   0.2104000   3.0664734", "2 2   0.0000000   0.0000000"],
+                                        "pair_modify": ["tail yes", "mix arithmetic"]
+                                        }
         self.damp = 1.00
         self.temp0 = 300
         self.seed = 123457
         self.lammps_md = {
-            #"timestep": 0.002,
-            "fix": [#"fix_nve all nve",
-                    f"fix_lan all langevin {self.temp0} {self.temp0} {self.damp} {self.seed}"],
+            # "timestep": 0.002,
+            "fix": [  # "fix_nve all nve",
+                f"fix_lan all langevin {self.temp0} {self.temp0} {self.damp} {self.seed}"],
             "thermo_style": "custom step temp press ke pe etotal",
             "thermo_modify": "flush yes format float %20.10g",
             "thermo": 100
@@ -99,14 +100,14 @@ class LAMMPSWrapper():
             "units": "metal"}
         self.output = "lammps"
 
-    def calc_filename(self,seed,target,prefix='',suffix=''):
-    
+    def calc_filename(self, seed, target, prefix='', suffix=''):
+
         from esteem.wrappers.amp import AMPWrapper
         self.calc_ext = ".amp"
         self.log_ext = "-log.txt"
-        return AMPWrapper.calc_filename(self,seed,target,prefix,suffix)
+        return AMPWrapper.calc_filename(self, seed, target, prefix, suffix)
 
-    def lammps_setup(self,lammps_cmd=None,nprocs=None):
+    def lammps_setup(self, lammps_cmd=None, nprocs=None):
         """Prepares run commands etc for LAMMPS calculations"""
 
         # Set up  executable command
@@ -120,10 +121,10 @@ class LAMMPSWrapper():
             if nprocs is not None:
                 nproc_cmd = f'-np {nprocs}'
                 mpirun = 'mpirun'
-            environ["ASE_LAMMPSRUN_COMMAND"]=f'{mpirun} {nproc_cmd} {lammps_cmd}'
-             #PREFIX.nwi >> PREFIX.nwo 2> PREFIX.err
+            environ["ASE_LAMMPSRUN_COMMAND"] = f'{mpirun} {nproc_cmd} {lammps_cmd}'
+             # PREFIX.nwi >> PREFIX.nwo 2> PREFIX.err
 
-    def load(self,seed,target=None,prefix="",suffix="",**kwargs):
+    def load(self, seed, target=None, prefix="", suffix="", **kwargs):
         """
         Loads an existing AMP Calculator and converts it into a PROPhet-LAMMPS calculator
 
@@ -139,26 +140,26 @@ class LAMMPSWrapper():
 
         # Load AMP calculator and convert to PROPhet format
         from amp import Amp, convert
-        calcfn = self.calc_filename(seed,target,prefix=prefix,suffix=suffix)
-        calc_amp = Amp.load(calcfn+self.calc_ext,**kwargs)
+        calcfn = self.calc_filename(seed, target, prefix=prefix, suffix=suffix)
+        calc_amp = Amp.load(calcfn + self.calc_ext, **kwargs)
         Rcut = calc_amp._descriptor.parameters.cutoff['kwargs']['Rc']
-        pair_coeff = [f"{i+1} potential_{e}" for i,e in enumerate(calc_amp._descriptor.parameters.elements)]
+        pair_coeff = [f"{i + 1} potential_{e}" for i, e in enumerate(calc_amp._descriptor.parameters.elements)]
         convert.save_to_prophet(calc_amp)
 
         # Create LAMMPS calculator
         from os import environ
-        environ["ASE_LAMMPSRUN_COMMAND"]='lmp_serial'
+        environ["ASE_LAMMPSRUN_COMMAND"] = 'lmp_serial'
         calc_ml = LAMMPS()
         calc_ml.set(tmp_dir=".")
-        calc_ml.set(keep_tmp_files=False) # set to true to debug
+        calc_ml.set(keep_tmp_files=False)  # set to true to debug
         calc_ml.set(units="metal")
         calc_ml.set(pair_style=f"nn {Rcut}")
         calc_ml.set(pair_coeff=pair_coeff)
-        
+
         return calc_ml
 
-    def geom_opt(self,model,seed,calc_params,driver_tol='default',
-                 solvent=None,readonly=False):
+    def geom_opt(self, model, seed, calc_params, driver_tol='default',
+                 solvent=None, readonly=False):
         """
         Runs a singlepoint calculation with the LAMMPS ASE calculator
 
@@ -176,7 +177,7 @@ class LAMMPSWrapper():
 
         readonly: bool
         """
-        
+
         calc_seed = calc_params['calc_seed']
         target = calc_params['target']
         suffix = calc_params['calc_suffix']
@@ -192,16 +193,15 @@ class LAMMPSWrapper():
         if (model.get_cell() == [0.0, 0.0, 0.0]).all():
             model.center(10)
         # Load the appropriate Calculator
-        print('in geom_opt:',calc_seed,target,suffix)
-        calc_ml = self.load(calc_seed,target,prefix="",suffix=suffix)
+        print('in geom_opt:', calc_seed, target, suffix)
+        calc_ml = self.load(calc_seed, target, prefix="", suffix=suffix)
         calc_ml.set(**self.lammps_params_prophet)
         calc_ml.set(minimize=f"{etol} {ftol} {maxiter} {maxeval}")
         model.calc = calc_ml
         return model.get_potential_energy(), model.get_forces(), model.get_positions()
 
-    
-    def run_mlmd(self,model,mdseed,calc_params,md_steps,md_timestep,superstep,temp,
-                 solvent=None,restart=False,readonly=False,constraints=None,continuation=None):
+    def run_mlmd(self, model, mdseed, calc_params, md_steps, md_timestep, superstep, temp,
+                 solvent=None, restart=False, readonly=False, constraints=None, continuation=None):
         """
         Runs a Molecular Dynamics calculation with the AMP ASE calculator.
 
@@ -233,17 +233,17 @@ class LAMMPSWrapper():
         from ase.md.velocitydistribution import MaxwellBoltzmannDistribution, Stationary, ZeroRotation
         from ase import units
         import numpy as np
-        
+
         calc_seed = calc_params['calc_seed']
         target = calc_params['target']
         suffix = calc_params['calc_suffix']
         prefix = calc_params['calc_prefix']
-        
+
         # Load the appropriate Calculator
-        calc_ml = self.load(calc_seed,target,prefix=prefix,suffix=suffix)
+        calc_ml = self.load(calc_seed, target, prefix=prefix, suffix=suffix)
         calc_ml.set(**self.lammps_params_prophet)
         calc_ml.set(run=md_steps)
-        
+
         # LAMMPS does not produce correct answers for these potentials if
         # run with no cell - so add one
         if (model.get_cell() == [0.0, 0.0, 0.0]).all():
@@ -253,17 +253,16 @@ class LAMMPSWrapper():
         if np.all(model.get_momenta() == 0.0):
             print(f'Initializing new momenta at {temp}K')
             MaxwellBoltzmannDistribution(model, temp * units.kB)
-        
+
         Stationary(model)
         ZeroRotation(model)
         # TODO Set timestep
         #      Set thermostat
         model.calc = calc_ml
         return model.get_potential_energy(), model.get_forces()
-        
-        
-    def singlepoint(self,model,seed,calc_params,
-                    target=None,solvent=None,readonly=False):
+
+    def singlepoint(self, model, seed, calc_params,
+                    target=None, solvent=None, readonly=False):
         """
         Runs a singlepoint calculation with the LAMMPS ASE calculator
 
@@ -281,7 +280,7 @@ class LAMMPSWrapper():
 
         readonly: bool
         """
-        
+
         calc_seed = calc_params['calc_seed']
         target = calc_params['target']
         suffix = calc_params['calc_suffix']
@@ -289,7 +288,7 @@ class LAMMPSWrapper():
         lammps_params = calc_params['lammps_params']
 
         # Load the appropriate Calculator
-        calc_ml = self.load(calc_seed,target,prefix=prefix,suffix=suffix)
+        calc_ml = self.load(calc_seed, target, prefix=prefix, suffix=suffix)
         # LAMMPS does not produce correct answers for these potentials if
         # run with no cell - so add one
         if (model.get_cell() == [0.0, 0.0, 0.0]).all():
@@ -299,7 +298,7 @@ class LAMMPSWrapper():
         model.calc = calc_ml
         return model.get_potential_energy(), model.get_forces()
 
-    def minimise(self,solvated,minimised,seed):
+    def minimise(self, solvated, minimised, seed):
         """Runs a geometry optimisation calculation with the LAMMPS ASE calculator"""
 
         calc_min = LAMMPS(files=self.lammps_files)
@@ -311,15 +310,15 @@ class LAMMPSWrapper():
         minimised.set_calculator(calc_min)
         print("Energy after minimisation: ", minimised.get_potential_energy())
 
-    def heatup(self,minimised,heated,seed,nsteps):
+    def heatup(self, minimised, heated, seed, nsteps):
         """Runs a heatup temperature-ramp calculation with the LAMMPS ASE calculator"""
 
         # NTC = 2, NTF = 2: hydrogens constrained at this stage with SHAKE
         # irest = 0 (new simulation)
 
         # Load the appropriate Calculator
-        target = 0; suffix = "3x15_R8.0"; prefix='../'; calc_seed='cate'
-        calc_ml = self.load(calc_seed,target,prefix=prefix,suffix=suffix)
+        target = 0; suffix = "3x15_R8.0"; prefix = '../'; calc_seed = 'cate'
+        calc_ml = self.load(calc_seed, target, prefix=prefix, suffix=suffix)
 
         calc_ml.set(**self.lammps_params_amberconv)
         calc_ml.set(**self.lammps_md)
@@ -329,7 +328,7 @@ class LAMMPSWrapper():
         heated.calc = calc_ml
         print("Energy after heating: ", heated.get_potential_energy())
 
-    def densityequil(self,heated,densityeq,seed,nsteps):
+    def densityequil(self, heated, densityeq, seed, nsteps):
         """Runs a density equilibration calculation with fixed hydrogens with the LAMMPS ASE calculator"""
 
         # NTB = 2, NTP = 1, TAUP = 1.0: Use constant pressure periodic boundary. Isotropic position scaling
@@ -337,34 +336,34 @@ class LAMMPSWrapper():
         # NTC = 2, NTF = 2: hydrogens constrained at this stage
         # irest = 1 (restart from previous simulation)
 
-        calc_dens = LAMMPS(files=self.lammps_files,parameters=self.lammps_params_amberconv)
+        calc_dens = LAMMPS(files=self.lammps_files, parameters=self.lammps_params_amberconv)
         densityeq.calc = calc_dens
         print("Energy after density equilibration: ", densityeq.get_potential_energy())
 
-    def equil(self,densityeq,equbd,seed,nsteps):
+    def equil(self, densityeq, equbd, seed, nsteps):
         """Runs an equilibration calculation at constant volume with flexible hydrogens with the LAMMPS ASE calculator"""
         # NTP = 0: No pressure scaling (constant volume)
         # NTC = 1: SHAKE not used - no constraints
         # Energies at this stage no longer comparable to previous steps
         # due to extra DOFs
 
-        calc_equil = LAMMPS(files=self.lammps_files,parameters=self.lammps_params_amberconv)
+        calc_equil = LAMMPS(files=self.lammps_files, parameters=self.lammps_params_amberconv)
         equbd.calc = calc_equil
-        print("Energy after equilibration:",  equbd.get_potential_energy())
+        print("Energy after equilibration:", equbd.get_potential_energy())
 
-    def snapshots(self,seed,snapin,snapout,nsnaps,nsteps):
+    def snapshots(self, seed, snapin, snapout, nsnaps, nsteps):
         """Runs a long MD trajectory for snapshot generation with the LAMMPS ASE calculator"""
         # NTC = 1: SHAKE not used - no constraints
 
         step = 0
-        trajname = seed+'.traj'
+        trajname = seed + '.traj'
         traj = Trajectory(trajname, 'w')
-        calc_snap = LAMMPS(files=self.lammps_files,parameters=self.lammps_params_amberconv)
+        calc_snap = LAMMPS(files=self.lammps_files, parameters=self.lammps_params_amberconv)
         for step in range(nsnaps):
             snapin.calc = calc_snap
-            print("Energy after snapshot",str(step),":",  snapin.get_potential_energy())
+            print("Energy after snapshot", str(step), ":", snapin.get_potential_energy())
             traj.write(snapout)
-            write(f'{seed}_snap_solv{step:04}.xyz',snapout)
+            write(f'{seed}_snap_solv{step:04}.xyz', snapout)
 
 
 # In[ ]:
@@ -382,8 +381,8 @@ class LAMMPSWrapper():
 # In[ ]:
 
 
-#from amp import Amp
-#calc_amp = Amp.load('cate_gs_3x10_R6.5.amp')
+# from amp import Amp
+# calc_amp = Amp.load('cate_gs_3x10_R6.5.amp')
 # !ls -l log*
 # !cat log_lammps0000018rs86xmj
 
@@ -391,17 +390,13 @@ class LAMMPSWrapper():
 # In[ ]:
 
 
-#from amp import descriptor
+# from amp import descriptor
 
 
 # In[ ]:
 
 
-#calc_amp._descriptor.parameters.elements
+# calc_amp._descriptor.parameters.elements
 
 
 # In[ ]:
-
-
-
-

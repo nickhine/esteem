@@ -45,13 +45,12 @@ clusters_task.script_settings = parallel.get_default_script_settings(clusters_ta
 spectra_task.inputformat = clusters_task.wrapper
 spectra_task.output = 'test.png'
 spectra_task.warp_scheme = None
-spectra_task.wavelength = (200,400,1)
+spectra_task.wavelength = (200, 400, 1)
 spectra_task.broad = 0.2
 spectra_task.files = glob.glob(f'orca/*es1*.out')
 
 # Run main driver
-drivers.main(all_solutes,all_solvents,
-             solutes_task,solvate_task,clusters_task,spectra_task,
+drivers.main(all_solutes, all_solvents,
+             solutes_task, solvate_task, clusters_task, spectra_task,
              make_script=parallel.make_sbatch)
 exit()
-
