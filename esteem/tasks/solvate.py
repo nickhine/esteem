@@ -26,29 +26,31 @@ from ase.io import read
 from ase.io.trajectory import Trajectory
 from ase import Atoms
 
+
 def counterion_charge(counterions):
     """
     Calculate the net charge on the solute, given a set of counterions
     """
     netcharge = 0
     for at in counterions:
-        if at.symbol in ['H','Na','Li','K','Rb','Cs']:
+        if at.symbol in ['H', 'Na', 'Li', 'K', 'Rb', 'Cs']:
             netcharge = netcharge - 1
-        if at.symbol in ['Be','Mg','Ca','Sr','Ba']:
+        if at.symbol in ['Be', 'Mg', 'Ca', 'Sr', 'Ba']:
             netcharge = netcharge - 2
-        if at.symbol in ['F','Cl','Br','I']:
+        if at.symbol in ['F', 'Cl', 'Br', 'I']:
             netcharge = netcharge + 1
     return netcharge
 
+
 class SolvateTask:
 
-    def __init__(self,**kwargs):
+    def __init__(self, **kwargs):
         self.wrapper = None
         self.script_settings = None
         self.task_command = 'solvate'
         args = self.make_parser().parse_args("")
         for arg in vars(args):
-            setattr(self,arg,getattr(args,arg))
+            setattr(self, arg, getattr(args, arg))
 
     # Main program for Solvated MD
     def setup_amber(self):
@@ -78,36 +80,36 @@ class SolvateTask:
         """
 
         # Check input args are valid
-        #self.validate_args()
+        # self.validate_args()
 
         # Find counterions, if set
         counterions = Atoms()
-        if isinstance(self.counterions,dict):
+        if isinstance(self.counterions, dict):
             if self.solute in self.counterions:
                 counterions = Atoms(self.counterions[self.solute])
-        if isinstance(self.counterions,str):
+        if isinstance(self.counterions, str):
             counterions = Atoms(self.counterions)
 
         # Count counterion charge
-        netcharge = counterion_charge(counterions)     
+        netcharge = counterion_charge(counterions)
 
-        solvatedseed = f'{self.solute}{"_"+self.solvent if self.solvent is not None else ""}_solv'
+        solvatedseed = f'{self.solute}{"_" + self.solvent if self.solvent is not None else ""}_solv'
 
         # Prepare Solute inputs
-        if not path.exists(self.solute+".prmtop"):
+        if not path.exists(self.solute + ".prmtop"):
             if self.use_acpype:
                 print('Preparing Amber inputs for solute using ACPYPE')
-                self.wrapper.prepare_input_acpype(self.solute,netcharge=netcharge,offset=0)
+                self.wrapper.prepare_input_acpype(self.solute, netcharge=netcharge, offset=0)
             else:
                 print('Preparing Amber inputs for solute using antechamber, parmchk and tleap')
-                self.wrapper.prepare_input(self.solute,netcharge=netcharge,offset=0)
+                self.wrapper.prepare_input(self.solute, netcharge=netcharge, offset=0)
         else:
             print('Using pre-existing Amber inputs for solute')
-        print('Counterion net charge = ',netcharge)
+        print('Counterion net charge = ', netcharge)
 
         # Prepare Solvent inputs
         if self.solvent not in self.wrapper.known_solvents:
-            if not path.exists(self.solvent+".prmtop"):
+            if not path.exists(self.solvent + ".prmtop"):
                 print('Preparing Amber inputs for solvent')
                 # Counterions balance the solute's charge: the solvent itself is neutral
                 if self.solvent == self.solute:
@@ -118,26 +120,26 @@ class SolvateTask:
                     solvent_netcharge = 0
                 if self.use_acpype:
                     print('Preparing Amber inputs for solvent using ACPYPE')
-                    self.wrapper.prepare_input_acpype(self.solvent,netcharge=solvent_netcharge,offset=offset)
+                    self.wrapper.prepare_input_acpype(self.solvent, netcharge=solvent_netcharge, offset=offset)
                 else:
                     print('Preparing Amber inputs for solvent using antechamber, parmchk and tleap')
-                    self.wrapper.prepare_input(self.solvent,netcharge=solvent_netcharge,offset=offset)
+                    self.wrapper.prepare_input(self.solvent, netcharge=solvent_netcharge, offset=offset)
             else:
                 print('Using pre-existing Amber inputs for solvent')
 
         # Add solvent box and output pdb file of solvated model
-        print('Preparing solvated model of solute, boxsize=',self.boxsize)
-        self.wrapper.add_solvent_box(self.solute,self.solvent,self.counterions,solvatedseed,self.boxsize)
-        #self.wrapper.crd_to_crdnc(solvatedseed,solvatedseed)
+        print('Preparing solvated model of solute, boxsize=', self.boxsize)
+        self.wrapper.add_solvent_box(self.solute, self.solvent, self.counterions, solvatedseed, self.boxsize)
+        # self.wrapper.crd_to_crdnc(solvatedseed,solvatedseed)
         self.wrapper.fix_amber_pdb(solvatedseed)
 
         # Handle restraints, if present
         if self.restraints is not None:
-            self.wrapper.add_restraint(solvatedseed,self.solute[:3],self.restraints,self.rest_r)
+            self.wrapper.add_restraint(solvatedseed, self.solute[:3], self.restraints, self.rest_r)
 
         # Pass common inputs into Amber module
         from ase import units
-        self.wrapper.dt = self.timestep/(units.fs*1000) # amber expects ps units
+        self.wrapper.dt = self.timestep / (units.fs * 1000)  # amber expects ps units
         self.wrapper.temp0 = self.temp
         self.wrapper.cut = self.ewaldcut
         self.wrapper.gamma_ln = self.gammaln
@@ -159,22 +161,21 @@ class SolvateTask:
 
         # Convert to LAMMPS input with Intermol
         from intermol import convert
-        amb_in = [f"{self.solute}_{self.solvent}_solv.prmtop",f"{self.solute}_{self.solvent}_solv.crd"]
+        amb_in = [f"{self.solute}_{self.solvent}_solv.prmtop", f"{self.solute}_{self.solvent}_solv.crd"]
         system, prefix, prmtop_in, crd_in, amb_structure = convert._load_amber(amb_in)
 
         from argparse import ArgumentParser
         parser = ArgumentParser()
         parser.add_argument('-ls', '--lammpssettings', dest='lmp_settings',
-                metavar='settings', default='pair_style lj/cut/coul/long 9.0 9.0\npair_modify tail yes\nkspace_style pppm 1e-8\n\n',
-                help='pair_style string to use in the output file. Default is a periodic Ewald simulation')
+                            metavar='settings', default='pair_style lj/cut/coul/long 9.0 9.0\npair_modify tail yes\nkspace_style pppm 1e-8\n\n',
+                            help='pair_style string to use in the output file. Default is a periodic Ewald simulation')
         intermol_args = vars(parser.parse_args(""))
         oname = f"{self.solute}_{self.solvent}_solv"
         output_status = dict()
         print(system)
-        convert._save_lammps(system,oname,output_status,intermol_args)
+        convert._save_lammps(system, oname, output_status, intermol_args)
 
     def setup_packmol(self):
-
         """
         Handles setup of the solvated model using Packmol 
         Requires MDAnalysis and mdapackmol packages (pip installed)
@@ -194,26 +195,26 @@ class SolvateTask:
         structures = []
         if self.boxsize is None:
             mass = 0
-            for i,seed in enumerate([self.solute, self.solvent]):
+            for i, seed in enumerate([self.solute, self.solvent]):
                 component = read(f'../{seed}.xyz')
-                number = 1 if i==0 else self.nmol_solvent
-                mass += component.get_masses().sum()*number
-            density = self.init_density*units.kg*0.001/(units.m*0.01)**3
-            self.boxsize = (mass/density)**(1/3)
+                number = 1 if i == 0 else self.nmol_solvent
+                mass += component.get_masses().sum() * number
+            density = self.init_density * units.kg * 0.001 / (units.m * 0.01)**3
+            self.boxsize = (mass / density)**(1 / 3)
             print(self.boxsize)
-        pd = 1.2; bs = self.boxsize; rg=bs/4
-        for i,seed in enumerate([self.solute, self.solvent]):
+        pd = 1.2; bs = self.boxsize; rg = bs / 4
+        for i, seed in enumerate([self.solute, self.solvent]):
             # Load molecular structure from .xyz file
             component = mda.Universe(f'../{seed}.xyz')
-            if i==0:
-                instructions = [f'inside box {rg} {rg} {rg} {3*rg} {3*rg} {3*rg}'] 
+            if i == 0:
+                instructions = [f'inside box {rg} {rg} {rg} {3 * rg} {3 * rg} {3 * rg}']
                 number = 1
             else:
-                instructions = [f'inside box {pd} {pd} {pd} {bs} {bs} {bs}'] 
+                instructions = [f'inside box {pd} {pd} {pd} {bs} {bs} {bs}']
                 number = self.nmol_solvent
             # TODO: counterions
-            print(f'# {seed}: ',component,number,instructions)
-            structures.append(mdapackmol.PackmolStructure(component,number,instructions))
+            print(f'# {seed}: ', component, number, instructions)
+            structures.append(mdapackmol.PackmolStructure(component, number, instructions))
         # call Packmol with MDAnalysis objects as arguments
         # the 'instructions' allow for any valid Packmol commands
         system = mdapackmol.packmol(structures)
@@ -223,9 +224,9 @@ class SolvateTask:
         # which can then be saved into any format
         system.atoms.write(f'{oname}.xyz')
         atoms = read(f'{oname}.xyz')
-        atoms.set_pbc([True,True,True])
-        atoms.set_cell([bs,bs,bs])
-        print('writing periodic model to ',f'{oname}.xyz')
+        atoms.set_pbc([True, True, True])
+        atoms.set_cell([bs, bs, bs])
+        print('writing periodic model to ', f'{oname}.xyz')
         atoms.write(f'{oname}.xyz')
         return
 
@@ -240,17 +241,17 @@ class SolvateTask:
         self.wrapper.ttime = self.md_ttime
 
         # Create and change to working directory
-        wdir = self.wrapper.output # eg 'amber'
+        wdir = self.wrapper.output  # eg 'amber'
         if not isdir(wdir):
             makedirs(wdir)
         origdir = getcwd()
         chdir(wdir)
 
-        if hasattr(self,'setup_cell'):
+        if hasattr(self, 'setup_cell'):
             self.setup_cell()
         else:
             from esteem.wrappers.amber import AmberWrapper
-            if type(self.wrapper)!=AmberWrapper:
+            if type(self.wrapper) != AmberWrapper:
                 orig_wrapper = self.wrapper
                 self.wrapper = AmberWrapper()
                 self.setup_amber()
@@ -289,19 +290,19 @@ class SolvateTask:
 
             An example for catechol in water with the default ``md_suffix``
         """
-        
+
         from os.path import isfile, isdir
         from os import makedirs, chdir, getcwd
         from ase.io import write
 
-        wdir = self.wrapper.output # eg 'amber'
+        wdir = self.wrapper.output  # eg 'amber'
         if not isdir(wdir):
             makedirs(wdir)
         origdir = getcwd()
         chdir(wdir)
 
         # Load in models from pdb files if requested, else xyz
-        if hasattr(self.wrapper,'input_ext'):
+        if hasattr(self.wrapper, 'input_ext'):
             inp = self.wrapper.input_ext
             pref = ''
         else:
@@ -313,19 +314,19 @@ class SolvateTask:
         solvatedseed = f'{self.solute}_{self.solvent}_solv'
         solvated = read(f'{solvatedseed}.{inp}')
         if self.boxsize is not None:
-            solvated.set_pbc([True,True,True])
+            solvated.set_pbc([True, True, True])
 
         calc_params = self.calc_params
-        e0_am_solu = self.wrapper.singlepoint(solute,self.solute,calc_params)[0]
-        print('\nSolute ground state energy: ',e0_am_solu)
-        e0_am_solv = self.wrapper.singlepoint(solvent,self.solvent,calc_params)[0]
-        print('\nSolvent ground state energy: ',e0_am_solv)
-        e0_am_solvate = self.wrapper.singlepoint(solvated,solvatedseed,calc_params)[0]
-        print('\nSolvated model contains ',len(solvated.positions),' atoms')
-        print('\nSolvated model energy: ',e0_am_solvate)
+        e0_am_solu = self.wrapper.singlepoint(solute, self.solute, calc_params)[0]
+        print('\nSolute ground state energy: ', e0_am_solu)
+        e0_am_solv = self.wrapper.singlepoint(solvent, self.solvent, calc_params)[0]
+        print('\nSolvent ground state energy: ', e0_am_solv)
+        e0_am_solvate = self.wrapper.singlepoint(solvated, solvatedseed, calc_params)[0]
+        print('\nSolvated model contains ', len(solvated.positions), ' atoms')
+        print('\nSolvated model energy: ', e0_am_solvate)
 
         # models saved as rst files if using amber, else xyz
-        if hasattr(self.wrapper,'restart_ext'):
+        if hasattr(self.wrapper, 'restart_ext'):
             ext = self.wrapper.restart_ext
         else:
             ext = 'xyz'
@@ -334,24 +335,24 @@ class SolvateTask:
         minimised = solvated.copy()
         if isfile(f'minimised.{ext}'):
             print(f'\nReading from minimised.{ext}')
-            minimised = self.wrapper.restore_from_coordinates(minimised,f'minimised.{ext}')
+            minimised = self.wrapper.restore_from_coordinates(minimised, f'minimised.{ext}')
         else:
             # we do not do this for AmberWrappers - minimising from the periodic initial
             # structure is not recommended as it leads to densely "stacked" configurations
             from esteem.wrappers.amber import AmberWrapper
-            if type(self.wrapper)!=AmberWrapper:
-                self.wrapper.geom_opt(minimised,solvatedseed,calc_params,driver_tol='veryloose')
-                write(f'minimised.{ext}',minimised)
+            if type(self.wrapper) != AmberWrapper:
+                self.wrapper.geom_opt(minimised, solvatedseed, calc_params, driver_tol='veryloose')
+                write(f'minimised.{ext}', minimised)
 
         # load minimised model, then check if heating has been done
         # and load coordinates if so
         heated = minimised.copy()
         if isfile(f'heat.{ext}'):
             print(f'\nReading from heat.{ext}')
-            heated = self.wrapper.restore_from_coordinates(heated,f'heat.{ext}')
+            heated = self.wrapper.restore_from_coordinates(heated, f'heat.{ext}')
         else:
             print(f'\nHeating model to target temperature (nsteps={self.nheat})')
-            self.wrapper.heatup(heated,solvatedseed,calc_params=calc_params,nsteps=self.nheat)
+            self.wrapper.heatup(heated, solvatedseed, calc_params=calc_params, nsteps=self.nheat)
 
         # load heated model, then check if density-equilibration has been done
         # and load coordinates if so
@@ -359,93 +360,95 @@ class SolvateTask:
         if self.boxsize is not None:
             if isfile(f'density.{ext}'):
                 print(f'\nReading from density.{ext}')
-                densityeq = self.wrapper.restore_from_coordinates(densityeq,f'density.{ext}')
+                densityeq = self.wrapper.restore_from_coordinates(densityeq, f'density.{ext}')
             else:
                 print(f'\nEquilibrating density of model (nsteps={self.ndens})')
-                self.wrapper.densityequil(densityeq,solvatedseed,calc_params=calc_params,nsteps=self.ndens)
+                self.wrapper.densityequil(densityeq, solvatedseed, calc_params=calc_params, nsteps=self.ndens)
 
         # load density-equilibrated model, then check if equilibration has been done
         # and load coordinates if so
         equbd = densityeq.copy()
         if isfile(f'equil.{ext}'):
             print(f'\nReading from equil.{ext}')
-            equbd = self.wrapper.restore_from_coordinates(equbd,f'equil.{ext}')
+            equbd = self.wrapper.restore_from_coordinates(equbd, f'equil.{ext}')
         else:
             print(f'\nEquilibrating at fixed volume (nsteps={self.nequil})')
-            self.wrapper.equil(equbd,solvatedseed,calc_params=calc_params,nsteps=self.nequil)
+            self.wrapper.equil(equbd, solvatedseed, calc_params=calc_params, nsteps=self.nequil)
 
         # copy in equilibrated coordinates, then check if we can restart snapshots or start afresh
         snap = equbd.copy()
         start = 0
         for i in range(self.nsnaps):
             if isfile(f'snap{i:04}.{ext}'):
-                start=i
-        if start>0:
+                start = i
+        if start > 0:
             print(f'\nResuming snapshot generation from i={start} using snap{start:04}.{ext}')
-            snap = self.wrapper.restore_from_coordinates(snap,f'snap{start:04}.{ext}')
+            snap = self.wrapper.restore_from_coordinates(snap, f'snap{start:04}.{ext}')
         else:
             print(f'\nGenerating snapshots (nsnaps={self.nsnaps}, nsteps={self.nsteps})')
 
         # run the wrapper's snapshots driver
-        self.wrapper.snapshots(snap,solvatedseed,calc_params=calc_params,
-                               nsnaps=self.nsnaps,nsteps=self.nsteps,start=start,
-                               nat_solu=len(solute),nat_solv=len(solvent))
+        self.wrapper.snapshots(snap, solvatedseed, calc_params=calc_params,
+                               nsnaps=self.nsnaps, nsteps=self.nsteps, start=start,
+                               nat_solu=len(solute), nat_solv=len(solvent))
         chdir(origdir)
 
     def make_parser(self):
 
         import argparse
-    
-        main_help = ('Generates Solvated MD trajectory files. There are five \n'+
-                     'phases to the calculation: Setup, Heating, Density \n'+
-                     'Equilibration, Equilibration and Snapshot Generation \n.'+
-                     'Setup: solvates the solute molecule, and sets up and parameters \n'+
-                     'Heating: ramps up the temperature from zero to target \n'+
-                     'Density Equilibration: variable cell optimisation with constraints to find correct density \n'+
-                     'Equilibration: removal of constraints, equilibration to correct ensemble \n'+
-                     'Snapshot Generation: Multiple short sequences of MD, intended to be more \n'+
+
+        main_help = ('Generates Solvated MD trajectory files. There are five \n' +
+                     'phases to the calculation: Setup, Heating, Density \n' +
+                     'Equilibration, Equilibration and Snapshot Generation \n.' +
+                     'Setup: solvates the solute molecule, and sets up and parameters \n' +
+                     'Heating: ramps up the temperature from zero to target \n' +
+                     'Density Equilibration: variable cell optimisation with constraints to find correct density \n' +
+                     'Equilibration: removal of constraints, equilibration to correct ensemble \n' +
+                     'Snapshot Generation: Multiple short sequences of MD, intended to be more \n' +
                      'than any correlation time, at the end of which a snapshot is saved to a trajectory.')
-        epi_help = ('Note: Writes the output trajectory in the format \n'+
+        epi_help = ('Note: Writes the output trajectory in the format \n' +
                     '<solute>_<solvent>_solv.traj')
         from argparse import ArgumentParser, SUPPRESS
         from ase import units
-        parser = ArgumentParser(description=main_help,epilog=epi_help)
-        parser.add_argument('--solute','-u',required=False,type=str,help='Name of solute molecule')
-        parser.add_argument('--solvent','-v',required=False,type=str,help='Name of solvent molecule')
-        parser.add_argument('--boxsize','-b',default=20,type=int,help='Size of initial simulation box for MD calculation')
-        parser.add_argument('--nmol_solvent','-n',default=None,type=int,help='Number of solvent molecules to add to box (packmol only)')
-        parser.add_argument('--init_density','-d',default=1,type=int,help='Initial density of system in g/cm^3 (packmol only)')
-        parser.add_argument('--md_friction','-f',default=0.005,type=int,help='Langevin dynamics friction (not used by amber)')
-        parser.add_argument('--md_ttime','-i',default=50*units.fs,type=int,help='Langevin dynamics friction (not used by amber)')
-        parser.add_argument('--timestep','-t',default=0.002*(units.fs*1000),type=float,help='Time step of Molecular Dynamics runs')
-        parser.add_argument('--temp','-T',default=300.0,type=float,help='Thermostat temperature for Molecular Dynamics runs')
-        parser.add_argument('--nheat','-H',default=10000,type=int,help='Number of MD steps in Heating phase')
-        parser.add_argument('--ndens','-D',default=50000,type=int,help='Number of MD steps in Density Equilibration phase')
-        parser.add_argument('--nequil','-E',default=50000,type=int,help='Number of MD steps in Equilibration phase')
-        parser.add_argument('--nsteps','-S',default=2000,type=int,help='Number of MD steps between each snapshot in Snapshots phase')
-        parser.add_argument('--nsnaps','-N',default=200,type=int,help='Number of Snapshots to save to trajectory')
-        parser.add_argument('--restraints','-R',default=None,action='append',nargs=4,type=str,help='Specifies restraint atoms')
-        parser.add_argument('--rest_r','-r',default=None,nargs=6,type=float,help='Specifies parameters for restraint')
-        parser.add_argument('--md_suffix','-m',default='md',nargs='?',type=str,help=SUPPRESS)
-        parser.add_argument('--md_geom_prefix',default='gs_PBE0',nargs='?',type=str,help=SUPPRESS)
-        parser.add_argument('--counterions','-C',default={},type=str,help='Counterion(s) to add, eg Na')
-        parser.add_argument('--calc_params','-p',default={},type=str,help='Calculator parameter - leave blank')
+        parser = ArgumentParser(description=main_help, epilog=epi_help)
+        parser.add_argument('--solute', '-u', required=False, type=str, help='Name of solute molecule')
+        parser.add_argument('--solvent', '-v', required=False, type=str, help='Name of solvent molecule')
+        parser.add_argument('--boxsize', '-b', default=20, type=int, help='Size of initial simulation box for MD calculation')
+        parser.add_argument('--nmol_solvent', '-n', default=None, type=int, help='Number of solvent molecules to add to box (packmol only)')
+        parser.add_argument('--init_density', '-d', default=1, type=int, help='Initial density of system in g/cm^3 (packmol only)')
+        parser.add_argument('--md_friction', '-f', default=0.005, type=int, help='Langevin dynamics friction (not used by amber)')
+        parser.add_argument('--md_ttime', '-i', default=50 * units.fs, type=int, help='Langevin dynamics friction (not used by amber)')
+        parser.add_argument('--timestep', '-t', default=0.002 * (units.fs * 1000), type=float, help='Time step of Molecular Dynamics runs')
+        parser.add_argument('--temp', '-T', default=300.0, type=float, help='Thermostat temperature for Molecular Dynamics runs')
+        parser.add_argument('--nheat', '-H', default=10000, type=int, help='Number of MD steps in Heating phase')
+        parser.add_argument('--ndens', '-D', default=50000, type=int, help='Number of MD steps in Density Equilibration phase')
+        parser.add_argument('--nequil', '-E', default=50000, type=int, help='Number of MD steps in Equilibration phase')
+        parser.add_argument('--nsteps', '-S', default=2000, type=int, help='Number of MD steps between each snapshot in Snapshots phase')
+        parser.add_argument('--nsnaps', '-N', default=200, type=int, help='Number of Snapshots to save to trajectory')
+        parser.add_argument('--restraints', '-R', default=None, action='append', nargs=4, type=str, help='Specifies restraint atoms')
+        parser.add_argument('--rest_r', '-r', default=None, nargs=6, type=float, help='Specifies parameters for restraint')
+        parser.add_argument('--md_suffix', '-m', default='md', nargs='?', type=str, help=SUPPRESS)
+        parser.add_argument('--md_geom_prefix', default='gs_PBE0', nargs='?', type=str, help=SUPPRESS)
+        parser.add_argument('--counterions', '-C', default={}, type=str, help='Counterion(s) to add, eg Na')
+        parser.add_argument('--calc_params', '-p', default={}, type=str, help='Calculator parameter - leave blank')
         # Wrapper Dependent
-        parser.add_argument('--ewaldcut','-e',default=12.0,type=float,help='Cutoff length for Ewald calculation (See Amber manual)')
-        parser.add_argument('--gammaln','-g',default=1.0,type=float,help='Thermostat parameter: Collision frequency in ps^-1')
-        parser.add_argument('--use_acpype','-P',default=False,type=bool,help='Use ACPYPE')
+        parser.add_argument('--ewaldcut', '-e', default=12.0, type=float, help='Cutoff length for Ewald calculation (See Amber manual)')
+        parser.add_argument('--gammaln', '-g', default=1.0, type=float, help='Thermostat parameter: Collision frequency in ps^-1')
+        parser.add_argument('--use_acpype', '-P', default=False, type=bool, help='Use ACPYPE')
 
         return parser
 
     def validate_args(self):
-        default_args = self.make_parser().parse_args(['--solute','a','--solvent','b'])
+        default_args = self.make_parser().parse_args(['--solute', 'a', '--solvent', 'b'])
         for arg in vars(self):
             if arg not in default_args:
                 raise Exception(f"Unrecognised argument '{arg}'")
 
+
 def get_parser():
     return SolvateTask().make_parser()
-                
+
+
 if __name__ == '__main__':
     # Parse command line values
     from esteem.wrappers import amber
@@ -458,7 +461,3 @@ if __name__ == '__main__':
 
 
 # In[ ]:
-
-
-
-

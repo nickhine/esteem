@@ -16,7 +16,7 @@ import numpy as np
 from ase.io.trajectory import Trajectory
 
 
-# See http://ambermd.org/tutorials/basic/tutorial1/section3.htm 
+# See http://ambermd.org/tutorials/basic/tutorial1/section3.htm
 # and http://ambermd.org/tutorials/advanced/tutorial3/section1.htm for details
 
 # NB: Hack to amber.py required here to fix reading of trajectories
@@ -40,12 +40,11 @@ from ase.io.trajectory import Trajectory
 # with a collision frequency of 1 ps^-1
 
 
-
 class AmberWrapper():
-    
+
     """Sets up the AMBER Calculator (via ASE) for Molecular Dynamics runs"""
-    
-    def __init__(self,nprocs=None):
+
+    def __init__(self, nprocs=None):
         """Sets up instance attributes for AmberWrapper """
 
         # common Amber parameters
@@ -56,12 +55,12 @@ class AmberWrapper():
         self.ntt = 3        # Langevin thermostat
         self.gamma_ln = 1   # Collision frequency 1ps^-1
         self.dt = 0.002     # 2 fs timestep
-        self.restraint_str = '' # Line to add to Sander inputs for restraints
+        self.restraint_str = ''  # Line to add to Sander inputs for restraints
         self.ntb = 0        # Periodic box
         self.ntp = 0        # Periodic box
         self.ntpr = 100     # Output frequency
         self.qmmm = False
-        
+
         self.acpype_charge_type = 'bcc'
         self.acpype_atom_type = 'amber'
         self.output = "amber"
@@ -77,21 +76,21 @@ class AmberWrapper():
         else:
             self.amber_exe_parallel = self.amber_exe_serial
 
-    def prepare_input_acpype(self,seed,netcharge=0,offset=0,pref='../'):
+    def prepare_input_acpype(self, seed, netcharge=0, offset=0, pref='../'):
         """Prepares input parameters and topologies for Amber calculations"""
-        
+
         import sys
         import signal
         from acpype.cli import init_main
-        
+
         store_argv = sys.argv
 
         # Load molecular structure from .xyz file
         mol = read(f'{pref}{seed}.xyz')
 
         # Convert to pdb format
-        write(f'{seed}.pdb',mol)
-        
+        write(f'{seed}.pdb', mol)
+
         acpype_atom_type = self.acpype_atom_type
         acpype_charge_type = self.acpype_charge_type
 
@@ -105,25 +104,25 @@ class AmberWrapper():
         except:
             print('# Unable to cancel timeout - next process may be killed early.')
 
-        exts = {'_AC.frcmod':'.frcmod','_AC.prmtop':'.prmtop','_AC.lib':'.lib',
-                '_AC.inpcrd':'.inpcrd',f'_{acpype_charge_type}_{acpype_atom_type}.mol2':'.mol2'}
-        for ext1,ext2 in exts.items():
-            copyfile(f'{seed}.acpype/{seed}{ext1}',f'./{seed}{ext2}')
+        exts = {'_AC.frcmod': '.frcmod', '_AC.prmtop': '.prmtop', '_AC.lib': '.lib',
+                '_AC.inpcrd': '.inpcrd', f'_{acpype_charge_type}_{acpype_atom_type}.mol2': '.mol2'}
+        for ext1, ext2 in exts.items():
+            copyfile(f'{seed}.acpype/{seed}{ext1}', f'./{seed}{ext2}')
 
         # Edit the resulting mol2 file to enforce charge conservation
         # and optionally shift atom names
-        self.fix_mol2(seed,netcharge,offset)
+        self.fix_mol2(seed, netcharge, offset)
 
         sys.argv = store_argv
-            
-    def prepare_input(self,seed,netcharge=0,offset=0,pref="../"):
+
+    def prepare_input(self, seed, netcharge=0, offset=0, pref="../"):
         """Prepares input parameters and topologies for Amber calculations"""
 
         # Load molecular structure from .xyz file
         mol = read(f'{pref}{seed}.xyz')
 
         # Convert to pdb format
-        write(f'{seed}.pdb',mol)
+        write(f'{seed}.pdb', mol)
 
         # Make directory for antechamber outputs
         out_path = f'{seed}_antechamber'
@@ -132,28 +131,28 @@ class AmberWrapper():
 
         # run antechamber
         antechamber_command = (f"antechamber -i {seed}.pdb -fi pdb " +
-                                           f"-o {seed}.mol2 -fo mol2 " +
-                                           f"-rn {seed[:3]} -c bcc -du y " +
-                                           f"-s 2 -nc {netcharge} > {seed}.ac_out")
+                               f"-o {seed}.mol2 -fo mol2 " +
+                               f"-rn {seed[:3]} -c bcc -du y " +
+                               f"-s 2 -nc {netcharge} > {seed}.ac_out")
         print(antechamber_command)
         errorcode = subprocess.call(antechamber_command, shell=True)
         if errorcode:
             raise RuntimeError('{} returned an error: {}'
-                                .format('antechamber', errorcode))
+                               .format('antechamber', errorcode))
 
         # Edit the resulting mol2 file to enforce charge conservation
         # and optionally shift atom names
-        self.fix_mol2(seed,netcharge,offset)
+        self.fix_mol2(seed, netcharge, offset)
 
         # save sqm outputs with seednames for later checking
         sqm_cleanup_command = (f"mv sqm.out {seed}_sqm.out;" +
                                f"mv sqm.in {seed}_sqm.in;" +
                                f"mv sqm.pdb {seed}_sqm.pdb;" +
-                               f"mv ANTECHAMBER* ATOMTYPE.INF {out_path}") 
+                               f"mv ANTECHAMBER* ATOMTYPE.INF {out_path}")
         errorcode = subprocess.call(sqm_cleanup_command, shell=True)
         if errorcode:
             raise RuntimeError('{} returned an error: {}'
-                                .format('mv of sqm files', errorcode))
+                               .format('mv of sqm files', errorcode))
 
         # run parmchk to produce frcmod file
         parmchk_exe = "parmchk"
@@ -163,28 +162,28 @@ class AmberWrapper():
         errorcode = subprocess.call(parmchk_command, shell=True)
         if errorcode:
             raise RuntimeError('{} returned an error: {}'
-                                .format('parmchk', errorcode))
+                               .format('parmchk', errorcode))
 
         # run tleap to set up prmtop
         f = open(f'{seed}_tleap.in', 'w')
-        tleap_str =  ("source leaprc.protein.ff14SB\n" +
-                      "source leaprc.gaff\n" +
-                      f"mol = loadmol2 {seed}.mol2\n" +
-                      f"saveamberparm mol {seed}.prmtop {seed}.inpcrd\n" +
-                      "quit\n")
+        tleap_str = ("source leaprc.protein.ff14SB\n" +
+                     "source leaprc.gaff\n" +
+                     f"mol = loadmol2 {seed}.mol2\n" +
+                     f"saveamberparm mol {seed}.prmtop {seed}.inpcrd\n" +
+                     "quit\n")
         f.write(tleap_str)
         f.close()
         tleap_command = f"tleap -f {seed}_tleap.in > {seed}_tleap.out"
         errorcode = subprocess.call(tleap_command, shell=True)
         if errorcode:
             raise RuntimeError('{} returned an error: {}'
-                                .format('tleap', errorcode))
+                               .format('tleap', errorcode))
 
     # Fix inaccurate total charge on mol2 files, and optionally offset atom labels
-    def fix_mol2(self,seed,charge,offset):
+    def fix_mol2(self, seed, charge, offset):
         infile = f"{seed}.mol2_orig"
         outfile = f"{seed}.mol2"
-        copyfile(outfile,infile)
+        copyfile(outfile, infile)
         try:
             f_in = open(infile, 'r')
         except IOError:
@@ -214,8 +213,8 @@ class AmberWrapper():
                 charges = [float(line.split()[-1]) for line in lines]
                 lines = [line.split() for line in lines]
                 # Calculate and apply charge correction:
-                dc = (charge-sum(charges))/float(nat)
-                charges = [c+dc for c in charges]
+                dc = (charge - sum(charges)) / float(nat)
+                charges = [c + dc for c in charges]
                 for i in range(nat):
                     l = lines[i]
                     # add offset to atom numbers
@@ -225,15 +224,15 @@ class AmberWrapper():
                         num = int(num)
                     except:
                         num = 0
-                    if num+offset>0:
-                        l[1] = sym + str(num+offset)
+                    if num + offset > 0:
+                        l[1] = sym + str(num + offset)
                     else:
                         l[1] = sym
                     l[-1] = charges[i]
                     # reproduce formatting of .mol2 file:
-                    f_out.write('%7s %-8s %10.4f %10.4f %10.4f %-8s %3d %-8s %9.6f\n' 
-                                % tuple([l[0],l[1],float(l[2]),float(l[3]),
-                                        float(l[4]),l[5],int(l[6]),l[7],
+                    f_out.write('%7s %-8s %10.4f %10.4f %10.4f %-8s %3d %-8s %9.6f\n'
+                                % tuple([l[0], l[1], float(l[2]), float(l[3]),
+                                        float(l[4]), l[5], int(l[6]), l[7],
                                         float(l[8])]))
                 try:
                     line = next(f_in)
@@ -246,30 +245,30 @@ class AmberWrapper():
             except:
                 line = False
 
-    def ion_chg(self,atsym):
-        if atsym in ['H','Na','Li','K','Rb','Cs']:
+    def ion_chg(self, atsym):
+        if atsym in ['H', 'Na', 'Li', 'K', 'Rb', 'Cs']:
             chg = '+'
-        if atsym in ['Be','Mg','Ca','Sr','Ba']:
+        if atsym in ['Be', 'Mg', 'Ca', 'Sr', 'Ba']:
             chg = '2+'
-        if atsym in ['F','Cl','Br','I']:
+        if atsym in ['F', 'Cl', 'Br', 'I']:
             chg = '-'
         return chg
 
-    def find_solu_center_at(self,solute,pref='../'):
+    def find_solu_center_at(self, solute, pref='../'):
         try:
             at = read(f"{pref}{solute}.xyz")
         except:
             raise Exception(f"Failed to read xyz file {solute}.xyz")
-        com=at.get_center_of_mass()
-        dpos=at.positions-com
-        iat = np.argmin(np.sqrt((dpos*dpos).sum(axis=1)))
+        com = at.get_center_of_mass()
+        dpos = at.positions - com
+        iat = np.argmin(np.sqrt((dpos * dpos).sum(axis=1)))
         sym = at[iat].symbol
 
         try:
             with open(f"{solute}.mol2") as f:
                 for line in f:
                     if line.startswith("@<TRIPOS>ATOM"):
-                        for i in range(iat+1):
+                        for i in range(iat + 1):
                             sym2 = f.readline().split()[1]
         except:
             raise Exception(f"Failed to read mol2 file {solute}.mol2")
@@ -278,33 +277,33 @@ class AmberWrapper():
         else:
             raise Exception("Symbols did not match when finding center atom")
 
-    def add_solvent_box(self,solute,solvent,counterions,solvatedseed,box_size,pref='../'):
+    def add_solvent_box(self, solute, solvent, counterions, solvatedseed, box_size, pref='../'):
         """Loads an Amber mol2 file for a solute and solvent, and creates a solvated box"""
 
         if solute in counterions:
             sym = Atoms(counterions[solute]).get_chemical_symbols()
             for at in set(sym):
                 self.counterions_lines = self.counterions_lines + f"addIonsRand solute {at}{self.ion_chg(at)} {sym.count(at)}\n"
-            print('Counterions lines: \n'+self.counterions_lines)
+            print('Counterions lines: \n' + self.counterions_lines)
 
         # run tleap to make solvent box
         f = open('tleap_solvate.in', 'w')
         tleap_str = ("source leaprc.protein.ff14SB\n" +
                      "source leaprc.gaff\n" +
                      "source leaprc.water.tip3p\n"
-                     "solute = loadmol2 "+solute+".mol2\n" +
-                     "solvent = loadmol2 "+solvent+".mol2\n" +
-                     #"check solvent\n" +
-                     #"check solute\n" +
-                     "loadamberparams "+solute+".frcmod\n" +
-                     "loadamberparams "+solvent+".frcmod\n" +
+                     "solute = loadmol2 " + solute + ".mol2\n" +
+                     "solvent = loadmol2 " + solvent + ".mol2\n" +
+                     # "check solvent\n" +
+                     # "check solute\n" +
+                     "loadamberparams " + solute + ".frcmod\n" +
+                     "loadamberparams " + solvent + ".frcmod\n" +
                      "check solvent\n" +
                      "check solute\n" +
                      "charge solute\n" +
-                     "solvatebox solute solvent "+str(box_size)+"\n" +
+                     "solvatebox solute solvent " + str(box_size) + "\n" +
                      self.counterions_lines +
-                     "saveamberparm solute "+solvatedseed+".prmtop "+solvatedseed+".crd\n" +
-                     "savepdb solute "+solvatedseed+".pdb\n" +
+                     "saveamberparm solute " + solvatedseed + ".prmtop " + solvatedseed + ".crd\n" +
+                     "savepdb solute " + solvatedseed + ".pdb\n" +
                      "quit\n")
         f.write(tleap_str)
         f.close()
@@ -312,7 +311,7 @@ class AmberWrapper():
         errorcode = subprocess.call(tleap_command, shell=True)
         if errorcode:
             raise RuntimeError('{} returned an error: {}'
-                                .format('tleap', errorcode))
+                               .format('tleap', errorcode))
 
         # no restraints unless we set one now
         self.restraint_str = ''
@@ -323,40 +322,40 @@ class AmberWrapper():
         # Add restraints to ensure ion is not within 15A of solute
         if solute in counterions:
             rest_atoms = []
-            for i,at in enumerate(Atoms(counterions[solute])):
+            for i, at in enumerate(Atoms(counterions[solute])):
                 symchg = at.symbol + self.ion_chg(at.symbol)
                 solu_unit = solute[0:3]
-                rest_at = [1,solu_unit,solu_centre_at,i+2,symchg,symchg] # i+2 since solute is unit 1, ions afterwards
+                rest_at = [1, solu_unit, solu_centre_at, i + 2, symchg, symchg]  # i+2 since solute is unit 1, ions afterwards
                 rest_atoms.append(rest_at)
-            rest_r = [20,20,15,50,13,52]
-            print('Distance Restraints: ',rest_atoms,rest_r)
-            self.add_dist_restraint(solvatedseed,rest_atoms,rest_r)
+            rest_r = [20, 20, 15, 50, 13, 52]
+            print('Distance Restraints: ', rest_atoms, rest_r)
+            self.add_dist_restraint(solvatedseed, rest_atoms, rest_r)
 
-    def make_frame_prmtop(self,frameseed,frame,solute,solvent,nat_solu,nat_solv,nmol_solv):
+    def make_frame_prmtop(self, frameseed, frame, solute, solvent, nat_solu, nat_solv, nmol_solv):
 
-        write(frameseed+".pdb",frame)
-        if solute==solvent:
+        write(frameseed + ".pdb", frame)
+        if solute == solvent:
             offset = 0
         else:
             offset = 99
-        self.label_pdb_units(frameseed+".pdb",solute,solvent,nat_solu,nat_solv,nmol_solv,solv_offset=offset)
+        self.label_pdb_units(frameseed + ".pdb", solute, solvent, nat_solu, nat_solv, nmol_solv, solv_offset=offset)
         # run tleap to make prmtop for the frame
         f = open('tleap_frame.in', 'w')
         solu_unit = solute[0:3]
         solv_unit = solvent[0:3]
         # "source leaprc.protein.ff14SB\n" + # NOT REQUIRED
         tleap_str = ("source leaprc.gaff\n" +
-                     solu_unit+" = loadmol2 "+solute+".mol2\n" +
-                     solv_unit+" = loadmol2 "+solvent+".mol2\n" +
-                     "check "+solu_unit+"\n" +
-                     "check "+solv_unit+"\n" +
-                     "loadamberparams "+solute+".frcmod\n" +
-                     "loadamberparams "+solvent+".frcmod\n" +
-                     "check "+solu_unit+"\n" +
-                     "check "+solv_unit+"\n" +
-                     "frame = loadpdb "+frameseed+".pdb\n" +
+                     solu_unit + " = loadmol2 " + solute + ".mol2\n" +
+                     solv_unit + " = loadmol2 " + solvent + ".mol2\n" +
+                     "check " + solu_unit + "\n" +
+                     "check " + solv_unit + "\n" +
+                     "loadamberparams " + solute + ".frcmod\n" +
+                     "loadamberparams " + solvent + ".frcmod\n" +
+                     "check " + solu_unit + "\n" +
+                     "check " + solv_unit + "\n" +
+                     "frame = loadpdb " + frameseed + ".pdb\n" +
                      "check frame\n" +
-                     "saveamberparm frame "+frameseed+".prmtop "+frameseed+".crd\n" +
+                     "saveamberparm frame " + frameseed + ".prmtop " + frameseed + ".crd\n" +
                      "quit\n")
         f.write(tleap_str)
         f.close()
@@ -364,11 +363,11 @@ class AmberWrapper():
         errorcode = subprocess.call(tleap_command, shell=True)
         if errorcode:
             raise RuntimeError('{} returned an error: {}'
-                                .format('tleap', errorcode))
+                               .format('tleap', errorcode))
 
     # Reads in one unit from a pdb file and re-exports it with
     # edited unit numbers/names/offsets etc
-    def fix_pdb_unit(self,f_in,f_out,unit,nat,unitname,atomnum_offset):
+    def fix_pdb_unit(self, f_in, f_out, unit, nat, unitname, atomnum_offset):
         format = ('%-6s%5d %4s %3s%6d    %8.3f%8.3f%8.3f%6.2f%6.2f'
                   '          %-2s  \n')
         lines = [next(f_in) for x in range(nat)]
@@ -382,21 +381,21 @@ class AmberWrapper():
                 atomnum[spec] = -1
             atomnum[spec] = atomnum[spec] + 1
             j = atomnum[spec] + atomnum_offset
-            if j>0:
+            if j > 0:
                 l[2] = spec + str(j)
             else:
                 l[2] = spec
             l[4] = unit
             # reproduce formatting of .pdb file:
-            f_out.write(format % tuple([l[0],int(l[1]),l[2],l[3],int(l[4]),
-                                float(l[5]),float(l[6]),float(l[7]),float(l[8]),
-                                float(l[9]),l[10]]))
+            f_out.write(format % tuple([l[0], int(l[1]), l[2], l[3], int(l[4]),
+                                        float(l[5]), float(l[6]), float(l[7]), float(l[8]),
+                                        float(l[9]), l[10]]))
 
-    def label_pdb_units(self,pdbfile,solute,solvent,nat_solu,nat_solv,nmol_solv,solv_offset):
+    def label_pdb_units(self, pdbfile, solute, solvent, nat_solu, nat_solv, nmol_solv, solv_offset):
 
-        infile = pdbfile+"_orig"
+        infile = pdbfile + "_orig"
         outfile = pdbfile
-        copyfile(outfile,infile)
+        copyfile(outfile, infile)
         try:
             f_in = open(infile, 'r')
         except IOError:
@@ -408,31 +407,31 @@ class AmberWrapper():
 
         line = next(f_in)
         f_out.write(line)
-        #line = next(f_in)
-        #f_out.write(line)
+        # line = next(f_in)
+        # f_out.write(line)
         format = ('%6s%5d %4s %3s%6d    %8.3f%8.3f%8.3f%6.2f%6.2f'
                   '          %2s  \n')
 
         unit = 1
-        self.fix_pdb_unit(f_in,f_out,unit,nat_solu,solute,0)
+        self.fix_pdb_unit(f_in, f_out, unit, nat_solu, solute, 0)
         f_out.write("TER\n")
-        for unit in range(2,nmol_solv+2):
-            self.fix_pdb_unit(f_in,f_out,unit,nat_solv,solvent,solv_offset)
+        for unit in range(2, nmol_solv + 2):
+            self.fix_pdb_unit(f_in, f_out, unit, nat_solv, solvent, solv_offset)
             f_out.write("TER\n")
         f_out.write("END\n")
 
-    def add_dist_restraint(self,solvatedseed,rest_atoms,rest_r):
+    def add_dist_restraint(self, solvatedseed, rest_atoms, rest_r):
 
         # unpack restraint parameter list
-        rk2,rk3,r1,r2,r3,r4 = rest_r
+        rk2, rk3, r1, r2, r3, r4 = rest_r
 
         # write map file
-        restmap_file = solvatedseed+'_rest.map'
+        restmap_file = solvatedseed + '_rest.map'
         f = open(restmap_file, 'w')
         restmap_str = ''
         mappings_needed = {}
         for i in range(len(rest_atoms)):
-            i1,res1,at1,i2,res2,at2 = rest_atoms[i]
+            i1, res1, at1, i2, res2, at2 = rest_atoms[i]
             if res1 not in mappings_needed:
                 mappings_needed[res1] = [at1]
             else:
@@ -451,59 +450,59 @@ class AmberWrapper():
         f.close()
 
         # write seed_rest.dist file
-        restdist_file = solvatedseed+'_rest.dist'
+        restdist_file = solvatedseed + '_rest.dist'
         f = open(restdist_file, 'w')
         restdist_str = ''
         for i in range(len(rest_atoms)):
-            i1,res1,at1,i2,res2,at2 = rest_atoms[i]
+            i1, res1, at1, i2, res2, at2 = rest_atoms[i]
             restdist_str = restdist_str + f'{i1} {res1} {at1} {i2} {res2} {at2} {r2} {r3}\n'
         f.write(restdist_str)
         f.close()
-        RST_file = solvatedseed+".RST"
+        RST_file = solvatedseed + ".RST"
         makeDIST_command = f"makeDIST_RST -pdb {solvatedseed}.pdb -ual {restdist_file} -map {restmap_file} -rst {RST_file}"
-        self.restraint_str = "DISANG="+RST_file+"\n"
+        self.restraint_str = "DISANG=" + RST_file + "\n"
         errorcode = subprocess.call(makeDIST_command, shell=True)
         if errorcode:
             raise RuntimeError('{} returned an error: {}'
-                                .format('makeDIST_RST', errorcode))
-        #fix_RST_rk(RST_file,rk2,rk3,r1,r2,r3,r4)
+                               .format('makeDIST_RST', errorcode))
+        # fix_RST_rk(RST_file,rk2,rk3,r1,r2,r3,r4)
 
-    def add_tors_restraint(self,solvatedseed,unit_name,torsion_atoms,rest_r):
+    def add_tors_restraint(self, solvatedseed, unit_name, torsion_atoms, rest_r):
         # unpack restraint parameter list
-        rk2,rk3,r1,r2,r3,r4 = rest_r
+        rk2, rk3, r1, r2, r3, r4 = rest_r
         # write torsion.lib file
-        torslib_file = solvatedseed+'_torsion.lib'
+        torslib_file = solvatedseed + '_torsion.lib'
         f = open(torslib_file, 'w')
         torslib_str = ''
         for i in range(len(torsion_atoms)):
-            torslib_str = (torslib_str + unit_name+" PH"+str(i) + 
-                          ' '+' '.join(torsion_atoms[i])+" \n")
+            torslib_str = (torslib_str + unit_name + " PH" + str(i) +
+                           ' ' + ' '.join(torsion_atoms[i]) + " \n")
         f.write(torslib_str)
         f.close()
-        torsdist_file = solvatedseed+'_torsion.dist'
+        torsdist_file = solvatedseed + '_torsion.dist'
         f = open(torsdist_file, 'w')
         torsdist_str = ''
         for i in range(len(torsion_atoms)):
-            torsdist_str = (torsdist_str + "1 "+unit_name+" PH"+str(i) + 
-                                           " "+str(r2)+" "+str(r3)+"\n")
+            torsdist_str = (torsdist_str + "1 " + unit_name + " PH" + str(i) +
+                                           " " + str(r2) + " " + str(r3) + "\n")
         f.write(torsdist_str)
         f.close()
 
-        RST_file = solvatedseed+".RST"
+        RST_file = solvatedseed + ".RST"
         makeANG_command = ("makeANG_RST -pdb " + solvatedseed + ".pdb " +
-                           "-con " + torsdist_file + " -lib " + torslib_file + 
-                           " > "+ RST_file)
-        self.restraint_str = "DISANG="+RST_file+"\n"
+                           "-con " + torsdist_file + " -lib " + torslib_file +
+                           " > " + RST_file)
+        self.restraint_str = "DISANG=" + RST_file + "\n"
         errorcode = subprocess.call(makeANG_command, shell=True)
         if errorcode:
             raise RuntimeError('{} returned an error: {}'
-                                .format('makeANG_RST', errorcode))
-        self.fix_RST_rk(RST_file,rk2,rk3,r1,r2,r3,r4)
+                               .format('makeANG_RST', errorcode))
+        self.fix_RST_rk(RST_file, rk2, rk3, r1, r2, r3, r4)
 
-    def fix_RST_rk(self,RST_file,rk2,rk3,r1,r2,r3,r4):
+    def fix_RST_rk(self, RST_file, rk2, rk3, r1, r2, r3, r4):
         outfile = RST_file
-        infile = RST_file+"_orig"
-        copyfile(outfile,infile)
+        infile = RST_file + "_orig"
+        copyfile(outfile, infile)
         try:
             f_in = open(infile, 'r')
         except IOError:
@@ -516,26 +515,25 @@ class AmberWrapper():
         for line in f_in:
             fields = line.strip().split()
             written = False
-            if len(fields)==7:
-                if fields[0]=='rk2':
+            if len(fields) == 7:
+                if fields[0] == 'rk2':
                     # reproduce formatting of .RST file:
-                    f_out.write('	  rk2 =  %4.1f, rk3 =   %4.1f,				/\n' 
-                                % (rk2,rk3))
+                    f_out.write('	  rk2 =  %4.1f, rk3 =   %4.1f,				/\n'
+                                % (rk2, rk3))
                     written = True
-            if len(fields)==12:
-                if fields[0]=='r1':
+            if len(fields) == 12:
+                if fields[0] == 'r1':
                     # reproduce formatting of .RST file:
                     f_out.write('          r1 = %5.1f, r2 = %5.1f, r3 =  %5.1f, r4 =  %5.1f,\n'
-                                % (r1,r2,r3,r4))
+                                % (r1, r2, r3, r4))
                     written = True
             if not written:
                 f_out.write(line)
 
-
-    def fix_RST_rk(self,RST_file,rk2,rk3,r1,r2,r3,r4):
+    def fix_RST_rk(self, RST_file, rk2, rk3, r1, r2, r3, r4):
         outfile = RST_file
-        infile = RST_file+"_orig"
-        copyfile(outfile,infile)
+        infile = RST_file + "_orig"
+        copyfile(outfile, infile)
         try:
             f_in = open(infile, 'r')
         except IOError:
@@ -548,35 +546,35 @@ class AmberWrapper():
         for line in f_in:
             fields = line.strip().split()
             written = False
-            if len(fields)==7:
-                if fields[0]=='rk2':
+            if len(fields) == 7:
+                if fields[0] == 'rk2':
                     # reproduce formatting of .RST file:
-                    f_out.write('	  rk2 =  %4.1f, rk3 =   %4.1f,				/\n' 
-                                % (rk2,rk3))
+                    f_out.write('	  rk2 =  %4.1f, rk3 =   %4.1f,				/\n'
+                                % (rk2, rk3))
                     written = True
-            if len(fields)==12:
-                if fields[0]=='r1':
+            if len(fields) == 12:
+                if fields[0] == 'r1':
                     # reproduce formatting of .RST file:
                     f_out.write('          r1 = %5.1f, r2 = %5.1f, r3 =  %5.1f, r4 =  %5.1f,\n'
-                                % (r1,r2,r3,r4))
+                                % (r1, r2, r3, r4))
                     written = True
             if not written:
                 f_out.write(line)
 
-    def crd_to_crdnc(self,seed,crdfile):
+    def crd_to_crdnc(self, seed, crdfile):
         f = open('ptraj.in', 'w')
-        ptraj_str = ("trajin "+crdfile+".crd\n" +
-                     "trajout "+crdfile+".crd.nc\n" +
+        ptraj_str = ("trajin " + crdfile + ".crd\n" +
+                     "trajout " + crdfile + ".crd.nc\n" +
                      "go\n")
         f.write(ptraj_str)
         f.close()
-        cpptraj_command = "cpptraj "+seed+".prmtop ptraj.in > "+seed+".ptrajout"
+        cpptraj_command = "cpptraj " + seed + ".prmtop ptraj.in > " + seed + ".ptrajout"
         errorcode = subprocess.call(cpptraj_command, shell=True)
         if errorcode:
             raise RuntimeError('{} returned an error: {}'
-                                .format('cpptraj', errorcode))
+                               .format('cpptraj', errorcode))
 
-    def reimage(self,seed,infile,outfile):
+    def reimage(self, seed, infile, outfile):
         """Runs the cpptraj program with a simple script to center the frame
            on residue 1 (the solute) and translate molecules back into the home cell"""
         f = open('ptraj.in', 'w')
@@ -592,17 +590,17 @@ class AmberWrapper():
         errorcode = subprocess.call(cpptraj_command, shell=True)
         if errorcode:
             raise RuntimeError('{} returned an error: {}'
-                                .format('cpptraj', errorcode))
+                               .format('cpptraj', errorcode))
 
-    def dipole(self,seed,crdfile):
+    def dipole(self, seed, crdfile):
         """Runs the cpptraj program with a simple script to get the dipole
         moment from the final trajectory"""
         f = open('ptraj.in', 'w')
-        if False: # just first molecule
+        if False:  # just first molecule
             ptraj_str = (f"trajin {crdfile}\n" +
                          f"vector v1 :1-1 dipole out {seed}.dipole\n" +
                          "go\n")
-        else: # everything
+        else:  # everything
             ptraj_str = (f"trajin {crdfile}\n" +
                          f"vector v1 dipole out {seed}.dipole\n" +
                          "go\n")
@@ -613,41 +611,41 @@ class AmberWrapper():
         errorcode = subprocess.call(cpptraj_command, shell=True)
         if errorcode:
             raise RuntimeError('{} returned an error: {}'
-                                .format('cpptraj', errorcode))
+                               .format('cpptraj', errorcode))
         dip = np.loadtxt(f'{seed}.dipole')[1:4]
         return dip
 
-    def fix_amber_pdb(self,seed):
+    def fix_amber_pdb(self, seed):
         """An awk-based hack to fix AMBER pdb files to make them work with ASE"""
 
         # Amber does not write atom symbols in columns 77-78 of its pdb files, fix this
-        awkstr = ('awk \'/ATOM/ {a=$3;gsub(/[0-9]/,"",a); print $0,"        ",a; next};'+
-             '{print}\' '+seed+'.pdb  > '+seed+'2.pdb; mv '+seed+'2.pdb '+seed+'.pdb')
+        awkstr = ('awk \'/ATOM/ {a=$3;gsub(/[0-9]/,"",a); print $0,"        ",a; next};' +
+                  '{print}\' ' + seed + '.pdb  > ' + seed + '2.pdb; mv ' + seed + '2.pdb ' + seed + '.pdb')
 
         errorcode = subprocess.call(awkstr, shell=True)
         if errorcode:
             raise RuntimeError('{} returned an error: {}'
-                                .format('awk', errorcode))
+                               .format('awk', errorcode))
 
     # Restore coordinates into calculator
-    def restore_from_coordinates(self,model,crdfile):
+    def restore_from_coordinates(self, model, crdfile):
         seed = "dummy"
         calc_am = Amber(amber_exe=self.amber_exe_serial,
-                     infile=seed+'.in',
-                     outfile=seed+'.out',
-                     topologyfile=seed+'.prmtop',
-                     incoordfile=seed+'.crd',
-                     outcoordfile=crdfile)
+                        infile=seed + '.in',
+                        outfile=seed + '.out',
+                        topologyfile=seed + '.prmtop',
+                        incoordfile=seed + '.crd',
+                        outcoordfile=crdfile)
         calc_am.read_coordinates(model)
         model.calc = calc_am
         return model
 
     # Set up Amber calculator
-    def singlepoint(self,model,seed,calc_params={},forces=False,solvent=None,
-                    readonly=False,continuation=False,dipole=False,calc=False):
+    def singlepoint(self, model, seed, calc_params={}, forces=False, solvent=None,
+                    readonly=False, continuation=False, dipole=False, calc=False):
         """Runs a singlepoint calculation with the Amber ASE calculator"""
-        f = open(seed+'.in', 'w')
-        mmin_str =  f'''
+        f = open(seed + '.in', 'w')
+        mmin_str = f'''
 zero step md to get energy and force
 &cntrl
 imin=0, nstlim=0,  ntx=1 !0 step md
@@ -659,11 +657,11 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
         f.close()
 
         calc_am = Amber(amber_exe=self.amber_exe_serial,
-                     infile=seed+'.in',
-                     outfile=seed+'.out',
-                     topologyfile=seed+'.prmtop',
-                     incoordfile=seed+'.crd')
-        calc_am.write_coordinates(model,f'{seed}.crd')
+                        infile=seed + '.in',
+                        outfile=seed + '.out',
+                        topologyfile=seed + '.prmtop',
+                        incoordfile=seed + '.crd')
+        calc_am.write_coordinates(model, f'{seed}.crd')
         model.set_calculator(calc_am)
 
         e = model.get_potential_energy()
@@ -671,15 +669,15 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
         if forces:
             f = model.get_forces()
             res.append(f)
-        if dipole:        
-            d = self.dipole(seed,calc_am.incoordfile)
+        if dipole:
+            d = self.dipole(seed, calc_am.incoordfile)
             calc_am.results['dipole'] = d
             res.append(d)
         if calc:
             res.append(calc_am)
         return res
 
-    def geom_opt(self,model,seed,calc_params={},solvent=None,driver_tol=0.01):
+    def geom_opt(self, model, seed, calc_params={}, solvent=None, driver_tol=0.01):
         """Runs a geometry optimisation calculation with the Amber ASE calculator"""
         minin_str = (f'''
     Initial minimisation
@@ -695,28 +693,28 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
             f.write(minin_str)
             f.close()
         calc_min = Amber(amber_exe=self.amber_exe_serial,
-                          infile='min.in',
-                          outfile='min.out',
-                          topologyfile=f'{seed}.prmtop',
-                          incoordfile=f'{seed}.crd',
-                          outcoordfile='min.rst')
+                         infile='min.in',
+                         outfile='min.out',
+                         topologyfile=f'{seed}.prmtop',
+                         incoordfile=f'{seed}.crd',
+                         outcoordfile='min.rst')
         model = calc_min.read_coordinates(f'{seed}.crd.nc')
-        model.calculator= calc_min
-        calc_min.write_coordinates(model,f'{seed}.crd')
+        model.calculator = calc_min
+        calc_min.write_coordinates(model, f'{seed}.crd')
         print("Pot, Kin Energy after minimisation: ", model.get_potential_energy(), model.get_kinetic_energy())
 
-    def heatup(self,model,seed,calc_params={},nsteps=100):
+    def heatup(self, model, seed, calc_params={}, nsteps=100):
         """Runs a heatup temperature-ramp calculation with the Amber ASE calculator"""
         # NTC = 2, NTF = 2: hydrogens constrained at this stage
         # irest = 0 (new simulation)
-        heatin_str =  (f'''
+        heatin_str = (f'''
     Heating
     &cntrl
       imin=0,irest=0,ntx=1,
       nstlim={nsteps},dt={self.dt},
       ntc=2,ntf=2,nmropt=1,
       cut={self.cut}, ntb=1,
-      ntt={self.ntt}, gamma_ln={self.gamma_ln*2},
+      ntt={self.ntt}, gamma_ln={self.gamma_ln * 2},
       tempi=0.0, temp0={self.temp0}, ig=-1,
       ntpr={self.ntpr},ntwf={self.ntpr},ntwe={self.ntpr},ntwx=1000
     /
@@ -733,17 +731,17 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
                           topologyfile=f'{seed}.prmtop',
                           incoordfile='min.rst',
                           outcoordfile='heat.rst')
-                          #mdcoordfile='heat.mdcrd.nc')
-        calc_heat.write_coordinates(model,'min.rst')
+                          # mdcoordfile='heat.mdcrd.nc')
+        calc_heat.write_coordinates(model, 'min.rst')
         model.set_calculator(calc_heat)
         new_pe = model.get_potential_energy()
         calc_heat.read_coordinates(model)
         model.calculator = calc_heat
-        calc_heat.write_coordinates(model,'heat.rst')
+        calc_heat.write_coordinates(model, 'heat.rst')
         new_ke = model.get_kinetic_energy()
         print("Pot, Kin Energy after heating: ", new_pe, new_ke)
 
-    def densityequil(self,model,seed,calc_params={},nsteps=100):
+    def densityequil(self, model, seed, calc_params={}, nsteps=100):
         """Runs a density equilibration calculation with fixed hydrogens with the Amber ASE calculator"""
 
         # NTB = 2, NTP = 1, TAUP = 1.0: Use constant pressure periodic boundary. Isotropic position scaling
@@ -757,7 +755,7 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
       nstlim={nsteps},dt={self.dt},
       ntc=2,ntf=2,nmropt=1,
       cut={self.cut}, ntb=2, ntp=1, taup=1.0,
-      ntt={self.ntt}, gamma_ln={self.gamma_ln*2},
+      ntt={self.ntt}, gamma_ln={self.gamma_ln * 2},
       temp0={self.temp0}, ig=-1,
       ntpr={self.ntpr},ntwf={self.ntpr},ntwe={self.ntpr},ntwx=1000 /
      &wt TYPE='END' /
@@ -772,7 +770,7 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
                           topologyfile=f'{seed}.prmtop',
                           incoordfile='heat.rst',
                           outcoordfile='density.rst')
-                          #mdcoordfile='density.mdcrd.nc')
+                          # mdcoordfile='density.mdcrd.nc')
         model.set_calculator(calc_dens)
 
         new_pe = model.get_potential_energy()
@@ -780,7 +778,7 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
         new_ke = model.get_kinetic_energy()
         print("Pot, Kin Energy after density equilibration: ", new_pe, new_ke)
 
-    def equil(self,model,seed,calc_params={},nsteps=100):
+    def equil(self, model, seed, calc_params={}, nsteps=100):
         """Runs an equilibration calculation at constant volume with flexible hydrogens with the Amber ASE calculator"""
         # NTP = 0: No pressure scaling (constant volume)
         # NTC = 1: SHAKE not used - no constraints
@@ -805,18 +803,18 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
         calc_equil = Amber(amber_exe=self.amber_exe_parallel,
                            infile='equil.in',
                            outfile='equil.out',
-                           topologyfile=seed+'.prmtop',
+                           topologyfile=seed + '.prmtop',
                            incoordfile='density.rst',
                            outcoordfile='equil.rst')
-                           #mdcoordfile='equil.mdcrd.nc')
+                           # mdcoordfile='equil.mdcrd.nc')
         model.set_calculator(calc_equil)
 
         new_pe = model.get_potential_energy()
         calc_equil.read_coordinates(model)
         new_ke = model.get_kinetic_energy()
         print("Pot, Kin Energy after equilibration: ", new_pe, new_ke)
-        
-    def snapshots(self,model,seed,calc_params={},nsnaps=1,nsteps=100,start=0,nat_solu=0,nat_solv=0):
+
+    def snapshots(self, model, seed, calc_params={}, nsnaps=1, nsteps=100, start=0, nat_solu=0, nat_solv=0):
         """Runs a long MD trajectory for snapshot generation with the Amber ASE calculator"""
         # NTC = 1: SHAKE not used - no constraints
         snap_str = (f'''
@@ -835,61 +833,60 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
         step = 0
         # output trajectory goes in parent directory
         trajname = f'../{seed}.traj'
-        if start==0:
-            copyfile('equil.rst',f'snap{-1:04}.rst')
+        if start == 0:
+            copyfile('equil.rst', f'snap{-1:04}.rst')
             traj = Trajectory(trajname, 'w')
         else:
             traj = Trajectory(trajname)
             prevframe = len(traj)
             print(f'Found trajectory file {trajname} containing {prevframe} frames.')
-            if prevframe != start+1:
+            if prevframe != start + 1:
                 raise Exception(f'Error: This does not agree with the resumption point {start}.')
             traj.close()
             traj = Trajectory(trajname, 'a')
         snapout = model.copy()
-        for step in range(start,nsnaps):
+        for step in range(start, nsnaps):
             calc_snap = Amber(amber_exe=self.amber_exe_parallel,
-                               infile='snap.in',
-                               outfile=f'snap{step:04}.out',
-                               topologyfile=seed+'.prmtop',
-                               incoordfile=f'snap{step-1:04}.rst',
-                               outcoordfile=f'snap{step:04}.rst',
-                               mdcoordfile=f'snap{step:04}.mdcrd.nc')
+                              infile='snap.in',
+                              outfile=f'snap{step:04}.out',
+                              topologyfile=seed + '.prmtop',
+                              incoordfile=f'snap{step - 1:04}.rst',
+                              outcoordfile=f'snap{step:04}.rst',
+                              mdcoordfile=f'snap{step:04}.mdcrd.nc')
             model.set_calculator(calc_snap)
             new_pe = model.get_potential_energy()
-            
-            self.reimage(seed,calc_snap.outcoordfile,f'{seed}.rst_ri.nc')
-            calc_snap.results['dipole'] = self.dipole(seed,calc_snap.outcoordfile)
+
+            self.reimage(seed, calc_snap.outcoordfile, f'{seed}.rst_ri.nc')
+            calc_snap.results['dipole'] = self.dipole(seed, calc_snap.outcoordfile)
             calc_snap.outcoordfile = f'{seed}.rst_ri.nc'
             calc_snap.read_coordinates(snapout)
-            traj.write(snapout,**calc_snap.results)
-            #write(f'{seed}_snap{step:04}.xyz',snapout)
+            traj.write(snapout, **calc_snap.results)
+            # write(f'{seed}_snap{step:04}.xyz',snapout)
             calc_snap.outcoordfile = f'snap{step:04}.rst'
             calc_snap.read_coordinates(model)
             new_ke = model.get_kinetic_energy()
             new_temp = model.get_temperature()
-            print("Pot Energy, Kin Energy, Temp after snapshot",str(step),":",new_pe, new_ke, new_temp)
+            print("Pot Energy, Kin Energy, Temp after snapshot", str(step), ":", new_pe, new_ke, new_temp)
 
-    
-    def traj_write(self,atoms,traj):
-        kw = { #'dipole': self.dipole(seed,calc_am.incoordfile),
-              #'charges': atoms.get_charges(),
+    def traj_write(self, atoms, traj):
+        kw = {  # 'dipole': self.dipole(seed,calc_am.incoordfile),
+            # 'charges': atoms.get_charges(),
               'energy': atoms.get_potential_energy(),
               'forces': atoms.get_forces()}
-        traj.write(atoms,**kw)
+        traj.write(atoms, **kw)
 
-    def run_mlmd(self,model,mdseed,calc_params,md_steps,md_timestep,superstep,temp,
-                 solvent=None,restart=False,readonly=False,constraints=None,dynamics=None,
+    def run_mlmd(self, model, mdseed, calc_params, md_steps, md_timestep, superstep, temp,
+                 solvent=None, restart=False, readonly=False, constraints=None, dynamics=None,
                  continuation=None):
-        
+
         from ase.md.velocitydistribution import MaxwellBoltzmannDistribution, Stationary, ZeroRotation
         from ase.md import Langevin, npt
         from ase.io import Trajectory
         from ase import units
-        
+
         """Runs an md calculation with the Amber ASE calculator"""
-        f = open(mdseed+'.in', 'w')
-        mmin_str =  f'''
+        f = open(mdseed + '.in', 'w')
+        mmin_str = f'''
 zero step md to get energy and force
 &cntrl
       imin=0, irest=1, ntx=5,
@@ -904,52 +901,48 @@ zero step md to get energy and force
         calc_seed = calc_params['calc_seed']
 
         calc_am = Amber(amber_exe=self.amber_exe_parallel,
-                     infile=f'{mdseed}.in',
-                     outfile=f'{mdseed}.out',
-                     topologyfile=f'../{calc_seed}_solv.prmtop',
-                     incoordfile=f'{mdseed}.crd',
-                     energyfile=f'{mdseed}.mden',
-                     forcefile=f'{mdseed}.mdfrc')
-        calc_am.write_coordinates(model,f'{mdseed}.crd')
+                        infile=f'{mdseed}.in',
+                        outfile=f'{mdseed}.out',
+                        topologyfile=f'../{calc_seed}_solv.prmtop',
+                        incoordfile=f'{mdseed}.crd',
+                        energyfile=f'{mdseed}.mden',
+                        forcefile=f'{mdseed}.mdfrc')
+        calc_am.write_coordinates(model, f'{mdseed}.crd')
         model.calc = calc_am
 
         # Initialise velocities if this is first step, otherwise inherit from model
         if np.all(model.get_momenta() == 0.0):
-            MaxwellBoltzmannDistribution(model,temperature_K=temp)
+            MaxwellBoltzmannDistribution(model, temperature_K=temp)
 
-        # For each ML superstep, remove C.O.M. translation and rotation    
-        #Stationary(model)
-        #ZeroRotation(model)
-        #print(f'constraints: {model.constraints}')
+        # For each ML superstep, remove C.O.M. translation and rotation
+        # Stationary(model)
+        # ZeroRotation(model)
+        # print(f'constraints: {model.constraints}')
 
         if readonly:
-            model = read(mdseed+".xyz") # Read final image
+            model = read(mdseed + ".xyz")  # Read final image
             model.calc = calc_am
-            model.get_potential_energy() # Recalculate energy for final image
+            model.get_potential_energy()  # Recalculate energy for final image
             return None
         else:
             new_traj = False
-            if dynamics is None or dynamics=="LANG":
+            if dynamics is None or dynamics == "LANG":
                 dynamics = Langevin(model, timestep=md_timestep, temperature_K=temp, friction=0.002)
                 new_traj = True
-            if dynamics=="NPT":
-                ttime=25*units.fs
+            if dynamics == "NPT":
+                ttime = 25 * units.fs
                 # Bulk modulus for ethanol
-                pfactor = 100*1.06e9*(units.J/units.m**3)*ttime**2
+                pfactor = 100 * 1.06e9 * (units.J / units.m**3) * ttime**2
                 print(f'pfactor = {pfactor}, ttime={ttime}')
                 dynamics = npt.NPT(model, timestep=md_timestep, temperature_K=temp, externalstress=0,
-                                   pfactor=pfactor,ttime=ttime)
+                                   pfactor=pfactor, ttime=ttime)
                 new_traj = True
             if new_traj:
-                traj = Trajectory(mdseed+".traj", 'w', model)
+                traj = Trajectory(mdseed + ".traj", 'w', model)
                 dynamics.attach(self.traj_write, interval=1, atoms=model, traj=traj)
             dynamics.run(md_steps)
-            #model.calc.results['stress'] = model.get_stress()
+            # model.calc.results['stress'] = model.get_stress()
             return dynamics
 
 
 # In[ ]:
-
-
-
-

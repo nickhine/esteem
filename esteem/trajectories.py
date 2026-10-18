@@ -12,41 +12,45 @@ import numpy as np
 from os import path, makedirs, getcwd, chdir, remove, rename
 import shutil
 
+
 def targstr(targ):
     if targ == 0 or targ is None:
         return "gs"
-    elif isinstance(targ,dict):
-        return "".join((targ[p] if p!="diff" else "") for p in targ)
-    elif isinstance(targ,list) and type(targ[0])==int:
+    elif isinstance(targ, dict):
+        return "".join((targ[p] if p != "diff" else "") for p in targ)
+    elif isinstance(targ, list) and type(targ[0]) == int:
         return "".join(targstr(t) for t in targ if type(t) is int)
-    elif type(targ)==int:
-        return "es"+str(targ)
+    elif type(targ) == int:
+        return "es" + str(targ)
     else:
         return str(targ)
 
-def output_header(model,prefix):
-    if (model.cell!=0.0).all():
+
+def output_header(model, prefix):
+    if (model.cell != 0.0).all():
         print(f"{prefix}: Step Targ     Potential_Energy      Kinetic_Energy       Temperature_K     Stress_[0:2]                   Volume")
     else:
         print(f"{prefix}: Step Targ     Potential_Energy      Kinetic_Energy       Temperature_K")
 
-def report_outputs(model,step,targ,prefix):
+
+def report_outputs(model, step, targ, prefix):
     from ase.units import kB
     pe = model.get_potential_energy()
-    if isinstance(pe,list) or isinstance(pe,np.ndarray):
+    if isinstance(pe, list) or isinstance(pe, np.ndarray):
         pe = float(pe[0])
     ke = model.get_kinetic_energy()
-    temp = 2*ke/(3*len(model)*kB)
-    if (model.cell!=0.0).all():
+    temp = 2 * ke / (3 * len(model) * kB)
+    if (model.cell != 0.0).all():
         stress = model.get_stress()[0:3]
         vol = model.cell.volume
-        print(f"{prefix}: {step:4} {targ:4} {pe:20.10f} {ke:20.10f} {temp:20.10f} {stress} {vol:20.8f}",flush=True)
+        print(f"{prefix}: {step:4} {targ:4} {pe:20.10f} {ke:20.10f} {temp:20.10f} {stress} {vol:20.8f}", flush=True)
     else:
-        print(f"{prefix}: {step:4} {targ:4} {pe:20.10f} {ke:20.10f} {temp:20.10f}",flush=True)
+        print(f"{prefix}: {step:4} {targ:4} {pe:20.10f} {ke:20.10f} {temp:20.10f}", flush=True)
 
-def get_param(md_param,label):
 
-    if isinstance(md_param,dict):
+def get_param(md_param, label):
+
+    if isinstance(md_param, dict):
         if label in md_param:
             param = md_param[label]
         else:
@@ -56,7 +60,8 @@ def get_param(md_param,label):
 
     return param
 
-def md_output_names(seed,targ,traj_label,traj_suffix):
+
+def md_output_names(seed, targ, traj_label, traj_suffix):
     """
     Returns (final, incomplete) names of an MD output trajectory. The MD is written to the
     incomplete name and only renamed to the final name once the run has finished, so the
@@ -65,26 +70,29 @@ def md_output_names(seed,targ,traj_label,traj_suffix):
     final = f"{seed}_{targstr(targ)}_{traj_label}_{traj_suffix}.traj"
     return final, final[:-len('.traj')] + '.incomplete.traj'
 
-def finish_md_output(seed,targ,traj_label,traj_suffix):
+
+def finish_md_output(seed, targ, traj_label, traj_suffix):
     """Renames a finished MD output trajectory from its incomplete name to its final name"""
-    final, incomplete = md_output_names(seed,targ,traj_label,traj_suffix)
+    final, incomplete = md_output_names(seed, targ, traj_label, traj_suffix)
     if path.isfile(incomplete):
-        rename(incomplete,final)
+        rename(incomplete, final)
         print(f'# MD finished: {incomplete} renamed to {final}')
 
-def committee_stde_per_atom(energy,natoms):
+
+def committee_stde_per_atom(energy, natoms):
     """
     Standard deviation per atom of a committee of energies (as used to select and truncate
     active-learning trajectories). Zero for a single energy.
     """
     e = np.atleast_1d(energy)
-    return np.std(e)/natoms if len(e)>1 else 0.0
+    return np.std(e) / natoms if len(e) > 1 else 0.0
 
-def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wrapper,
-                           count_snaps,count_equil,md_steps,md_timestep,md_friction,temp,
-                           traj_calc_params,charge=0,solvent=None,constraints=None,dynamics=None,
-                           snap_target=None,snap_wrapper=None,snap_calc_params=None,
-                           continuation=False,store_full_traj=False,debugger=None,
+
+def generate_md_trajectory(model, seed, traj_target, traj_label, traj_suffix, traj_wrapper,
+                           count_snaps, count_equil, md_steps, md_timestep, md_friction, temp,
+                           traj_calc_params, charge=0, solvent=None, constraints=None, dynamics=None,
+                           snap_target=None, snap_wrapper=None, snap_calc_params=None,
+                           continuation=False, store_full_traj=False, debugger=None,
                            stop_stde_thresh=None):
     """
     Runs equilibration followed by statistics generation MD for a given model.
@@ -142,23 +150,23 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
         snap_wrapper = traj_wrapper
     if snap_calc_params is None:
         snap_calc_params = traj_calc_params
-    if hasattr(traj_wrapper,'get_restart_file_exts'):
+    if hasattr(traj_wrapper, 'get_restart_file_exts'):
         exts = traj_wrapper.get_restart_file_exts()
-    if hasattr(snap_wrapper,'get_restart_file_exts'):
+    if hasattr(snap_wrapper, 'get_restart_file_exts'):
         snap_exts = snap_wrapper.get_restart_file_exts()
     if snap_target is not None:
         all_targets = snap_target
     else:
         all_targets = traj_target
-    if isinstance(all_targets,list) or isinstance(all_targets,dict):
+    if isinstance(all_targets, list) or isinstance(all_targets, dict):
         all_targets = traj_target
     else:
-        all_targets = [traj_target] 
+        all_targets = [traj_target]
 
     equil_dir = f'{traj_suffix}_equil'
     md_dir = f'{traj_suffix}_md'
     snaps_dir = f'{traj_suffix}_snaps'
-    
+
     # Create equilibration directory
     if not path.exists(equil_dir):
         print(f"# Creating output directory {equil_dir} for equilibration MD runs")
@@ -181,31 +189,31 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
         except FileExistsError:
             print(f"# Possible mid-air collision between jobs - directory {snaps_dir} exists")
     origdir = getcwd()
-    
+
     # Ensure the system has a cell if we are doing NPT dynamics
-    if hasattr(dynamics,'type'):
-        if dynamics.type=="NPT" and (model.cell==0.0).all():
+    if hasattr(dynamics, 'type'):
+        if dynamics.type == "NPT" and (model.cell == 0.0).all():
             print('# Setting 10A padding')
             model.center(10)
 
-    def eval_snap_committee(targ,label):
+    def eval_snap_committee(targ, label):
         # Evaluate the snapshot calculator (eg the committee) for one target, as for snapshots below,
         # leaving its results on model, and return the energy (array for a committee)
         orig_head = snap_calc_params.get('calc_head')
-        if isinstance(snap_calc_params['target'],dict):
+        if isinstance(snap_calc_params['target'], dict):
             snap_calc_params['calc_head'] = snap_calc_params['target'][targ]
             model.calc.atoms = None
         else:
             snap_calc_params['target'] = targ
-        energy = snap_wrapper.singlepoint(model,label,snap_calc_params,solvent=solvent,charge=charge,
-                                          forces=True,dipole=True)[0]
-        if isinstance(snap_calc_params['target'],dict):
+        energy = snap_wrapper.singlepoint(model, label, snap_calc_params, solvent=solvent, charge=charge,
+                                          forces=True, dipole=True)[0]
+        if isinstance(snap_calc_params['target'], dict):
             snap_calc_params['calc_head'] = orig_head
         return energy
 
     # Output is written under an incomplete name and renamed when the run finishes (see md_output_names)
     for t in all_targets:
-        final, incomplete = md_output_names(seed,t,traj_label,traj_suffix)
+        final, incomplete = md_output_names(seed, t, traj_label, traj_suffix)
         if not continuation:
             # Starting afresh: remove outputs of any earlier run now, so they cannot be mistaken for this one
             for f in (final, incomplete):
@@ -214,68 +222,68 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
                     remove(f)
         elif path.isfile(final) and not path.isfile(incomplete):
             # Continuing a finished trajectory (eg to extend it): it is incomplete again until this run finishes
-            rename(final,incomplete)
+            rename(final, incomplete)
 
     # Run Equilibration MD
     abort = False
     stopped = False
     # With stop_stde_thresh, equilibration frames are evaluated with the committee and buffered,
     # so they can become the snapshots if the trajectory has to stop during equilibration
-    eqcheck_files = {targ: path.join(origdir,f"{seed}_{targstr(targ)}_{traj_label}_{traj_suffix}_eqcheck.traj")
+    eqcheck_files = {targ: path.join(origdir, f"{seed}_{targstr(targ)}_{traj_label}_{traj_suffix}_eqcheck.traj")
                      for targ in all_targets}
     if not continuation:
         chdir(equil_dir)
-        timestep = get_param(md_timestep,'EQ')
-        friction = get_param(md_friction,'EQ')
-        output_header(model,'EQ')
+        timestep = get_param(md_timestep, 'EQ')
+        friction = get_param(md_friction, 'EQ')
+        output_header(model, 'EQ')
         if dynamics is None:
             from types import SimpleNamespace
             dynamics = SimpleNamespace()
             dynamics.type = "LANG"
             dynamics.friction = friction
         dynamics.new_traj = store_full_traj
-        if isinstance(all_targets,list):
+        if isinstance(all_targets, list):
             targ = all_targets[0]
-        elif isinstance(all_targets,dict):
+        elif isinstance(all_targets, dict):
             targ = traj_target
-        if isinstance(traj_calc_params['target'],dict):
+        if isinstance(traj_calc_params['target'], dict):
             traj_calc_params['calc_head'] = traj_calc_params['target'][traj_target]
             model.calc.atoms = None
         else:
             traj_calc_params['target'] = targ
-        print(f"# Starting EQ runs 0 to {count_equil} (each {md_steps} steps of {dynamics.type} dynamics with timestep {timestep/fs} fs)")
+        print(f"# Starting EQ runs 0 to {count_equil} (each {md_steps} steps of {dynamics.type} dynamics with timestep {timestep / fs} fs)")
         if stop_stde_thresh is not None:
             print(f"# Checking committee energy std dev per atom against {stop_stde_thresh} eV after each EQ run")
-            eqcheck = {t: Trajectory(eqcheck_files[t],"w") for t in all_targets}
-        for step in range(0,count_equil):
+            eqcheck = {t: Trajectory(eqcheck_files[t], "w") for t in all_targets}
+        for step in range(0, count_equil):
             steplabel, readonly, cont = cycle_step_labels_and_restarts(
-                                         seed,traj_label,
-                                         None,equil_dir,md_dir,
-                                         targ,targ,targ,step-1,step,step+1,
-                                         count_equil,0,exts)
-            dynamics = traj_wrapper.run_md(model,steplabel,traj_calc_params,md_steps,timestep,step,
-                    temp,solvent=solvent,charge=charge,constraints=constraints,dynamics=dynamics,
-                    continuation=cont,readonly=readonly)
+                seed, traj_label,
+                                         None, equil_dir, md_dir,
+                                         targ, targ, targ, step - 1, step, step + 1,
+                                         count_equil, 0, exts)
+            dynamics = traj_wrapper.run_md(model, steplabel, traj_calc_params, md_steps, timestep, step,
+                                           temp, solvent=solvent, charge=charge, constraints=constraints, dynamics=dynamics,
+                                           continuation=cont, readonly=readonly)
             if debugger is not None:
                 debugger.check(model)
-            report_outputs(model,step,targ,'EQ')
+            report_outputs(model, step, targ, 'EQ')
             curr_temp = model.get_temperature()
-            if curr_temp>10*temp:
+            if curr_temp > 10 * temp:
                 print(f'# Temperature {curr_temp} K exceeds 10x target ({temp} K), aborting Equilibration MD runs')
                 abort = True
                 break
             if stop_stde_thresh is not None:
                 stde = 0.0
                 for t in all_targets:
-                    stde = max(stde,committee_stde_per_atom(eval_snap_committee(t,f"{steplabel}_eqcheck"),len(model)))
+                    stde = max(stde, committee_stde_per_atom(eval_snap_committee(t, f"{steplabel}_eqcheck"), len(model)))
                     eqcheck[t].write(model)
                 if stde > stop_stde_thresh:
                     print(f'# Committee energy std dev per atom {stde:.4f} exceeds {stop_stde_thresh} eV after EQ run {step}: '
-                          f'stopping, and keeping the {step+1} EQ frames evaluated as snapshots')
+                          f'stopping, and keeping the {step + 1} EQ frames evaluated as snapshots')
                     stopped = True
                     break
                 # Restore the head of the MD calculator (snapshot evaluation may have changed it)
-                if isinstance(traj_calc_params['target'],dict):
+                if isinstance(traj_calc_params['target'], dict):
                     traj_calc_params['calc_head'] = traj_calc_params['target'][traj_target]
                     model.calc.atoms = None
 
@@ -296,16 +304,16 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
     if stopped:
         # The EQ frames checked so far become the output trajectory
         for t in all_targets:
-            output_traj = md_output_names(seed,t,traj_label,traj_suffix)[1]
+            output_traj = md_output_names(seed, t, traj_label, traj_suffix)[1]
             eqframes = Trajectory(eqcheck_files[t])
-            out = Trajectory(output_traj,"w")
+            out = Trajectory(output_traj, "w")
             for frame in eqframes:
                 out.write(frame)
             out.close()
             print(f'# Wrote {len(eqframes)} EQ frames to {output_traj}')
             eqframes.close()
             remove(eqcheck_files[t])
-            finish_md_output(seed,t,traj_label,traj_suffix)
+            finish_md_output(seed, t, traj_label, traj_suffix)
         return 'stopped'
     for t in all_targets:
         if path.isfile(eqcheck_files[t]):
@@ -315,7 +323,7 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
     snaps_done = 0
     for targ in all_targets:
         # Output is written under the incomplete name (any earlier output was dealt with above)
-        output_traj = md_output_names(seed,targ,traj_label,traj_suffix)[1]
+        output_traj = md_output_names(seed, targ, traj_label, traj_suffix)[1]
 
         # Create output trajectory
         if continuation and path.isfile(output_traj):
@@ -323,14 +331,14 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
             outtraj[targ] = Trajectory(output_traj)
             snaps_done = len(outtraj[targ])
             outtraj[targ].close()
-            outtraj[targ] = Trajectory(output_traj,"a")
+            outtraj[targ] = Trajectory(output_traj, "a")
         else:
             print(f"# Opening output trajectory: {output_traj} for writing")
-            outtraj[targ] = Trajectory(output_traj,"w")
+            outtraj[targ] = Trajectory(output_traj, "w")
 
     # Setup main MD
-    timestep = get_param(md_timestep,'MD')
-    friction = get_param(md_friction,'MD')
+    timestep = get_param(md_timestep, 'MD')
+    friction = get_param(md_friction, 'MD')
     if dynamics is None:
         from types import SimpleNamespace
         dynamics = SimpleNamespace()
@@ -340,22 +348,22 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
     else:
         # dynamics carried over from equilibration: switch from its friction to the MD one
         dynamics.friction = friction
-    if snaps_done<count_snaps:
-        print(f"# Starting Snapshot MD runs {snaps_done} to {count_snaps} (each {md_steps} steps of {dynamics.type} dynamics with timestep {timestep/fs} fs)")
-        output_header(model,'MD')
+    if snaps_done < count_snaps:
+        print(f"# Starting Snapshot MD runs {snaps_done} to {count_snaps} (each {md_steps} steps of {dynamics.type} dynamics with timestep {timestep / fs} fs)")
+        output_header(model, 'MD')
     else:
         print(f'# Snapshot MD runs already completed - {count_snaps} snapshots found')
-    if (count_equil > 0  or continuation) and store_full_traj:
+    if (count_equil > 0 or continuation) and store_full_traj:
         if continuation:
             print(f"# Warning - continuation functionality for store_full_traj not finished - overwriting")
         dynamics.new_traj = True
-    for step in range(snaps_done,count_snaps):
+    for step in range(snaps_done, count_snaps):
         chdir(md_dir)
-        if isinstance(all_targets,list):
+        if isinstance(all_targets, list):
             targ = all_targets[0]
-        elif isinstance(all_targets,dict):
+        elif isinstance(all_targets, dict):
             targ = traj_target
-        if isinstance(traj_calc_params['target'],dict):
+        if isinstance(traj_calc_params['target'], dict):
             traj_calc_params['calc_head'] = traj_calc_params['target'][traj_target]
             model.calc.atoms = None
         else:
@@ -363,14 +371,14 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
 
         # Run main MD between snapshots
         steplabel, readonly, cont = cycle_step_labels_and_restarts(
-                                     seed,traj_label,
-                                     equil_dir,md_dir,None,
-                                     targ,targ,targ,step-1,step,step+1,
-                                     count_snaps,count_equil,exts)
-        dynamics = traj_wrapper.run_md(model,steplabel,traj_calc_params,md_steps,timestep,count_equil+step,
-                temp,solvent=solvent,charge=charge,constraints=constraints,dynamics=dynamics,
-                continuation=cont,readonly=readonly)
-        report_outputs(model,step,targ,'MD')
+            seed, traj_label,
+                                     equil_dir, md_dir, None,
+                                     targ, targ, targ, step - 1, step, step + 1,
+                                     count_snaps, count_equil, exts)
+        dynamics = traj_wrapper.run_md(model, steplabel, traj_calc_params, md_steps, timestep, count_equil + step,
+                                       temp, solvent=solvent, charge=charge, constraints=constraints, dynamics=dynamics,
+                                       continuation=cont, readonly=readonly)
+        report_outputs(model, step, targ, 'MD')
         # Now do singlepoints for (ground and) excited state snapshots, if applicable
         stde = 0.0
         chdir(origdir)
@@ -378,38 +386,38 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
         prev_targ = targ
         if 'calc_head' in snap_calc_params:
             orig_head = snap_calc_params['calc_head']
-        for i,targ in enumerate(all_targets):
-            if isinstance(all_targets,list):
-                if i == len(all_targets)-1:
+        for i, targ in enumerate(all_targets):
+            if isinstance(all_targets, list):
+                if i == len(all_targets) - 1:
                     next_targ = all_targets[0]
                     next_step = step + 1
                 else:
-                    next_targ = all_targets[i+1]
+                    next_targ = all_targets[i + 1]
                     next_step = step
             else:
                 next_targ = targ
                 next_step = step
             steplabel, readonly, cont = cycle_step_labels_and_restarts(
-                                         seed,traj_label,
-                                         md_dir,snaps_dir,None,
-                                         prev_targ,targ,next_targ,step,step,next_step,
-                                         count_snaps,count_equil,snap_exts)
-            readonly=False
-            if path.isfile(steplabel+'.out') or path.isfile(steplabel+'.nwo'):
-                readonly=True
+                seed, traj_label,
+                                         md_dir, snaps_dir, None,
+                                         prev_targ, targ, next_targ, step, step, next_step,
+                                         count_snaps, count_equil, snap_exts)
+            readonly = False
+            if path.isfile(steplabel + '.out') or path.isfile(steplabel + '.nwo'):
+                readonly = True
             energy = None; forces = None;
-            if isinstance(snap_calc_params['target'],dict):
+            if isinstance(snap_calc_params['target'], dict):
                 snap_calc_params['calc_head'] = snap_calc_params['target'][targ]
                 model.calc.atoms = None
             else:
                 snap_calc_params['target'] = targ
             calc_forces = True
             calc_dipole = True
-            results = snap_wrapper.singlepoint(model,steplabel,
-                                snap_calc_params,
-                                solvent=solvent,charge=charge,
-                                forces=calc_forces,dipole=calc_dipole,
-                                continuation=cont,readonly=readonly)
+            results = snap_wrapper.singlepoint(model, steplabel,
+                                               snap_calc_params,
+                                               solvent=solvent, charge=charge,
+                                               forces=calc_forces, dipole=calc_dipole,
+                                               continuation=cont, readonly=readonly)
             if calc_forces and calc_dipole:
                 energy, forces, dipole = results
             elif calc_forces and not calc_dipole:
@@ -417,19 +425,19 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
             else:
                 energy, = results
             if stop_stde_thresh is not None:
-                stde = max(stde,committee_stde_per_atom(energy,len(model)))
-            if isinstance(energy,list) or isinstance(energy,np.ndarray):
+                stde = max(stde, committee_stde_per_atom(energy, len(model)))
+            if isinstance(energy, list) or isinstance(energy, np.ndarray):
                 energy = energy[0]
-            if len(all_targets)>1:
-                 print("SP: ",step,i,targ,energy,model.positions[0])
+            if len(all_targets) > 1:
+                 print("SP: ", step, i, targ, energy, model.positions[0])
             outtraj[targ].write(model)
             prev_targ = targ
-            if isinstance(all_targets,dict):
+            if isinstance(all_targets, dict):
                 snap_calc_params['calc_head'] = orig_head
 
         # Check if the run has gone wild and should be aborted
         curr_temp = model.get_temperature()
-        if curr_temp>10*temp:
+        if curr_temp > 10 * temp:
             print(f'# Temperature {curr_temp} K exceeds 10x target ({temp} K), aborting Snapshot MD runs')
             abort = True
             break
@@ -451,7 +459,7 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
         # left under the incomplete name: the caller may restart it
         return 'aborted'
     for targ in all_targets:
-        finish_md_output(seed,targ,traj_label,traj_suffix)
+        finish_md_output(seed, targ, traj_label, traj_suffix)
     if stopped:
         return 'stopped'
     print("# Finished Snapshot MD runs")
@@ -460,17 +468,17 @@ def generate_md_trajectory(model,seed,traj_target,traj_label,traj_suffix,traj_wr
 
 # Helper functions
 
-def cycle_step_labels_and_restarts(seed,traj_label,
-                                   prevdir,currdir,nextdir,
-                                   prevtarg,currtarg,nexttarg,
-                                   prevstep,currstep,nextstep,
-                                   count,prevcount,exts,use_subdirs=False):
+def cycle_step_labels_and_restarts(seed, traj_label,
+                                   prevdir, currdir, nextdir,
+                                   prevtarg, currtarg, nexttarg,
+                                   prevstep, currstep, nextstep,
+                                   count, prevcount, exts, use_subdirs=False):
     """
     Move restart files around so that each step continues from the previous one
     """
 
     # Find name of next restart files
-    if (nextstep==count) and (nextdir is not None): # case for final step of non-final part
+    if (nextstep == count) and (nextdir is not None):  # case for final step of non-final part
         next_steplabel = f"{seed}_{targstr(nexttarg)}_{traj_label}_{nextdir}{0:04}"
         next_dir = f"../{nextdir}/"
         if use_subdirs:
@@ -485,8 +493,8 @@ def cycle_step_labels_and_restarts(seed,traj_label,
         next_file.append(f"{next_dir}{next_steplabel}{ext}")
 
     # Find name of previous step restart files
-    if (currstep==0) and (prevdir != currdir): # case for first step of new non-initial part
-        prev_steplabel = f"{seed}_{targstr(prevtarg)}_{traj_label}_{prevdir}{prevcount-1:04}"
+    if (currstep == 0) and (prevdir != currdir):  # case for first step of new non-initial part
+        prev_steplabel = f"{seed}_{targstr(prevtarg)}_{traj_label}_{prevdir}{prevcount - 1:04}"
         prev_dir = f"../{prevdir}/"
         if use_subdirs:
             prev_dir += "{prev_steplabel}/"
@@ -510,15 +518,15 @@ def cycle_step_labels_and_restarts(seed,traj_label,
 
     # Skip this step if the next one had previously started
     readonly = False
-    if len(next_file)==0:
+    if len(next_file) == 0:
         return curr_steplabel, False, False
-    
+
     if path.isfile(next_file[0]):
         readonly = True
     # On final overall step, assume if there is an output file for the last step then
     # we must have finished
     if ((path.isfile(f"{curr_steplabel}.nwo") or path.isfile(f"{curr_steplabel}.out")) and
-         nextdir==None and currstep==count-1):
+            nextdir == None and currstep == count - 1):
         readonly = True
 
     # If this step has not previously started, copy in restart file
@@ -527,11 +535,11 @@ def cycle_step_labels_and_restarts(seed,traj_label,
     curr_rst_present = path.isfile(curr_file[0])
     next_rst_present = path.isfile(next_file[0])
     if (prev_rst_present and not curr_rst_present):
-        if not path.exists(curr_dir) and len(exts)>0 and curr_dir!="":
+        if not path.exists(curr_dir) and len(exts) > 0 and curr_dir != "":
             makedirs(curr_dir)
-        for i,ext in enumerate(exts):
+        for i, ext in enumerate(exts):
             print(f"Copying from {prev_file[i]} to {curr_file[i]}")
-            shutil.copyfile(prev_file[i],curr_file[i])
+            shutil.copyfile(prev_file[i], curr_file[i])
         cont = True
     elif (prev_rst_present and curr_rst_present and not next_rst_present):
         print(f"Resuming from data in {curr_file[0]}")
@@ -539,10 +547,10 @@ def cycle_step_labels_and_restarts(seed,traj_label,
 
     # Debug printing of whether restart files are present
     if False:
-        print(prevstep,targstr(prevtarg),prev_file[0],prev_rst_present,'cont=',cont)
-        print(currstep,targstr(currtarg),curr_file[0],curr_rst_present,'read=',readonly)
-        print(nextstep,targstr(nexttarg),next_file[0],next_rst_present)
-    #print(step,curr_rst,path.isfile(curr_rst),cont)
+        print(prevstep, targstr(prevtarg), prev_file[0], prev_rst_present, 'cont=', cont)
+        print(currstep, targstr(currtarg), curr_file[0], curr_rst_present, 'read=', readonly)
+        print(nextstep, targstr(nexttarg), next_file[0], next_rst_present)
+    # print(step,curr_rst,path.isfile(curr_rst),cont)
     return curr_steplabel, readonly, cont
 
 
@@ -551,7 +559,7 @@ def cycle_step_labels_and_restarts(seed,traj_label,
 # In[ ]:
 
 
-def find_initial_geometry(seed,geom_opt_func=None,calc_params={},which_traj=None,ntraj=-1):
+def find_initial_geometry(seed, geom_opt_func=None, calc_params={}, which_traj=None, ntraj=-1):
     """
     Obtains a suitable initial geometry for the current seed and state.
     Optimises it if not present.
@@ -569,13 +577,13 @@ def find_initial_geometry(seed,geom_opt_func=None,calc_params={},which_traj=None
     if 'target' in calc_params:
         targ = calc_params['target']
         seed_state_str = f"{seed}_{targstr(targ)}"
-    else: 
+    else:
         seed_state_str = seed
     rand_seed = which_traj
     if 'calc_suffix' in calc_params:
         rand_seed += calc_params['calc_suffix']
 
-    xyzfile_opt = seed_state_str+'.xyz'
+    xyzfile_opt = seed_state_str + '.xyz'
     model_init = None
     curr_dir = getcwd()
 
@@ -586,7 +594,7 @@ def find_initial_geometry(seed,geom_opt_func=None,calc_params={},which_traj=None
             traj = Trajectory(md_init_traj)
             print(f'# MD starting positions trajectory {md_init_traj} found: length {len(traj)}')
             import random
-            if ntraj==len(traj):
+            if ntraj == len(traj):
                 traj_list = get_trajectory_list(ntraj)
                 i = traj_list.index(which_traj)
                 print(f'# MD starting positions taken from snapshot {i} based on traj index {i} of {ntraj}==length')
@@ -607,7 +615,7 @@ def find_initial_geometry(seed,geom_opt_func=None,calc_params={},which_traj=None
             optimised = True
         except:
             print(f"# Optimised geometry not found, no file: {curr_dir}/{xyzfile_opt}")
-            xyzfile_unopt = seed+'.xyz'
+            xyzfile_unopt = seed + '.xyz'
             print(f"# Reading geometry from file: {curr_dir}/{xyzfile_unopt}")
             model_init = read(xyzfile_unopt)
             optimised = False
@@ -616,19 +624,19 @@ def find_initial_geometry(seed,geom_opt_func=None,calc_params={},which_traj=None
     # Relax to find optimized geometry for this state if not already done
     model = model_init.copy()
     if not optimised and geom_opt_func is not None:
-        print("# Optimising geometry for "+seed)
-        energy, forces, positions = geom_opt_func(model,seed,calc_params,'default')
-        write(xyzfile_opt,model)
-    
+        print("# Optimising geometry for " + seed)
+        energy, forces, positions = geom_opt_func(model, seed, calc_params, 'default')
+        write(xyzfile_opt, model)
+
     return model
 
 
-def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input_suffix,
-                           wrapper,calc_params,input_traj_range=None,input_traj_label=None,
-                           output_traj_offset=0,charge=0,solvent=None,
-                           calc_forces=True,calc_dipole=True,
-                           geom_opt_kernel=False,vibfreq_kernel=False,
-                           skip_failed=False,max_frames=None):
+def recalculate_trajectory(seed, target, traj_label, traj_suffix, input_target, input_suffix,
+                           wrapper, calc_params, input_traj_range=None, input_traj_label=None,
+                           output_traj_offset=0, charge=0, solvent=None,
+                           calc_forces=True, calc_dipole=True,
+                           geom_opt_kernel=False, vibfreq_kernel=False,
+                           skip_failed=False, max_frames=None):
     """
     Loads snapshots from a trajectory and recalculates the energy and forces with the current settings
     seed: str
@@ -643,7 +651,7 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
     max_frames: int or None
         If set, stop once this many frames have been written to the output trajectory
     """
-    
+
     if False:
         db_ext = '.db'
     else:
@@ -654,37 +662,37 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
         input_traj_label = traj_label
     input_traj = f"{seed}_{targstr(input_target)}_{input_traj_label}_{input_suffix}.traj"
     if not path.isfile(input_traj):
-        raise Exception("Input trajectory not found: ",input_traj)
+        raise Exception("Input trajectory not found: ", input_traj)
     print(f"# Reading from input trajectory {input_traj} {input_traj_range}")
     intraj = Trajectory(input_traj)
 
-    if isinstance(target,list):
+    if isinstance(target, list):
         all_targets = target
-    elif isinstance(target,dict):
+    elif isinstance(target, dict):
         all_targets = list(target.keys())
     else:
         all_targets = [target]
     if input_traj_range is None:
-        input_traj_range = range(0,len(intraj))
+        input_traj_range = range(0, len(intraj))
 
     # Before assembling a whole trajectory from QM output files, check every frame needed has been run,
     # so nothing is overwritten if the calculations are incomplete. With max_frames (spare frames),
     # frames are needed in order until max_frames are complete or not yet run: failed ones are replaced
-    if (len(input_traj_range) > 1 and hasattr(wrapper,'get_completed_file_exts')
-            and not (geom_opt_kernel or vibfreq_kernel) and not isinstance(target,dict)):
+    if (len(input_traj_range) > 1 and hasattr(wrapper, 'get_completed_file_exts')
+            and not (geom_opt_kernel or vibfreq_kernel) and not isinstance(target, dict)):
         exts = wrapper.get_completed_file_exts()
         # label of the first calculation for each frame (all targets at once, if the wrapper does that)
-        label_targ = all_targets if hasattr(wrapper,'load') else all_targets[0]
+        label_targ = all_targets if hasattr(wrapper, 'load') else all_targets[0]
         not_run = []
         ncounted = 0
         for i in input_traj_range:
             if max_frames is not None and ncounted >= max_frames:
                 break
-            label = path.join(traj_suffix,f"{seed}_{targstr(label_targ)}_{traj_label}_{traj_suffix}{i+output_traj_offset:04}")
-            if not path.isfile(label+exts[0]):
-                not_run.append(i+output_traj_offset)
+            label = path.join(traj_suffix, f"{seed}_{targstr(label_targ)}_{traj_label}_{traj_suffix}{i + output_traj_offset:04}")
+            if not path.isfile(label + exts[0]):
+                not_run.append(i + output_traj_offset)
                 ncounted += 1
-            elif all(path.isfile(label+ext) for ext in exts):
+            elif all(path.isfile(label + ext) for ext in exts):
                 ncounted += 1
             # otherwise the calculation failed: with spares, the next frame is needed instead
         if not_run:
@@ -695,8 +703,8 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
     for targ in all_targets:
         # Check if output trajectory already exists
         output_traj = f"{seed}_{targstr(targ)}_{traj_label}_{traj_suffix}.traj"
-        if output_traj_offset>0 or (len(input_traj_range)==1 and output_traj_offset==0):
-            if targ==all_targets[0]:
+        if output_traj_offset > 0 or (len(input_traj_range) == 1 and output_traj_offset == 0):
+            if targ == all_targets[0]:
                 print(f"# Not writing to output trajectory as range is subset of trajectory.")
                 print(f"# Post-process to combine whole trajectory.")
             outtraj[targ] = None
@@ -707,12 +715,12 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
                 remove(output_traj)
             except:
                 print('# Unable to remove {output_traj} - mid-air collision between jobs? Continuing')
-            outtraj[targ] = Trajectory(output_traj,"w")
+            outtraj[targ] = Trajectory(output_traj, "w")
         else:
             # Create new file for output trajectory
             print(f"# Opening output trajectory {output_traj} for writing")
-            outtraj[targ] = Trajectory(output_traj,"w")
-    
+            outtraj[targ] = Trajectory(output_traj, "w")
+
     # Create directory for output files and change to it
     wdir = traj_suffix
     origdir = getcwd()
@@ -722,11 +730,11 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
         except FileExistsError:
             print(f"# Possible mid-air collision between jobs - directory {wdir} exists")
     chdir(wdir)
-    
+
     # If we are running a wrapper that calculates all targets at once, set all_targets appropriately
-    if hasattr(wrapper,'load'): # temporary way of detecting ML calculators - should be improved
-        if isinstance(all_targets,list) and not (geom_opt_kernel or vibfreq_kernel):
-            all_targets = [all_targets] # add a second list around it so we just pass it in once
+    if hasattr(wrapper, 'load'):  # temporary way of detecting ML calculators - should be improved
+        if isinstance(all_targets, list) and not (geom_opt_kernel or vibfreq_kernel):
+            all_targets = [all_targets]  # add a second list around it so we just pass it in once
 
     # Loop over and recalculate each trajectory point
     skipped = []
@@ -741,49 +749,49 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
         cont = False
         prevtarg = None
         frame_failed = False
-        for itarg,targ in enumerate(all_targets):
+        for itarg, targ in enumerate(all_targets):
             label = f"{seed}_{targstr(targ)}_{traj_label}_{traj_suffix}{iout:04}"
             # If output files already exist, read them
-            readonly = check_completed_and_cleanup(label,wrapper,input_traj_range)
+            readonly = check_completed_and_cleanup(label, wrapper, input_traj_range)
             energy = None
             forces = None
             if cont and not readonly:
-                cycle_restarts(seed,traj_label,traj_suffix,prevtarg,targ,iout,iout,db_ext)
-            if isinstance(all_targets,dict):
+                cycle_restarts(seed, traj_label, traj_suffix, prevtarg, targ, iout, iout, db_ext)
+            if isinstance(all_targets, dict):
                 calc_params['calc_head'] = all_targets[targ]
                 # Ensure calculator results are not cached from previous head
                 if frame.calc is not None:
                     frame.calc.atoms = None
             else:
-                calc_params['target'] = [t for t in targ if not isinstance(t,str)] # remove diffs if present
+                calc_params['target'] = [t for t in targ if not isinstance(t, str)]  # remove diffs if present
             if geom_opt_kernel or vibfreq_kernel:
                 from ase.constraints import FixAtoms
-                c = FixAtoms(mask=[atom.tag!=1 for atom in frame])
+                c = FixAtoms(mask=[atom.tag != 1 for atom in frame])
                 frame.set_constraint(c)
             if geom_opt_kernel:
-                results = wrapper.geom_opt(frame,label,calc_params,
-                                        solvent=solvent,charge=charge,
-                                        continuation=cont,
-                                        readonly=readonly)
+                results = wrapper.geom_opt(frame, label, calc_params,
+                                           solvent=solvent, charge=charge,
+                                           continuation=cont,
+                                           readonly=readonly)
                 energy, forces, pos = results
                 dip = frame.calc.results['dipole']
             if vibfreq_kernel:
-                ir = wrapper.freq(frame,label,calc_params,
-                                  solvent=solvent,charge=charge,
-                                  continuation=cont,readonly=readonly,summary=True)
-                #print('getting freqs')
+                ir = wrapper.freq(frame, label, calc_params,
+                                  solvent=solvent, charge=charge,
+                                  continuation=cont, readonly=readonly, summary=True)
+                # print('getting freqs')
                 freqs = ir.get_frequencies()
                 modes = ir.modes
                 intensities = ir.intensities
                 ir.clean()
             # Try to run or read the energy, forces and dipole for this frame
             try:
-                calc_excitations = isinstance(targ,list)
-                results = wrapper.singlepoint(frame,label,calc_params,
-                                              solvent=solvent,charge=charge,
-                                              forces=calc_forces,dipole=calc_dipole,
+                calc_excitations = isinstance(targ, list)
+                results = wrapper.singlepoint(frame, label, calc_params,
+                                              solvent=solvent, charge=charge,
+                                              forces=calc_forces, dipole=calc_dipole,
                                               excitations=calc_excitations,
-                                              continuation=cont,readonly=readonly)
+                                              continuation=cont, readonly=readonly)
                 if calc_forces and calc_dipole and calc_excitations:
                     energy, forces, dipole, exc = results
                 elif calc_forces and calc_dipole and not calc_excitations:
@@ -792,7 +800,7 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
                     energy, forces = results
                 else:
                     energy = results
-                if len(frame) != len(forces) and not(hasattr(energy,"__len__")):
+                if len(frame) != len(forces) and not (hasattr(energy, "__len__")):
                     print(f'# ERROR: length of frame {i} ({len(frame)}) does not match length of forces array ({len(forces)})')
                     raise Exception('Length matching failure')
             except KeyboardInterrupt:
@@ -802,9 +810,9 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
                 # Any other error should be logged as a FAIL and zeros logged.
                 energy = 0.0
                 dipole = np.zeros(3)
-                forces = np.zeros([len(frame),3])
+                forces = np.zeros([len(frame), 3])
                 print(e)
-                print('FAIL: ',label+'.out',iout,targ,len(frame))
+                print('FAIL: ', label + '.out', iout, targ, len(frame))
                 # Only skip if nothing has been written for this frame yet, so the
                 # output trajectories for each target stay in step
                 if skip_failed and itarg == 0:
@@ -818,27 +826,28 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
                 print(f'# Skipping frame {iout}: its calculation failed')
                 skipped.append(iout)
                 break
-            cont = True # After first excitation, assume subsequently can restart
+            cont = True  # After first excitation, assume subsequently can restart
             prevtarg = targ
             # Prepare formatted strings for positions, forces and dipole
-            formatted_output(iout,targ,len(frame),frame.positions,energy,forces,dipole,calc_forces,calc_dipole)
+            formatted_output(iout, targ, len(frame), frame.positions, energy, forces, dipole, calc_forces, calc_dipole)
             # Supply keyword dipole explicitly to ensure it gets written or fails
-            num_states = len([t for t in targ if not isinstance(t,str)])
-            if isinstance(targ,list):
-                for it,tg in enumerate(targ):
+            num_states = len([t for t in targ if not isinstance(t, str)])
+            if isinstance(targ, list):
+                for it, tg in enumerate(targ):
                     if outtraj[tg] is not None:
                         len_en = len(energy)
-                        len_en_targ = int(len_en/num_states)
+                        len_en_targ = int(len_en / num_states)
                         # Index (rather than slice) when there is one value per state (eg QM),
                         # so the frames written have scalar energies and (nat,3) forces
+
                         def state_idx(istate):
                             if len_en_targ == 1:
                                 return istate
-                            return slice(istate*len_en_targ,(istate+1)*len_en_targ)
+                            return slice(istate * len_en_targ, (istate + 1) * len_en_targ)
                         frame_targ = frame.copy()
                         frame_targ.calc = frame.calc
                         if type(tg) is str and 'diff' in tg:
-                            it1 = int(tg[4]) # currently supports only diffXY where X is one digit
+                            it1 = int(tg[4])  # currently supports only diffXY where X is one digit
                             it2 = int(tg[5:])
                             s1 = state_idx(it1)
                             s2 = state_idx(it2)
@@ -851,7 +860,7 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
                             frame_targ.calc.results["energy"] = energy[s]
                             frame_targ.calc.results["forces"] = forces[s]
                             frame_targ.calc.results["dipole"] = dipole[s]
-                        #if (it>0):
+                        # if (it>0):
                         #    frame_targ.calc.results["trans_dip"] = exc[i0:i1][0][f"S0_S{it}"][1]
                         outtraj[tg].write(frame_targ)
             else:
@@ -861,9 +870,9 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
                         frame.info['freqs'] = freqs
                         frame.info['modes'] = modes
                         frame.info['intensities'] = intensities
-                    if isinstance(frame.calc,list):
+                    if isinstance(frame.calc, list):
                         frame.calc = frame.calc[-1]
-                    if True: #if success:
+                    if True:  # if success:
                         outtraj[targ].write(frame)
         if not frame_failed:
             nwritten += 1
@@ -875,61 +884,63 @@ def recalculate_trajectory(seed,target,traj_label,traj_suffix,input_target,input
     # Return to base directory
     chdir(origdir)
     # Close trajectories
-    if isinstance(targ,list):
-        all_targets = all_targets[0] # undo embedding in outer list
+    if isinstance(targ, list):
+        all_targets = all_targets[0]  # undo embedding in outer list
     for targ in all_targets:
         if outtraj[targ] is not None:
             outtraj[targ].close()
 
-def formatted_output(iout,targ,natoms,pos,energy,forces,dipole,calc_forces,calc_dipole):
-    pos_str = f'[ {pos[0,0]:10.6f} {pos[0,1]:10.6f} {pos[0,2]:10.6f} ]'
+
+def formatted_output(iout, targ, natoms, pos, energy, forces, dipole, calc_forces, calc_dipole):
+    pos_str = f'[ {pos[0, 0]:10.6f} {pos[0, 1]:10.6f} {pos[0, 2]:10.6f} ]'
     if calc_forces:
-        if not isinstance(targ,list):
-            if forces.ndim==3:
-                forces = np.mean(forces,axis=0)
-            force_str = f'[ {forces[0,0]:12.9f} {forces[0,1]:12.9f} {forces[0,2]:12.9f} ]'
+        if not isinstance(targ, list):
+            if forces.ndim == 3:
+                forces = np.mean(forces, axis=0)
+            force_str = f'[ {forces[0, 0]:12.9f} {forces[0, 1]:12.9f} {forces[0, 2]:12.9f} ]'
         else:
             force_str = ''
-            for itarg,tg in enumerate(targ):
+            for itarg, tg in enumerate(targ):
                 if type(tg) is str and 'diff' in tg:
                     continue
-                force_str += f'[ {forces[itarg,0,0]:6.3f} {forces[itarg,0,1]:6.3f} {forces[itarg,0,2]:6.3f} ]'
+                force_str += f'[ {forces[itarg, 0, 0]:6.3f} {forces[itarg, 0, 1]:6.3f} {forces[itarg, 0, 2]:6.3f} ]'
     else:
         force_str = ''
     if calc_dipole:
-        if not isinstance(targ,list):
-            if dipole.ndim==3:
-                dipole = np.mean(dipole,axis=0)[0]
-            elif dipole.ndim==2 and dipole.shape[-1]==3:
-                dipole = np.mean(dipole,axis=0)
+        if not isinstance(targ, list):
+            if dipole.ndim == 3:
+                dipole = np.mean(dipole, axis=0)[0]
+            elif dipole.ndim == 2 and dipole.shape[-1] == 3:
+                dipole = np.mean(dipole, axis=0)
             dip_str = f'[ {dipole[0]:10.6f} {dipole[1]:10.6f} {dipole[2]:10.6f} ]'
         else:
             dip_str = ''
-            for itarg,tg in enumerate(targ):
+            for itarg, tg in enumerate(targ):
                 if type(tg) is str and 'diff' in tg:
                     continue
-                dip_str += f'[ {dipole[itarg,0]:6.3f} {dipole[itarg,1]:6.3f} {dipole[itarg,2]:6.3f} ]'
-    if isinstance(targ,list):
+                dip_str += f'[ {dipole[itarg, 0]:6.3f} {dipole[itarg, 1]:6.3f} {dipole[itarg, 2]:6.3f} ]'
+    if isinstance(targ, list):
         energy_str = ''
-        for itarg,tg in enumerate(targ):
+        for itarg, tg in enumerate(targ):
             if type(tg) is str and 'diff' in tg:
                 continue
             energy_str += f'{energy[itarg]:18.8f}'
     else:
-        if isinstance(energy,np.ndarray):
+        if isinstance(energy, np.ndarray):
             energy = np.mean(energy)
         energy_str = f'{energy:18.8f}'
     freq_str = ''
     # Write line to stdout
-    targstr = 'D' if targ=="diff" else targ
+    targstr = 'D' if targ == "diff" else targ
     print(f'{iout:04} {targstr} {energy_str} {natoms:5} {pos_str} {force_str} {dip_str}')
     return
 
-def check_completed_and_cleanup(label,wrapper,input_traj_range):
+
+def check_completed_and_cleanup(label, wrapper, input_traj_range):
     # Default to readonly for multiple-frame trajectories
-    readonly = len(input_traj_range)!=1
-    if hasattr(wrapper,'get_completed_file_exts'):
-        completed_files = [path.isfile(label+f) for f in wrapper.get_completed_file_exts()]
+    readonly = len(input_traj_range) != 1
+    if hasattr(wrapper, 'get_completed_file_exts'):
+        completed_files = [path.isfile(label + f) for f in wrapper.get_completed_file_exts()]
     else:
         completed_files = [False]
     if all(completed_files):
@@ -947,14 +958,15 @@ def check_completed_and_cleanup(label,wrapper,input_traj_range):
             print(f'# Not found: {main_outfile}')
     return readonly
 
-def cycle_restarts(seed,traj_label,traj_suffix,prevtarg,currtarg,prevstep,currstep,db_ext):
+
+def cycle_restarts(seed, traj_label, traj_suffix, prevtarg, currtarg, prevstep, currstep, db_ext):
     """
     Move db files around so that each step continues from the previous one
     """
 
     # Find name of previous step file
     prev_steplabel = f"{seed}_{targstr(prevtarg)}_{traj_label}_{traj_suffix}{prevstep:04}"
-    prev_dir = f"{prev_steplabel}/"  if False else ""
+    prev_dir = f"{prev_steplabel}/" if False else ""
     prev_db = f"{prev_dir}{prev_steplabel}{db_ext}"
 
     # Find name of current step restart file
@@ -966,10 +978,10 @@ def cycle_restarts(seed,traj_label,traj_suffix,prevtarg,currtarg,prevstep,currst
     prev_db_present = path.isfile(prev_db)
     curr_db_present = path.isfile(curr_db)
     if (prev_db_present and not curr_db_present):
-        if curr_dir!="" and not path.exists(curr_dir) and db_ext is not None:
+        if curr_dir != "" and not path.exists(curr_dir) and db_ext is not None:
             makedirs(curr_dir)
         print(f"# Copying from {prev_db} to {curr_db}")
-        shutil.copyfile(prev_db,curr_db)
+        shutil.copyfile(prev_db, curr_db)
 
 
 # # Other tools to manage trajectories
@@ -982,14 +994,16 @@ def get_trajectory_list(ntraj):
     """
     import itertools, string
     extras = []
-    if ntraj>26*27:
+    if ntraj > 26 * 27:
         raise Exception('get_trajectory_list cannot yet handle more than 26*27 trajectories')
-    if ntraj>26:
-        extras = [''.join(i) for i in list(itertools.product(string.ascii_uppercase,string.ascii_uppercase))]
-    return (list(string.ascii_uppercase)+extras)[0:ntraj]
+    if ntraj > 26:
+        extras = [''.join(i) for i in list(itertools.product(string.ascii_uppercase, string.ascii_uppercase))]
+    return (list(string.ascii_uppercase) + extras)[0:ntraj]
 
 # Merge trajectories (if generated separately)
-def merge_traj(trajnames,trajfile,trajfile_valid=None,valid_fraction=0.0,split_seed=123,split_seed_dict={}):
+
+
+def merge_traj(trajnames, trajfile, trajfile_valid=None, valid_fraction=0.0, split_seed=123, split_seed_dict={}):
     """
     Merges a list of trajectories supplied as a list of filenames,
     and writes the result to another trajectory supplied as a filename
@@ -998,11 +1012,11 @@ def merge_traj(trajnames,trajfile,trajfile_valid=None,valid_fraction=0.0,split_s
 
     assert 0.0 <= valid_fraction < 1.0
 
-    fulltraj = Trajectory(trajfile,'w')
+    fulltraj = Trajectory(trajfile, 'w')
     if trajfile_valid is not None:
-        fulltraj_valid = Trajectory(trajfile_valid,'w')
+        fulltraj_valid = Trajectory(trajfile_valid, 'w')
 
-    for itraj,tr in enumerate(trajnames):
+    for itraj, tr in enumerate(trajnames):
         read_traj = Trajectory(tr)
         size = len(read_traj)
         indices = list(range(size))
@@ -1026,103 +1040,109 @@ def merge_traj(trajnames,trajfile,trajfile_valid=None,valid_fraction=0.0,split_s
             fulltraj.write(read_traj[i])
         for i in indices[train_size:]:
             fulltraj_valid.write(read_traj[i])
-    print("# Merged ",len(fulltraj)," frames: trajectory written to ",trajfile)
+    print("# Merged ", len(fulltraj), " frames: trajectory written to ", trajfile)
     fulltraj.close()
     if trajfile_valid is not None:
-        print("# Merged ",len(fulltraj_valid)," frames: trajectory written to ",trajfile_valid)
+        print("# Merged ", len(fulltraj_valid), " frames: trajectory written to ", trajfile_valid)
         fulltraj_valid.close()
 
-def diff_traj(gstrajfile,es1trajfile,outtrajfile):
+
+def diff_traj(gstrajfile, es1trajfile, outtrajfile):
     """
     Takes two trajectory filenames and finds the energy and force difference between
     them, outputting the result to a trajectory name outtrajfile
     """
-    outtraj = Trajectory(outtrajfile,'w')
+    outtraj = Trajectory(outtrajfile, 'w')
     gstraj = Trajectory(gstrajfile)
     es1traj = Trajectory(es1trajfile)
-    assert(len(gstraj)==len(es1traj))
+    assert (len(gstraj) == len(es1traj))
 
     for i in range(len(gstraj)):
-        deltaE = es1traj[i].get_potential_energy()-gstraj[i].get_potential_energy()
+        deltaE = es1traj[i].get_potential_energy() - gstraj[i].get_potential_energy()
         deltaF = es1traj[i].get_forces() - gstraj[i].get_forces()
         deltad = es1traj[i].get_dipole_moment() - gstraj[i].get_dipole_moment()
-        outtraj.write(gstraj[i], energy = deltaE, forces = deltaF, dipole=deltad)
+        outtraj.write(gstraj[i], energy=deltaE, forces=deltaF, dipole=deltad)
 
-    print("# Took difference of energy, forces and dipoles. ",len(outtraj)," frames: trajectory written to ",outtrajfile)
+    print("# Took difference of energy, forces and dipoles. ", len(outtraj), " frames: trajectory written to ", outtrajfile)
     outtraj.close()
 
 
-def split_traj(input_traj_file,output_trajs=None,ntrajs=None,randomise=False,start=0,end=-1):
+def split_traj(input_traj_file, output_trajs=None, ntrajs=None, randomise=False, start=0, end=-1):
     """
     Takes in a trajectory filename, and splits it into sections, randomly or sequentially
     """
     import numpy as np
     if output_trajs is not None:
         if ntrajs is not None:
-            if ntrajs!=len(output_trajs):
+            if ntrajs != len(output_trajs):
                 raise Exception('Contradictory inputs to split_traj')
         else:
             ntrajs = len(output_trajs)
     if ntrajs is None and output_trajs is None:
         raise Exception('No outputs specified')
-    
+
     if output_trajs is None:
-        output_trajs = [input_traj_file.replace('.traj','_')+str(i)+'.traj' for i in range(ntrajs)]
-    
+        output_trajs = [input_traj_file.replace('.traj', '_') + str(i) + '.traj' for i in range(ntrajs)]
+
     intraj = Trajectory(input_traj_file)
-    outtraj = [Trajectory(output_trajs[i],"w") for i in range(ntrajs)]
+    outtraj = [Trajectory(output_trajs[i], "w") for i in range(ntrajs)]
     total = len(intraj)
     if end > total:
         raise Exception(f'In split_traj, end was {end}, but trajectory was only size {total}')
-    if end<0:
-        end = max(total - end - 1,0)
-    start = max(start,0)
-    total = end-start
+    if end < 0:
+        end = max(total - end - 1, 0)
+    start = max(start, 0)
+    total = end - start
     if randomise:
         order = np.random.permutation(total)
-    for j in range(start,end):
-        k = int((j-start)*ntrajs/total)
+    for j in range(start, end):
+        k = int((j - start) * ntrajs / total)
         jp = j
         if randomise:
             jp = order[j]
-        print(end,start,j,k)
+        print(end, start, j, k)
         outtraj[k].write(intraj[j])
     for i in range(ntrajs):
         outtraj[i].close()
-    
+
+
 def atom_energies(atom_traj):
     e_at = {}
     for t in atom_traj:
-        if (len(t)>1):
+        if (len(t) > 1):
             raise Exception(f'This is not a trajectory of single-atom frames: len(t)={len(t)}')
         at = t[0]
         j = at.symbol
         e_at[j] = t.get_potential_energy()
     return e_at
-    
-def atom_energy(atoms,e_at):
+
+
+def atom_energy(atoms, e_at):
     e = 0
     for at in atoms.get_chemical_symbols():
         e = e + e_at[at]
     return e
 
-def subtract_atom_energies_from_traj(traj,atom_traj,trajout):
+
+def subtract_atom_energies_from_traj(traj, atom_traj, trajout):
     """
     Subtracts the energies associated with isolated atoms from the total energies
     in a trajectory
     """
     e_at = atom_energies(atom_traj)
-    for i,t in enumerate(traj):
+    for i, t in enumerate(traj):
         try:
             e_raw = t.get_potential_energy()
         except Exception as e:
             print(f'Error while subtracting atoms energies for frame {i}:')
             raise e
-        t.calc.results["energy"] = e_raw - atom_energy(t,e_at)        
+        t.calc.results["energy"] = e_raw - atom_energy(t, e_at)
         trajout.write(t)
 
 # Scatter Plot
-def plot_diff(e_x,e_y,rms_fd,xlabel=None,ylabel=None,clabel=None,stats={},plot_file='show',align_axes=True):
+
+
+def plot_diff(e_x, e_y, rms_fd, xlabel=None, ylabel=None, clabel=None, stats={}, plot_file='show', align_axes=True):
 
     from matplotlib import pyplot
     from json import dump
@@ -1134,7 +1154,7 @@ def plot_diff(e_x,e_y,rms_fd,xlabel=None,ylabel=None,clabel=None,stats={},plot_f
     # Set up
     fig, ax = pyplot.subplots()
     # Plot data
-    im = ax.scatter(e_x,e_y,c=rms_fd)
+    im = ax.scatter(e_x, e_y, c=rms_fd)
     cb = fig.colorbar(im)
     cb.set_label(clabel)
     # Plot y=x for comparison
@@ -1142,33 +1162,35 @@ def plot_diff(e_x,e_y,rms_fd,xlabel=None,ylabel=None,clabel=None,stats={},plot_f
         lims = [float(np.min([ax.get_xlim(), ax.get_ylim()])),
                 float(np.max([ax.get_xlim(), ax.get_ylim()]))]
         cblims = cb.mappable.get_clim()
-        if plot_file!='show':
-            data_file = plot_file.replace('.png','.data.gz')
+        if plot_file != 'show':
+            data_file = plot_file.replace('.png', '.data.gz')
             print(f'# Dumping plot data to {data_file}')
-            np.savetxt(data_file,np.stack((e_x,e_y,rms_fd),axis=-1))
-            lims_dict = {'xlims': lims,'ylims': lims, 'cblims': cblims}
-            plot_file_json = plot_file.replace('.png','.lims.json')
+            np.savetxt(data_file, np.stack((e_x, e_y, rms_fd), axis=-1))
+            lims_dict = {'xlims': lims, 'ylims': lims, 'cblims': cblims}
+            plot_file_json = plot_file.replace('.png', '.lims.json')
             print(f'# Dumping limits {lims_dict} to {plot_file_json}')
-            dump(lims_dict,open(plot_file_json,"w"),indent=2)
-            plot_file_stats = plot_file.replace('.png','.stats.json')
+            dump(lims_dict, open(plot_file_json, "w"), indent=2)
+            plot_file_stats = plot_file.replace('.png', '.stats.json')
             stats = {k: float(v) for k, v in stats.items()}
             print(f'# Dumping stats {stats} to {plot_file_stats}')
-            dump(stats,open(plot_file_stats,"w"),indent=2)
+            dump(stats, open(plot_file_stats, "w"), indent=2)
         ax.plot(lims, lims, 'k-', alpha=0.75, zorder=0)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-    stat_str=""
+    stat_str = ""
     for s in stats:
         stat_str += f'{s}: {stats[s]:10.4f}\n'
-    ax.text(0.02,0.98,stat_str,transform=ax.transAxes,
-            horizontalalignment='left',verticalalignment='top',)
-    if plot_file=='show':
+    ax.text(0.02, 0.98, stat_str, transform=ax.transAxes,
+            horizontalalignment='left', verticalalignment='top',)
+    if plot_file == 'show':
         fig.show()
     else:
         fig.savefig(plot_file)
 
 # Compare two trajectories and plot the difference
-def compare_traj_to_traj(trajx,trajy,plot_func=plot_diff,plot_file=None,xlabel=None,ylabel=None,clabel=None):
+
+
+def compare_traj_to_traj(trajx, trajy, plot_func=plot_diff, plot_file=None, xlabel=None, ylabel=None, clabel=None):
     """
     Compares two trajectories to each other and calculates statistics for how much they differ in energy and force
     
@@ -1193,59 +1215,59 @@ def compare_traj_to_traj(trajx,trajy,plot_func=plot_diff,plot_file=None,xlabel=N
     mae_fd = []
     max_fd = []
     nat = []
-    
+
     if plot_func is None:
         plot_func = plot_diff
-    
-    for i,framex in enumerate(trajx):
-        
+
+    for i, framex in enumerate(trajx):
+
         # Read in total energy and forces from trajectories
         # (reshape copes with reference data written with a leading length-1 state axis)
-        e_x.append(np.reshape(framex.get_potential_energy(),()))
-        f_x.append(np.reshape(framex.get_forces(),(len(framex),3)))
-        d_x.append(np.reshape(framex.get_dipole_moment(),(3,)))
+        e_x.append(np.reshape(framex.get_potential_energy(), ()))
+        f_x.append(np.reshape(framex.get_forces(), (len(framex), 3)))
+        d_x.append(np.reshape(framex.get_dipole_moment(), (3,)))
         framey = trajy[i]
         e_y.append(framey.get_potential_energy())
         f_y.append(framey.get_forces())
         new_d = framey.get_dipole_moment()
-        if new_d.shape==(1,3):
+        if new_d.shape == (1, 3):
             new_d = new_d[0]
         d_y.append(new_d)
         nat.append(len(framex))
 
         # Calculate RMS and Max force errors
-        rms_fd.append(np.sqrt(np.mean((f_x[-1]-f_y[-1])**2)))
-        mae_fd.append(np.mean(np.abs(f_x[-1]-f_y[-1])))
-        max_fd.append(np.max(np.sqrt((f_x[-1]-f_y[-1])**2)))
+        rms_fd.append(np.sqrt(np.mean((f_x[-1] - f_y[-1])**2)))
+        mae_fd.append(np.mean(np.abs(f_x[-1] - f_y[-1])))
+        max_fd.append(np.max(np.sqrt((f_x[-1] - f_y[-1])**2)))
 
     # Calculate Root Mean Square energy error
     e_x = np.array(e_x); e_y = np.array(e_y); nat = np.array(nat)
-    if e_y.ndim==2:
-        mean_e_y = np.mean(e_y,axis=1)
-        std_e_y = np.std(e_y,axis=1)
+    if e_y.ndim == 2:
+        mean_e_y = np.mean(e_y, axis=1)
+        std_e_y = np.std(e_y, axis=1)
     else:
         mean_e_y = e_y
         std_e_y = np.zeros_like(e_y)
     diff = e_x - mean_e_y
-    rms_e_err = np.sqrt((1./len(diff))*np.sum(diff**2))
+    rms_e_err = np.sqrt((1. / len(diff)) * np.sum(diff**2))
     mae_e_err = np.mean(np.abs(diff))
     max_e_err = np.max(np.abs(diff))
     print(f"# MAE_dE,RMS_dE,MAX_dE {mae_e_err:16.8f} {rms_e_err:16.8f} {max_e_err:16.8f}")
 
     # Calculate Root Mean Square of RMS force difference
     rms_fd = np.array(rms_fd)
-    rms_fd_err = np.sqrt((1./len(rms_fd))*np.sum(rms_fd**2))
+    rms_fd_err = np.sqrt((1. / len(rms_fd)) * np.sum(rms_fd**2))
     mae_fd_err = np.mean(mae_fd)
     max_fd_err = np.max(np.abs(rms_fd))
     print(f"# MAE_dF,RMS_dF,MAX_dF {mae_fd_err:16.8f} {rms_fd_err:16.8f} {max_fd_err:16.8f}")
 
     # Calculate Root Mean Square of and MAE of dipole difference
-    diff = np.array(d_x)-np.array(d_y)
-    rms_d_err = np.sqrt(np.sum((1./len(diff))*(np.sum(diff**2,axis=1))))
-    mae_d_err = np.mean(np.sqrt(np.sum(diff**2,axis=1)))
-    max_d_err = np.max(np.sqrt(np.sum(diff**2,axis=1)))
+    diff = np.array(d_x) - np.array(d_y)
+    rms_d_err = np.sqrt(np.sum((1. / len(diff)) * (np.sum(diff**2, axis=1))))
+    mae_d_err = np.mean(np.sqrt(np.sum(diff**2, axis=1)))
+    max_d_err = np.max(np.sqrt(np.sum(diff**2, axis=1)))
     print(f"# MAE_dd,RMS_dd,MAX_dd {mae_d_err:16.8f} {rms_d_err:16.8f} {max_d_err:16.8f}")
-    
+
     # Calculate Mean number of atoms
     mean_nat = np.mean(nat)
     print(f"# Mean Number of atoms: {mean_nat:10.4f}")
@@ -1260,7 +1282,6 @@ def compare_traj_to_traj(trajx,trajy,plot_func=plot_diff,plot_file=None,xlabel=N
              "MAX dF (eV/A)": max_fd_err,
              "MAX dd (e.A) ": max_d_err,
              "Mean No.atoms": mean_nat}
-    plot_func(e_x,mean_e_y,rms_fd,xlabel,ylabel,clabel,stats,plot_file)
+    plot_func(e_x, mean_e_y, rms_fd, xlabel, ylabel, clabel, stats, plot_file)
 
-    return rms_e_err,max_e_err,rms_fd_err,max_fd_err,e_x,e_y,rms_fd
-
+    return rms_e_err, max_e_err, rms_fd_err, max_fd_err, e_x, e_y, rms_fd
