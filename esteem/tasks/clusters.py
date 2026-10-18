@@ -96,7 +96,8 @@ class ClustersTask:
                 calc_params = self.calc_params
 
         # implicit solvent name defaults to solvent name but should usually be specified separately
-        if self.impsolv is None:
+        # ('gas' is the placeholder for no solvent: no implicit solvent model)
+        if self.impsolv is None and self.solvent != "gas":
             self.impsolv = self.solvent
         # Determine charge on molecule (TODO: spin)
         charge = 0
@@ -326,6 +327,7 @@ class ClustersTask:
             # If we are processing whole trajectory, do sanity checking of result now
             if self.task_id is None and self.ref_mol_dir is not None:
                 ref_solu, ref_solv = get_solu_solv_names(seed)
+                ref_solv_str = ref_solv if ref_solv is not None else "gas"
                 for targ in target:
                     if targ==0:
                         ref_solu_t = ref_solu
@@ -335,11 +337,11 @@ class ClustersTask:
                         continue
                     ref_mol_dir = self.ref_mol_dir
                     ref_mol_dir = ref_mol_dir.replace("{target}",targstr(targ))
-                    ref_mol_dir = ref_mol_dir.replace("{ref_solv}",ref_solv)
+                    ref_mol_dir = ref_mol_dir.replace("{ref_solv}",ref_solv_str)
                     ref_solu_dir = f'../{ref_mol_dir}'
                     ref_mol_dir = self.ref_mol_dir
                     ref_mol_dir = ref_mol_dir.replace("{target}","gs")
-                    ref_mol_dir = ref_mol_dir.replace("{ref_solv}",ref_solv)
+                    ref_mol_dir = ref_mol_dir.replace("{ref_solv}",ref_solv_str)
                     ref_solv_dir = f'../{ref_mol_dir}'
                     if isinstance(calc_params['target'],dict):
                         calc_params['calc_head'] = calc_params['target'][targ]
@@ -1119,20 +1121,25 @@ def sanity_check(trajname='', wrapper=None, calc_params = {},
     print(f'\n# Sanity checking results in {trajname}')
 
     # Read in Reference E, f, p
-    ref_mol_xyz = f'{ref_solu_dir}/is_opt_{ref_solv}/{ref_solu}.xyz'
+    opt_dir = f'is_opt_{ref_solv}' if ref_solv is not None else 'opt'
+    ref_mol_xyz = f'{ref_solu_dir}/{opt_dir}/{ref_solu}.xyz'
     solu_energy,ref_solu_d,solu_model = get_ref_mol_energy(wrapper,ref_solu,
             ref_solv,calc_params,ref_mol_xyz,ref_solu_dir,dipole=True)
     if isinstance(solu_energy,np.ndarray):
         solu_energy = np.mean(solu_energy)
     if len(ref_solu_d.shape)==2:
         ref_solu_d = np.mean(ref_solu_d,axis=0)
-    ref_mol_xyz = f'{ref_solv_dir}/is_opt_{ref_solv}/{ref_solv}.xyz'
-    solv_energy,ref_solv_d,solv_model = get_ref_mol_energy(wrapper,ref_solv,
-            ref_solv,calc_params,ref_mol_xyz,ref_solv_dir,dipole=True)
-    if isinstance(solv_energy,np.ndarray):
-        solv_energy = np.mean(solv_energy)
-    if len(ref_solv_d.shape)==2:
-        ref_solv_d = np.mean(ref_solv_d,axis=0)
+    if ref_solv is not None:
+        ref_mol_xyz = f'{ref_solv_dir}/is_opt_{ref_solv}/{ref_solv}.xyz'
+        solv_energy,ref_solv_d,solv_model = get_ref_mol_energy(wrapper,ref_solv,
+                ref_solv,calc_params,ref_mol_xyz,ref_solv_dir,dipole=True)
+        if isinstance(solv_energy,np.ndarray):
+            solv_energy = np.mean(solv_energy)
+        if len(ref_solv_d.shape)==2:
+            ref_solv_d = np.mean(ref_solv_d,axis=0)
+    else:
+        # gas phase: no solvent molecules
+        solv_energy,ref_solv_d,solv_model = 0.0,np.zeros(3),None
     print('# Solute reference energy, dipole: ',solu_energy,ref_solu_d)
     print('# Solvent reference energy, dipole: ',solv_energy,ref_solv_d)
 
@@ -1146,7 +1153,7 @@ def sanity_check(trajname='', wrapper=None, calc_params = {},
         read_success = False
         #try:
         if True:
-            n = int((len(frame)-len(solu_model))/len(solv_model))
+            n = int((len(frame)-len(solu_model))/len(solv_model)) if solv_model is not None else 0
             e = frame.get_potential_energy()
             #if hasattr(wrapper,'atom_energies'):
             #    if isinstance(e,np.ndarray):

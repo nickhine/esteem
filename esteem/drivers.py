@@ -285,7 +285,8 @@ def solutes_driver(all_solutes,all_solvents,task):
 
     for solvent in all_solvents_to_run:
         print(f'Setting solvent to {solvent}')
-        task.solvent = solvent
+        # 'gas' is the placeholder for no solvent (seeds <solute>_gas): no implicit solvent model
+        task.solvent = solvent if solvent != "gas" else None
         if task.solvent_settings is not None and task.solvent is not None:
             task.solvent = task.solvent_settings
             task.solvent['solvent'] = solvent
@@ -751,7 +752,9 @@ def clusters_driver(all_solutes,all_solvents,seed,task,make_sbatch=None,dryrun=F
                 if reset_roots:
                     print(f'\n# Warning: solute==solvent, so assuming excitations are not required. Setting nroots=0')
                     task.nroots = 0
-            if isinstance(task.impsolv,dict):
+            if solvent == "gas":
+                task.impsolv = None   # placeholder for no solvent: no implicit solvent model
+            elif isinstance(task.impsolv,dict):
                 task.impsolv['solvent'] = solvent
             else:
                 task.impsolv = solvent
@@ -777,6 +780,9 @@ def get_solu_solv_names(seed):
     solu = "_".join(seed.split("_")[0:-1])
     try:
         solv = seed.split("_")[-1]
+        # Gas-phase seeds are named <solute>_gas
+        if solv == "gas":
+            solv = None
     except:
         solv = "NO_SOLVENT_FOUND"
     return solu,solv
@@ -880,8 +886,12 @@ def atom_energies_driver(atomen):
             if solv is not None:
                 copyfile(f'{ref_mol_dir}/is_opt_{solv}/{solv}.xyz',f'{atoms_dir}/{solv}.xyz')
         if not path.isfile(f'{atoms_dir}/{atoms_xyz}') and not path.islink(f'{atoms_dir}/{atoms_xyz}'):
-            print(f'# Source file {atoms_xyz} not found - trying to combine {solu} and {solv} xyzs')
-            merge_xyzs(solu,solv,f'{atoms_dir}/{atoms_xyz}',atoms_dir)
+            if solv is None:
+                # gas phase: the seed geometry is just the solute
+                copyfile(f'{atoms_dir}/{solu}.xyz',f'{atoms_dir}/{atoms_xyz}')
+            else:
+                print(f'# Source file {atoms_xyz} not found - trying to combine {solu} and {solv} xyzs')
+                merge_xyzs(solu,solv,f'{atoms_dir}/{atoms_xyz}',atoms_dir)
         if not path.isfile(f'{atoms_dir}/{atoms_xyz}'):
             try:
                 copyfile(atoms_xyz,f'{atoms_dir}/{atoms_xyz}')
@@ -1437,7 +1447,7 @@ def mltraj_driver(mltraj,all_solutes,all_solvents,cleanup_only=False,setup_only=
         else:
             geom_prefix = '../' + geom_prefix + '/opt'
         geom_prefix = sub_solu_solv_names(geom_prefix,mltraj.seed,all_solutes,all_solvents)
-        for geomfile in [seed_state_str+suffix,solu+suffix,solv+suffix]:
+        for geomfile in [seed_state_str+suffix,solu+suffix] + ([solv+suffix] if solv is not None else []):
             geomfile_in = geom_prefix+'/'+geomfile
             if path.isfile(geomfile_in) or path.islink(geomfile_in):
                 if not path.isfile(geomfile):
