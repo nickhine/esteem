@@ -69,7 +69,7 @@ class MACEWrapper():
         Loads an existing MACE Calculator
 
         seed: str
-        
+
         target: int
 
         suffix: str
@@ -181,13 +181,13 @@ class MACEWrapper():
         Runs training for MACE model using an input trajectory as training points
 
         seed: str
-        
+
         target: int
 
         suffix: str
-        
+
         prefix: str
-        
+
         """
 
         # Not sensible to try training in other directory than current, so prefix is
@@ -393,9 +393,9 @@ class MACEWrapper():
         model: ASE Atoms
 
         seed: str
-        
+
         calc_params: dict
-        
+
         nsteps: int
         """
 
@@ -502,9 +502,9 @@ class MACEWrapper():
         model: ASE Atoms
 
         seed: str
-        
+
         calc_params: dict
-        
+
         md_steps: int
 
         md_timestep: float
@@ -596,7 +596,7 @@ class MACEWrapper():
         model: ASE Atoms
 
         seed: str
-        
+
         calc_params: dict
 
         dummy: str
@@ -651,11 +651,11 @@ class MACEWrapper():
              temp=300, writeonly=False, readonly=False, continuation=False, cleanup=True):
         """
         Runs a Vibrational Frequency calculation with the MACE ASE calculator
-        
+
         model_opt: ASE Atoms
 
         seed: str
-        
+
         suffix: str
 
         dummy: str
@@ -665,7 +665,7 @@ class MACEWrapper():
         target: int or None
 
         solvent: str or None
-        
+
         temp: float
 
         readonly: bool
@@ -712,7 +712,7 @@ class MACEWrapper():
         model: ASE Atoms
 
         seed: str
-        
+
         suffix: str
 
         dummy: str

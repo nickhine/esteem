@@ -15,7 +15,7 @@ from esteem.tasks.spectra import wavelength_eV_conv as hc
 class SpecPyCodeWrapper():
     """
     Writes input files for Spectroscopy Python Code, runs them, and reads results
-    
+
     :ivar input_filename: default value: "input_file"
     :ivar rootname: name given to all trajX.dat files - default value: "rootname"
     :ivar rootname: default "rootname"

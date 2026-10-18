@@ -19,6 +19,8 @@ from esteem.active_learning import create_mltraj_tasks
 from esteem.active_learning import create_mltest_tasks
 from esteem.active_learning import create_clusters_tasks
 from esteem.active_learning import create_spectra_tasks
+from ase.calculators.orca import OrcaProfile
+from ase.units import fs
 
 # Setup solute and solvents and target states
 all_solutes = {'cate': 'catechol'}
@@ -41,7 +43,6 @@ all_solutes_tasks = {}
 solutes_task.wrapper = ORCAWrapper()
 solutes_task.wrapper.setup(nprocs=8)
 solutes_task.script_settings = parallel.get_default_script_settings(solutes_task.wrapper)
-from ase.calculators.orca import OrcaProfile
 solutes_task.wrapper.orcaprofile = OrcaProfile(command=orcacmd)
 # Setup different XC functionals as different tasks
 funcs = ['PBE', 'PBE0']
@@ -161,7 +162,6 @@ mltraj_task.ntraj = len(rand_seed)
 mltraj_task.md_steps = 5
 mltraj_task.nequil = 200
 mltraj_task.nsnap = 2000
-from ase.units import fs
 mltraj_task.md_timestep = {'MD': 0.5 * fs, 'EQ': 0.5 * fs}
 mltraj_task.md_friction = {'MD': 0.002, 'EQ': 0.05}  # For Langevin dynamics
 mltraj_task.store_full_traj = False

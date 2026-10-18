@@ -10,6 +10,7 @@ from esteem.tasks.solutes import SolutesTask
 from esteem.tasks.solvate import SolvateTask
 from esteem.tasks.clusters import ClustersTask
 from esteem.tasks.spectra import SpectraTask
+from ase.calculators.orca import OrcaProfile
 
 # Setup solute and solvents and target states
 all_solutes = {'cate': 'catechol'}
@@ -29,7 +30,6 @@ all_solutes_tasks = {}
 solutes_task.wrapper = ORCAWrapper()
 solutes_task.wrapper.setup(nprocs=8)
 solutes_task.script_settings = parallel.get_default_script_settings(solutes_task.wrapper)
-from ase.calculators.orca import OrcaProfile
 solutes_task.wrapper.orcaprofile = OrcaProfile(command=orcacmd)
 # Setup different XC functionals as different tasks
 funcs = ['PBE0', 'PBE']

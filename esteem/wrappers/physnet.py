@@ -106,7 +106,7 @@ class PhysNetWrapper():
         Loads an existing PhysNet Calculator
 
         seed: str
-        
+
         target: int
 
         suffix: str
@@ -217,13 +217,13 @@ class PhysNetWrapper():
         Runs training for PhysNet model using an input trajectory as training points
 
         seed: str
-        
+
         target: int
 
         suffix: str
-        
+
         prefix: str
-        
+
         """
 
         from os import path
@@ -273,7 +273,7 @@ class PhysNetWrapper():
         Runs training for PhysNet model using an input trajectory as training points
 
         seed: str
-        
+
         target: int
 
         suffix: str
@@ -396,9 +396,9 @@ class PhysNetWrapper():
         model: ASE Atoms
 
         seed: str
-        
+
         calc_params: dict
-        
+
         md_steps: int
 
         md_timestep: float
@@ -458,7 +458,7 @@ class PhysNetWrapper():
         model: ASE Atoms
 
         seed: str
-        
+
         calc_params: dict
 
         dummy: str
@@ -517,11 +517,11 @@ class PhysNetWrapper():
              summary=True, cleanup=True):
         """
         Runs a Vibrational Frequency calculation with the PhysNet ASE calculator
-        
+
         model_opt: ASE Atoms
 
         seed: str
-        
+
         suffix: str
 
         dummy: str
@@ -531,7 +531,7 @@ class PhysNetWrapper():
         target: int or None
 
         solvent: str or None
-        
+
         temp: float
 
         readonly: bool
@@ -583,7 +583,7 @@ class PhysNetWrapper():
         model: ASE Atoms
 
         seed: str
-        
+
         suffix: str
 
         dummy: str

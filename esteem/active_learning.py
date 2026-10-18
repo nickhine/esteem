@@ -66,7 +66,7 @@ def create_clusters_tasks(task: ClustersTask, train_calcs, seed, traj_suffix, md
     """
     Returns a dictionary of clusters tasks, based on an input prototype task supplied by
     the user, for all the required clusters tasks for an Active Learning task.
-    
+
     Takes lists of calculators, targets, random seeds, and strings stating the ML method
     and the ground truth method
     """
@@ -189,9 +189,9 @@ def add_trajectories(task, seeds, calc, traj_suffixes, dir_suffixes, ntraj, targ
                 fullsuffix = truth
             # handle case where seeds is a dictionary, and keys are target,suffix tuples
             if (isinstance(seeds, dict)):
-               seeds_list = seeds[targstr1, traj_suffix]
+                seeds_list = seeds[targstr1, traj_suffix]
             else:
-               seeds_list = seeds
+                seeds_list = seeds
             # Loop over seeds
             for seed in seeds_list:
                 all_keys = get_keys(task)
@@ -315,11 +315,11 @@ def add_iterating_trajectories(task, seeds, calc, iter_dir_suffixes, targets, ta
                     traj_seeds = seeds
                 # handle case where seeds is a dictionary, and keys are target,suffix tuples
                 if (isinstance(traj_seeds, dict)):
-                   seeds_list = traj_seeds[str(targstrp), str(dir_suffix)]
+                    seeds_list = traj_seeds[str(targstrp), str(dir_suffix)]
                 elif (isinstance(traj_seeds, list)):
-                   seeds_list = traj_seeds
+                    seeds_list = traj_seeds
                 else:
-                   seeds_list = [traj_seeds]
+                    seeds_list = [traj_seeds]
                 # Loop over seeds
                 for seed in seeds_list:
                     targstr2_dict = targstr
@@ -391,7 +391,7 @@ def create_mltrain_tasks(train_task: MLTrainingTask, train_calcs, seeds, targets
     """
     Returns a dictionary of MLTrain tasks, based on an input prototype task supplied by
     the user, for all the required MLTrain tasks for an Active Learning task.
-    
+
     Takes lists of calculators, targets, random seeds, and strings stating the ML method
     and the ground truth method, and lists of trajectories to use as initial inputs
     (plus the number of trajectories for each target and their location)
@@ -457,7 +457,7 @@ def create_mltraj_tasks(mltraj_task: MLTrajTask, train_calcs, targets, rand_seed
     """
     Returns a dictionary of MLTraj tasks, based on an input prototype task supplied by
     the user, for all the required MLTraj tasks for an Active Learning task.
-    
+
     Takes lists of calculators, targets, random seeds, and strings stating the ML method
     and wrappers for the MD itself and for the "committee" MD
     """
@@ -537,7 +537,7 @@ def create_mltest_tasks(test_task: MLTestingTask, train_calcs, seeds, targets, r
     """
     Returns a dictionary of MLTest tasks, based on an input prototype task supplied by
     the user, for all the required MLTest tasks for an Active Learning task.
-    
+
     Takes lists of calculators, targets, random seeds, and strings stating the ground
     truth method and the ML method
     """
@@ -603,7 +603,7 @@ def create_spectra_tasks(spectra_task: SpectraTask, train_calcs, targets, rand_s
     """
     Returns a dictionary of Spectra tasks, based on an input prototype task supplied by
     the user, for all the required Spectra tasks for an Active Learning task.
-    
+
     Takes lists of calculators, targets, random seeds
     """
     new_spectra_tasks = {}

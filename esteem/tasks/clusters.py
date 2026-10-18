@@ -5,6 +5,9 @@
    such as extraction of cluster models centered on the solute molecule, including all solvent molecules
    within a given range, for the purpose of ML training or explicit solvent spectroscopy"""
 
+import numpy as np
+from ase import Atoms
+
 
 class ClustersTask:
 
@@ -692,10 +695,6 @@ class ClustersTask:
 # In[ ]:
 
 
-import numpy as np
-from ase import Atoms
-
-
 def carve_sphere(t, solvent_radius, kernel_radius, nat_solute, nat_solvent,
                  nat_counterions, nmol_solvent, nmol_solvent_targ, boxsize=None,
                  rotate=True, deleted_atoms=None):
@@ -928,16 +927,21 @@ def rotate_and_center_solute(t, nat_solute=None, boxsize=None):
                     d[i, j] = 0
         # Find furthest-apart pair of carbon atoms, these define '1' and '4' atoms
         ind = np.unravel_index(np.argmax(d, axis=None), d.shape)
-        p1 = ind[0]; p4 = ind[1]
+        p1 = ind[0]
+        p4 = ind[1]
         # Find next-furthest-apart pair of carbon atoms, defining '2' and '3' atoms
-        d[p1, p4] = 0; d[p4, p1] = 0
+        d[p1, p4] = 0
+        d[p4, p1] = 0
         ind2 = np.unravel_index(np.argmax(d, axis=None), d.shape)
         # Ensure consistent orientation by choosing lowest overall index as '1'
         # and set others based on ensuring |p1-p2| < |p1-p3|
-        p1 = min(min(ind, ind2)); p4 = max(min(ind, ind2));
-        p2 = min(max(ind, ind2)); p3 = max(max(ind, ind2));
+        p1 = min(min(ind, ind2))
+        p4 = max(min(ind, ind2))
+        p2 = min(max(ind, ind2))
+        p3 = max(max(ind, ind2))
         if solute.get_distance(p1, p2) < solute.get_distance(p1, p3):
-            p3 = min(max(ind, ind2)); p2 = max(max(ind, ind2))
+            p3 = min(max(ind, ind2))
+            p2 = max(max(ind, ind2))
         # Rotate so average of p1-p2 and p3-p4 points along x
         vector1 = (t.positions[p1] - t.positions[p2] +
                    t.positions[p3] - t.positions[p4])

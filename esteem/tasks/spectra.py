@@ -145,7 +145,8 @@ class SpectraTask:
                                     except:
                                         pass
                             else:
-                                e1c = 0.0; e0c = 0.0
+                                e1c = 0.0
+                                e0c = 0.0
                             # Account for calculators which return an array of values
                             if isinstance(e0, list) or isinstance(e0, np.ndarray):
                                 e0 = e0[0]
@@ -429,157 +430,161 @@ class SpectraTask:
 
 # # Helper Routines
 def find_spectral_warp_params(args, dest_spectrum, origin_spectrum, arrow1_pos=None, arrow2_pos=None):
-        """
-        Finds spectral warping parameters via a range of schemes. See spectra documentation page
-        for more detail.
+    """
+    Finds spectral warping parameters via a range of schemes. See spectra documentation page
+    for more detail.
 
-        *Arguments*
+    *Arguments*
 
-        dest_spectrum: numpy array of floats
-            Contains the spectral warp 'destination' spectrum (usually a high level of theory that can only be afforded for the solute molecule)
-        origin_spectrum: numpy array of floats
-            Contains the spectral warp 'origin' spectrum (usually a cheap level of theory, same as in the Clusters job)
-        args.warp_scheme: str
-            The scheme used for the warping. Allowed values: 'beta', 'alphabeta', 'betabeta'
-        args.warp_origin_ref_peak_range: list of 2 floats
-            Peak range searched when looking for 'reference' peaks in the origin spectrum for spectral warping.
-        args.warp_dest_ref_peak_range: list of 2 floats
-            Peak range searched when looking for 'reference' peaks in the destination spectrum for spectral warping.
-        args.broad:
-            Energy gaussian broadening applied to the stick spectra, useful to merge peaks that you want to treat
-            as one peak in spectral warping.
+    dest_spectrum: numpy array of floats
+        Contains the spectral warp 'destination' spectrum (usually a high level of theory that can only be afforded for the solute molecule)
+    origin_spectrum: numpy array of floats
+        Contains the spectral warp 'origin' spectrum (usually a cheap level of theory, same as in the Clusters job)
+    args.warp_scheme: str
+        The scheme used for the warping. Allowed values: 'beta', 'alphabeta', 'betabeta'
+    args.warp_origin_ref_peak_range: list of 2 floats
+        Peak range searched when looking for 'reference' peaks in the origin spectrum for spectral warping.
+    args.warp_dest_ref_peak_range: list of 2 floats
+        Peak range searched when looking for 'reference' peaks in the destination spectrum for spectral warping.
+    args.broad:
+        Energy gaussian broadening applied to the stick spectra, useful to merge peaks that you want to treat
+        as one peak in spectral warping.
 
-        *Returns*
+    *Returns*
 
-            [beta], [alpha, beta], [beta1, beta2, omega1o, omega2o]: floats describing spectral warp parameters
+        [beta], [alpha, beta], [beta1, beta2, omega1o, omega2o]: floats describing spectral warp parameters
 
-            Also sets arrow1_pos, arrow2_pos for use in spectral warp plots.
-        """
+        Also sets arrow1_pos, arrow2_pos for use in spectral warp plots.
+    """
 
-        if args.warp_scheme == None:
-            return
+    if args.warp_scheme == None:
+        return
 
-        hc = wavelength_eV_conv
+    hc = wavelength_eV_conv
 
-        # Mask anything outside the allowed range
-        dest_spectrum_masked = mask_spectrum(dest_spectrum,
-                                             args.warp_dest_ref_peak_range[0], args.warp_dest_ref_peak_range[1])
-        origin_spectrum_masked = mask_spectrum(origin_spectrum,
-                                               args.warp_origin_ref_peak_range[0], args.warp_origin_ref_peak_range[1])
+    # Mask anything outside the allowed range
+    dest_spectrum_masked = mask_spectrum(dest_spectrum,
+                                         args.warp_dest_ref_peak_range[0], args.warp_dest_ref_peak_range[1])
+    origin_spectrum_masked = mask_spectrum(origin_spectrum,
+                                           args.warp_origin_ref_peak_range[0], args.warp_origin_ref_peak_range[1])
 
-        # Find maximum value of remaining spectra
-        dest_maxloc = np.argmax(dest_spectrum_masked[:, 1])
-        dest_lambdamax = dest_spectrum[dest_maxloc, 0]
-        origin_maxloc = np.argmax(origin_spectrum_masked[:, 1])
-        origin_lambdamax = origin_spectrum[origin_maxloc, 0]
+    # Find maximum value of remaining spectra
+    dest_maxloc = np.argmax(dest_spectrum_masked[:, 1])
+    dest_lambdamax = dest_spectrum[dest_maxloc, 0]
+    origin_maxloc = np.argmax(origin_spectrum_masked[:, 1])
+    origin_lambdamax = origin_spectrum[origin_maxloc, 0]
 
-        # Set up position of (first) arrow on plot
-        if arrow1_pos is not None:
-            arrow1_pos[0] = origin_lambdamax
-            arrow1_pos[1] = origin_spectrum[origin_maxloc, 1]
-            arrow1_pos[2] = dest_lambdamax - origin_lambdamax
-            arrow1_pos[3] = 0
+    # Set up position of (first) arrow on plot
+    if arrow1_pos is not None:
+        arrow1_pos[0] = origin_lambdamax
+        arrow1_pos[1] = origin_spectrum[origin_maxloc, 1]
+        arrow1_pos[2] = dest_lambdamax - origin_lambdamax
+        arrow1_pos[3] = 0
 
-        # Convert to energy
-        omega1d = hc / dest_lambdamax
-        omega1o = hc / origin_lambdamax
-        print(f'lambda(max) of origin spectrum = {origin_lambdamax}')
-        print(f'lambda(max) of dest   spectrum = {dest_lambdamax}')
+    # Convert to energy
+    omega1d = hc / dest_lambdamax
+    omega1o = hc / origin_lambdamax
+    print(f'lambda(max) of origin spectrum = {origin_lambdamax}')
+    print(f'lambda(max) of dest   spectrum = {dest_lambdamax}')
 
-        # Set acceptable ranges of result
-        betamin = -2.5
-        betamax = 2.5
-        alphamin = 0.3
-        alphamax = 1.8
+    # Set acceptable ranges of result
+    betamin = -2.5
+    betamax = 2.5
+    alphamin = 0.3
+    alphamax = 1.8
 
-        if args.warp_scheme == 'beta':
+    if args.warp_scheme == 'beta':
 
-            beta = omega1d - omega1o
+        beta = omega1d - omega1o
 
-            # Report and check results
-            print(f'Spectral warp beta param from origin to dest = {beta} eV')
+        # Report and check results
+        print(f'Spectral warp beta param from origin to dest = {beta} eV')
 
-            if beta < betamin or beta > betamax:
-                raise Exception(f'beta parameter {beta} out of allowed range ({betamin} to {betamax}). Stopping.')
+        if beta < betamin or beta > betamax:
+            raise Exception(f'beta parameter {beta} out of allowed range ({betamin} to {betamax}). Stopping.')
 
-            return [beta, origin_lambdamax, dest_lambdamax]
+        return [beta, origin_lambdamax, dest_lambdamax]
 
-        # Get spectrum masked again
-        dest_spectrum_tmp = mask_spectrum(dest_spectrum,
-                                          args.warp_dest_ref_peak_range[0], args.warp_dest_ref_peak_range[1])
-        origin_spectrum_tmp = mask_spectrum(origin_spectrum,
-                                            args.warp_origin_ref_peak_range[0], args.warp_origin_ref_peak_range[1])
+    # Get spectrum masked again
+    dest_spectrum_tmp = mask_spectrum(dest_spectrum,
+                                      args.warp_dest_ref_peak_range[0], args.warp_dest_ref_peak_range[1])
+    origin_spectrum_tmp = mask_spectrum(origin_spectrum,
+                                        args.warp_origin_ref_peak_range[0], args.warp_origin_ref_peak_range[1])
 
-        # Mask section +- 4*broad from omega1d of dest spectrum
-        lower = hc / (omega1d + 4 * args.broad)
-        upper = hc / (omega1d - 4 * args.broad)
-        dest_spectrum_masked = mask_spectrum(dest_spectrum_tmp, lower, upper, swap=True)
+    # Mask section +- 4*broad from omega1d of dest spectrum
+    lower = hc / (omega1d + 4 * args.broad)
+    upper = hc / (omega1d - 4 * args.broad)
+    dest_spectrum_masked = mask_spectrum(dest_spectrum_tmp, lower, upper, swap=True)
 
-        # Mask section +- 4*broad from omega1o of origin spectrum
-        lower = hc / (omega1o + 4 * args.broad)
-        upper = hc / (omega1o - 4 * args.broad)
-        origin_spectrum_masked = mask_spectrum(origin_spectrum_tmp, lower, upper, swap=True)
+    # Mask section +- 4*broad from omega1o of origin spectrum
+    lower = hc / (omega1o + 4 * args.broad)
+    upper = hc / (omega1o - 4 * args.broad)
+    origin_spectrum_masked = mask_spectrum(origin_spectrum_tmp, lower, upper, swap=True)
 
-        # Find maximum value of remaining spectra
-        dest_maxloc = np.argmax(dest_spectrum_masked[:, 1])
-        dest_lambdamax = dest_spectrum[dest_maxloc, 0]
-        origin_maxloc = np.argmax(origin_spectrum_masked[:, 1])
-        origin_lambdamax = origin_spectrum[origin_maxloc, 0]
+    # Find maximum value of remaining spectra
+    dest_maxloc = np.argmax(dest_spectrum_masked[:, 1])
+    dest_lambdamax = dest_spectrum[dest_maxloc, 0]
+    origin_maxloc = np.argmax(origin_spectrum_masked[:, 1])
+    origin_lambdamax = origin_spectrum[origin_maxloc, 0]
 
-        # Set up position of second arrow on plot
-        if arrow2_pos is not None:
-            arrow2_pos[0] = origin_lambdamax
-            arrow2_pos[1] = origin_spectrum[origin_maxloc, 1]
-            arrow2_pos[2] = dest_lambdamax - origin_lambdamax
-            arrow2_pos[3] = 0
-        omega2d = hc / dest_lambdamax
-        omega2o = hc / origin_lambdamax
-        print(f'second peak lambda(max) of origin spectrum = {origin_lambdamax}')
-        print(f'second peak lambda(max) of dest   spectrum = {dest_lambdamax}')
+    # Set up position of second arrow on plot
+    if arrow2_pos is not None:
+        arrow2_pos[0] = origin_lambdamax
+        arrow2_pos[1] = origin_spectrum[origin_maxloc, 1]
+        arrow2_pos[2] = dest_lambdamax - origin_lambdamax
+        arrow2_pos[3] = 0
+    omega2d = hc / dest_lambdamax
+    omega2o = hc / origin_lambdamax
+    print(f'second peak lambda(max) of origin spectrum = {origin_lambdamax}')
+    print(f'second peak lambda(max) of dest   spectrum = {dest_lambdamax}')
 
-        if args.warp_scheme == 'avgebeta':
+    if args.warp_scheme == 'avgebeta':
 
-            beta = ((omega1d - omega1o) + (omega2d - omega2o)) * 0.5
-            print(f'Spectral warp beta param from origin to dest = {beta} eV')
+        beta = ((omega1d - omega1o) + (omega2d - omega2o)) * 0.5
+        print(f'Spectral warp beta param from origin to dest = {beta} eV')
 
-            if beta < betamin or beta > betamax:
-                raise Exception(f'beta parameter {beta} out of allowed range ({betamin} to {betamax}). Stopping.')
+        if beta < betamin or beta > betamax:
+            raise Exception(f'beta parameter {beta} out of allowed range ({betamin} to {betamax}). Stopping.')
 
-            return [beta]
+        return [beta]
 
-        if args.warp_scheme == 'alphabeta':
+    if args.warp_scheme == 'alphabeta':
 
-            alpha = (omega1d - omega2d) / (omega1o - omega2o)
-            beta = omega2d - alpha * omega2o
-            print(f'Spectral warp alpha, beta params from origin to dest = {alpha} {beta} eV')
+        alpha = (omega1d - omega2d) / (omega1o - omega2o)
+        beta = omega2d - alpha * omega2o
+        print(f'Spectral warp alpha, beta params from origin to dest = {alpha} {beta} eV')
 
-            if beta < betamin or beta > betamax:
-                raise Exception(f'beta parameter {beta} out of allowed range ({betamin} to {betamax}). Stopping.')
-            if alpha < alphamin or alpha > alphamax:
-                raise Exception(f'alpha parameter {alpha} out of allowed range ({alphamin} to {alphamax}). Stopping.')
+        if beta < betamin or beta > betamax:
+            raise Exception(f'beta parameter {beta} out of allowed range ({betamin} to {betamax}). Stopping.')
+        if alpha < alphamin or alpha > alphamax:
+            raise Exception(f'alpha parameter {alpha} out of allowed range ({alphamin} to {alphamax}). Stopping.')
 
-            return [alpha, beta]
+        return [alpha, beta]
 
-        if args.warp_scheme == 'betabeta':
+    if args.warp_scheme == 'betabeta':
 
-            beta1 = omega1d - omega1o
-            beta2 = omega2d - omega2o
+        beta1 = omega1d - omega1o
+        beta2 = omega2d - omega2o
 
-            # Ensure omega1o < omega2o, swap if not.
-            if (omega1o > omega2o):
-                tmp = omega2o; omega2o = omega1o; omega1o = tmp
-                tmp = beta2; beta2 = beta1; beta1 = tmp
+        # Ensure omega1o < omega2o, swap if not.
+        if (omega1o > omega2o):
+            tmp = omega2o
+            omega2o = omega1o
+            omega1o = tmp
+            tmp = beta2
+            beta2 = beta1
+            beta1 = tmp
 
-            print(f'Spectral warp beta1, beta2, omega1, omega2 params from origin to dest = {beta1} {beta2} {omega1o} {omega2o} eV')
+        print(f'Spectral warp beta1, beta2, omega1, omega2 params from origin to dest = {beta1} {beta2} {omega1o} {omega2o} eV')
 
-            if beta1 < betamin or beta1 > betamax:
-                raise Exception(f'beta1 parameter {beta1} out of allowed range ({betamin} to {betamax}). Stopping.')
-            if beta2 < betamin or beta2 > betamax:
-                raise Exception(f'beta2 parameter {beta2} out of allowed range ({betamin} to {betamax}). Stopping.')
+        if beta1 < betamin or beta1 > betamax:
+            raise Exception(f'beta1 parameter {beta1} out of allowed range ({betamin} to {betamax}). Stopping.')
+        if beta2 < betamin or beta2 > betamax:
+            raise Exception(f'beta2 parameter {beta2} out of allowed range ({betamin} to {betamax}). Stopping.')
 
-            return [beta1, beta2, omega1o, omega2o]
+        return [beta1, beta2, omega1o, omega2o]
 
-        raise Exception(f'Unrecognised warp scheme: {args.warp_scheme}')
+    raise Exception(f'Unrecognised warp scheme: {args.warp_scheme}')
 
 
 def spectral_warp(exc, args):
