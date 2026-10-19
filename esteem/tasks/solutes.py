@@ -124,15 +124,15 @@ class SolutesTask:
     # Download xyz files if they do not already exist
     def get_xyz_files(self, namelist, out_path):
         """
-        Downloads initial geometries from the NCI's webserver cactus, based on their IUPAC names.
+        Downloads initial geometries from PubChem (via ASE), based on their full names.
 
         These geometries are usually not great, but are a reasonable starting point for optimisation.
 
-        Visit https://cactus.nci.nih.gov/chemical/structure to see what works and check your names before use.
+        Visit https://pubchem.ncbi.nlm.nih.gov to check that your names are recognised before use.
 
-        Uses ``wget``, so if the machine you are using does not have access to this command,
+        This needs internet access, so if the machine you are using cannot reach PubChem,
         this routine will fail, in which case put starting point geometries in the directory
-        'xyz'.
+        'xyz'. Molecules that already have a file in 'xyz' are not downloaded.
 
         namelist: dict
             Keys are shortnames (eg "cate"), entries are full names (eg "catechol" or "1,2-dihydroxybenzene")
@@ -788,25 +788,25 @@ class SolutesTask:
                     'made to download a structure from the NIH chemical name\n' +
                     'resolver (CACTUS).')
         parser = argparse.ArgumentParser(description=main_help, epilog=epi_help)
-        parser.add_argument('--namefile', '-N', default='names', type=str, help='File from which to read a list of names of solvent or solute molecules. Each line should take the form "shortname: IUPACsystematicname"')
-        parser.add_argument('--solvent', '-S', default=None, type=str, help='Solvent for implicit solvent runs.')
-        parser.add_argument('--nroots', '-n', default=5, type=int, help='Number of TDDFT excitations to calculate.')
-        parser.add_argument('--target', '-t', default=None, type=int, help='Targetted TDDFT excitation for geom opt.)')
-        parser.add_argument('--rotate', '-r', default=True, type=bool, help='If True, attempt to rotate molecule so that the "flattest" part, defined by furthest-apart pairs of C atoms, lies in the xy-plane')
-        parser.add_argument('--rotamers', '-R', default=False, nargs='?', const=True, type=bool, help='If True, attempt to find the lowest-energy rotamer by switching positions of all rotatable -OH groups.')
-        parser.add_argument('--vibrations', '-V', default=False, nargs='?', const=True, type=bool, help='If True, Calculate all vibrational frequencies for final level of theory.')
-        parser.add_argument('--charges', '-Q', default={}, nargs='?', type=dict, help='Charges on molecular species. Not for command-line use')
-        parser.add_argument('--directory', '-D', default=None, nargs='?', type=str, help=argparse.SUPPRESS)
-        parser.add_argument('--fc_fallback_dir', default=None, type=str, help='If set (eg ../gs_PBE0), an excited-state geometry optimisation that fails is replaced by the ground-state geometry (Franck-Condon point) from that Solutes directory')
-        parser.add_argument('--calc_params', '-Z', default={}, nargs='?', type=str, help=argparse.SUPPRESS)
+        parser.add_argument('--namefile', '-N', default='names', type=str, help="File listing the molecules to process, one per line as 'shortname: full name'; the full name is used to download a starting geometry from PubChem if xyz/shortname.xyz does not exist. Only read when solutes.py is run directly from the command line; workflow scripts pass the molecules to the driver instead.")
+        parser.add_argument('--solvent', '-S', default=None, type=str, help="Implicit solvent for the current run, or None for gas phase. The solutes and solvents drivers set this for each entry of all_solvents in turn (a solvent named 'gas' becomes None), so scripts do not normally set it; it may also be a dict with key 'solvent' plus wrapper-specific settings (see solvent_settings).")
+        parser.add_argument('--nroots', '-n', default=5, type=int, help="Number of TDDFT excited states to calculate, in gas phase (output in 'tddft') when there is no solvent, or in implicit solvent (output in 'is_tddft_<solvent>'). Set to 0 to skip the excited-state calculations.")
+        parser.add_argument('--target', '-t', default=None, type=int, help='Electronic state whose geometry is optimised: None or 0 for the ground state, or an integer n for the nth TDDFT excited state, in which case output files are named <solute>_es<n>. Copied into calc_params unless calc_params is set explicitly.')
+        parser.add_argument('--rotate', '-r', default=True, type=bool, help="If True, rotate each gas-phase optimised molecule so that the plane defined by its furthest-apart pairs of C atoms lies in the xy-plane, and centre it on the origin (output in 'opt_rot'). Molecules with fewer than two C atoms, or 10 atoms or fewer, are not rotated.")
+        parser.add_argument('--rotamers', '-R', default=False, nargs='?', const=True, type=bool, help="If True, search for a lower-energy rotamer of each gas-phase optimised molecule by flipping all rotatable C-C-O-H dihedrals, re-optimising any rotamer within 0.2 eV of the original and keeping the lowest-energy one (output in 'best_rota').")
+        parser.add_argument('--vibrations', '-V', default=False, nargs='?', const=True, type=bool, help="If True, calculate vibrational frequencies at the final level of theory: in implicit solvent (output in 'is_freq_<solvent>') when a solvent is set, otherwise in gas phase (output in 'freq'). The preceding geometry optimisation then uses tight convergence.")
+        parser.add_argument('--charges', '-Q', default={}, nargs='?', type=dict, help="Net charge of each molecule, as a dict keyed by molecule shortname, eg {'AQS': -1}; molecules not listed are neutral. Set this in a script: it cannot be given on the command line.")
+        parser.add_argument('--directory', '-D', default=None, nargs='?', type=str, help="Directory, relative to where the script is run, in which this task's calculations are run, eg 'gs_PBE0'. It is created if needed and the 'xyz' directory is copied into it; None runs in the current directory.")
+        parser.add_argument('--fc_fallback_dir', default=None, type=str, help="Directory of a ground-state Solutes run, relative to this task's directory (eg '../gs_PBE0'). If set, an excited-state geometry optimisation that fails is replaced by the ground-state geometry (Franck-Condon point) from the same stage of that run, followed by an excited-state singlepoint.")
+        parser.add_argument('--calc_params', '-Z', default={}, nargs='?', type=str, help="Dict of calculator parameters passed to the wrapper for every calculation. If empty or None, it is built from basis, func, target and disp when the task runs; if set explicitly, it must contain the keys the wrapper expects (normally 'basis', 'func', 'target' and 'disp'), and those four attributes are then ignored.")
         # Wrapper Dependent
-        parser.add_argument('--solvent_settings', default=None, type=str, help='Solvent settings for implicit solvent runs.')
-        parser.add_argument('--plot_homo', '-H', default=None, type=int, help='Number of orbitals from HOMO downwards to plot')
-        parser.add_argument('--plot_lumo', '-L', default=None, type=int, help='Number of orbitals from LUMO downwards to plot')
-        parser.add_argument('--plot_trans_den', '-T', default=None, type=int, help='Number of excitations for which to plot the transition density')
-        parser.add_argument('--basis', '-b', default='6-311++G**', type=str, help='Basis set string for geom opt and TDDFT.')
-        parser.add_argument('--func', '-f', default='PBE0', type=str, help='XC Functional string for geom opt and TDDFT.')
-        parser.add_argument('--disp', '-d', default=True, type=bool, help='Grimme D3 Dispersion correction (set to True to activate)')
+        parser.add_argument('--solvent_settings', default=None, type=str, help="Optional dict of extra implicit-solvent settings for the wrapper, eg {'cosmo_smd': True, 'cosmo_vem': 0} for NWChem. If set, the drivers pass this dict, with its 'solvent' key set to the current solvent name, as the solvent for each run; None uses just the solvent name.")
+        parser.add_argument('--plot_homo', '-H', default=None, type=int, help='Number of occupied orbitals, counting down from the HOMO, to write as cube files after each implicit-solvent TDDFT calculation; None plots none. Currently only used by the NWChem wrapper.')
+        parser.add_argument('--plot_lumo', '-L', default=None, type=int, help='Number of unoccupied orbitals, counting up from the LUMO, to write as cube files after each implicit-solvent TDDFT calculation; None plots none. Currently only used by the NWChem wrapper.')
+        parser.add_argument('--plot_trans_den', '-T', default=None, type=int, help='Number of excitations, starting from the lowest, for which to write the transition density as a cube file after each implicit-solvent TDDFT calculation; None plots none. Currently only used by the NWChem wrapper.')
+        parser.add_argument('--basis', '-b', default='6-311++G**', type=str, help="Basis set name, in the form expected by the wrapper's code (eg '6-311++G**' or 'def2-TZVP'), used for all geometry optimisations, TDDFT and frequency calculations. Copied into calc_params unless calc_params is set explicitly.")
+        parser.add_argument('--func', '-f', default='PBE0', type=str, help="Exchange-correlation functional name, in the form expected by the wrapper's code (eg 'PBE0' or 'CAM-B3LYP'), used for all geometry optimisations, TDDFT and frequency calculations. Copied into calc_params unless calc_params is set explicitly.")
+        parser.add_argument('--disp', '-d', default=True, type=bool, help='If True, add a Grimme D3 dispersion correction (D3BJ in ORCA, D3 in NWChem; not supported by OpenQP). Copied into calc_params unless calc_params is set explicitly.')
 
         return parser
 
