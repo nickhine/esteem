@@ -90,3 +90,9 @@ If I wanted to tweak something (let's say the run time and the account name), I 
   clusters_task.script_settings = script_settings
 
 Existing definitions inside ``parallel.py`` include ``nanosim_1node``, ``nanosim_1core``, ``nanosimd_1node``, ``nanosimd_8mpi``, ``archer2_1node``, ``archer2_4node``, ``archer2_8node``, ``archer2_16node``, ``avon_1node_gnu``, ``avon_1node_intel``, ``avon_1gpu``, ``avon_1node_100``, ``sulis_1node``, ``sulis_1gpu``, ``sulis_3gpu`` and ``sulis_1node_100``. Please feel free to modify these or write your own. The keys understood by the ``make_sbatch`` routine include ``account``, ``partition``, ``qos``, ``gres``, ``nodes``, ``ntask``, ``ncpu``, ``time``, ``mem``, ``declarations`` (lines added to the script before the main command, such as ``module load`` commands), ``endmatter`` (lines added after it), ``command``, ``execpath`` and ``logdir``.
+
+Parallel module reference
+-------------------------
+
+.. automodule:: esteem.parallel
+   :members: make_sbatch, make_pbs, get_default_script_settings, get_array_task_id

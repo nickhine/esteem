@@ -9,8 +9,7 @@ The ORCA wrapper runs DFT and TDDFT calculations with
 `ORCA <https://www.faccts.de/orca/>`__, a quantum chemistry package that is
 free for academic use. It works through ASE's ORCA calculator, and requires
 ORCA 5.0.2 or later. It provides singlepoint energies and forces, geometry
-optimisation, vibrational frequencies, TDDFT excitations and ab initio
-molecular dynamics, with implicit solvent through the CPCM model. It can be
+optimisation, TDDFT excitations and ab initio molecular dynamics, with implicit solvent through the CPCM model. It can be
 used for the :ref:`solutes`, :ref:`clusters` and :ref:`qmd_trajectories`
 tasks.
 

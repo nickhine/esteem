@@ -29,6 +29,7 @@ SolutesTask
 
 .. autoclass:: SolutesTask
    :members:
+   :exclude-members: makedirs, path, getcwd, chdir, read, write, np
 
 Task attributes
 ---------------

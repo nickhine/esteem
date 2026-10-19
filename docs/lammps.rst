@@ -6,12 +6,16 @@ LAMMPS Wrapper
 .. currentmodule:: esteem.wrappers.lammps
 
 The LAMMPS wrapper runs classical molecular dynamics with
-`LAMMPS <https://www.lammps.org>`__, through ASE's LAMMPS calculator. It
-provides the Molecular Dynamics functions of the :ref:`solvate` task
-(``minimise``, ``heatup``, ``densityequil``, ``equil`` and ``snapshots``) as an
-alternative to :ref:`Amber <amber>`, using force fields converted from Amber
-format, with the same default settings as the Amber wrapper (2 fs timestep,
-Langevin thermostat, 9 Å cutoff).
+`LAMMPS <https://www.lammps.org>`__, through ASE's LAMMPS calculator, using
+force fields converted from Amber format.
+
+.. warning::
+
+   This wrapper is incomplete. Its ``minimise``, ``heatup``, ``densityequil``,
+   ``equil`` and ``snapshots`` methods do not yet match how the :ref:`solvate`
+   task calls them, and most of them only evaluate an energy rather than
+   running the MD phase. Use the :ref:`Amber <amber>` wrapper for the Solvate
+   task.
 
 :Website: https://www.lammps.org
 :Source code: https://github.com/lammps/lammps
