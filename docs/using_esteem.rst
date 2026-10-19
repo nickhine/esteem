@@ -91,7 +91,7 @@ Each task needs a wrapper, which determines which code is used to run its calcul
    clusters_task.wrapper = ORCAWrapper()
    clusters_task.wrapper.setup(nprocs=8)
 
-Each task also needs script settings, which define the parallelisation of the job scripts that ESTEEM writes for it. ``parallel.get_default_script_settings`` chooses settings suitable for the wrapper on the machines in use by my group. Templates for these machines are provided in ``parallel``, and can be copied and modified as required (see :ref:`parallel-execution`):
+Each task also needs script settings, which define the parallelisation of the job scripts that ESTEEM writes for it. ``parallel.get_default_script_settings`` chooses settings suitable for the wrapper on the machines in use by my group, and raises an error on any other machine, where you will need to write your own settings dictionary. Templates for these machines are provided in ``parallel``, and can be copied and modified as required (see :ref:`parallel-execution`):
 
 .. code-block:: python
 
