@@ -1,4 +1,4 @@
-# Copyright 2023
+# Copyright 2023-2026
 # See accompanying license files for details
 
 import sys
