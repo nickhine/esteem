@@ -1,0 +1,12 @@
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Packaging build output
+build/
+dist/
+*.egg-info/
+
+# Local Sphinx builds
+docs/html/
+docs/doctrees/

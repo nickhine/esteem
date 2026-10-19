@@ -39,7 +39,14 @@ class NWChemWrapper():
         self.output = "nwchem"
 
     def setup(self, nprocs=None, nwchem_cmd=None, nwchem_top=None):
-        """Sets up the internal variables of the NWChemWrapper class, including run command"""
+        """
+        Sets up the run command of the NWChemWrapper class
+
+        If the environment variable ``ASE_NWCHEM_COMMAND`` is already set, it is used
+        unchanged and the arguments are ignored. Otherwise it is set to run
+        ``mpirun -np nprocs nwchem_cmd`` (``nwchem_cmd`` defaults to ``nwchem``).
+        ``nwchem_top`` is not used.
+        """
         try:
             nwchem_cmd = environ["ASE_NWCHEM_COMMAND"]
         except KeyError:
@@ -232,7 +239,17 @@ class NWChemWrapper():
     def singlepoint(self, model, label, calc_params={}, solvent=None, charge=0, spin=0,
                     forces=False, dipole=True, continuation=False, readonly=False, calconly=False,
                     cleanup=True):
-        """Runs a singlepoint calculation with the NWChem ASE calculator"""
+        """
+        Runs a singlepoint calculation with the NWChem ASE calculator
+
+        ``calc_params`` must contain ``basis``, ``func`` and ``target`` (and optionally
+        ``disp``). For a non-zero target, TDDFT is added, with a gradient for that root
+        if forces are requested. ``dipole`` is not used: no dipole is returned.
+
+        Returns ``(energy, calc)``, or ``(energy, forces, calc)`` if ``forces`` is True,
+        with energy in eV and forces in eV/Angstrom. With ``calconly``, returns only
+        the calculator, without running it.
+        """
         basis, xc, target, disp = self.unpack_params(calc_params)
         calc_nw = NWChem(label=label, basis=basis, xc=self.check_func(xc))
         if (target is not None) and (target != 0):
@@ -273,7 +290,16 @@ class NWChemWrapper():
     def geom_opt(self, model_opt, label, calc_params={}, driver_tol='default',
                  solvent=None, continuation=False, charge=0, readonly=False,
                  calconly=False, cleanup=True):
-        """Runs a Geometry Optimisation calculation with the NWChem ASE calculator"""
+        """
+        Runs a Geometry Optimisation calculation with the NWChem ASE calculator
+
+        ``driver_tol`` is ``'default'`` or an NWChem driver convergence keyword (eg
+        ``'tight'``, which also selects tighter DFT settings).
+
+        Returns ``(energy, forces, positions)``, in eV, eV/Angstrom and Angstrom, and
+        updates the positions of ``model_opt``. With ``calconly``, returns only the
+        calculator, without running it.
+        """
         basis, xc, target, disp = self.unpack_params(calc_params)
         calc_nw = NWChem(label=label, basis=basis, xc=self.check_func(xc))
         calc_nw.set(driver=self.driver_block)
@@ -314,7 +340,13 @@ class NWChemWrapper():
     def freq(self, model_opt, label, calc_params={}, solvent=None, charge=0,
              temp=300, writeonly=False, readonly=False, continuation=False,
              cleanup=True):
-        """Runs a Vibrational Frequency calculation with the NWChem ASE calculator"""
+        """
+        Runs a Vibrational Frequency calculation with the NWChem ASE calculator
+
+        The frequencies, normal modes and IR intensities are parsed by
+        :meth:`read_freq` and stored in the calculator's ``results``. Returns None.
+        ``writeonly`` is not used.
+        """
         basis, xc, target, disp = self.unpack_params(calc_params)
         calc_nw = NWChem(label=label, basis=basis, xc=self.check_func(xc))
         self.freq_block['temp'] = f'1 {temp}'
@@ -350,7 +382,17 @@ class NWChemWrapper():
     def run_md(self, model, steplabel, calc_params, qmd_steps, qmd_timestep, superstep, temp,
                solvent=None, charge=0, continuation=False, readonly=False,
                constraints=None, dynamics=None, cleanup=True):
-        """Runs a Quantum Molecular Dynamics calculation with the NWChem ASE calculator"""
+        """
+        Runs a Quantum Molecular Dynamics calculation with the NWChem ASE calculator
+
+        Uses NWChem's QMD module with a stochastic velocity rescaling thermostat at
+        ``temp`` (K). ``qmd_timestep`` is in fs, and the run is set to
+        ``qmd_steps * (superstep + 1)`` steps in total, so that a restarted run
+        continues to the end of the current superstep. ``dynamics`` is not used.
+
+        Returns ``(energy, forces, positions)`` at the end of the run, in eV,
+        eV/Angstrom and Angstrom, and updates the positions of ``model``.
+        """
         import random
 
         basis, xc, target, disp = self.unpack_params(calc_params)
@@ -410,7 +452,17 @@ class NWChemWrapper():
     def excitations(self, model, label, calc_params={}, nroots=1, solvent=None, charge=0,
                     writeonly=False, readonly=False, continuation=False, cleanup=True,
                     plot_homo=None, plot_lumo=None, plot_trans_den=None):
-        """Calculates TDDFT excitations with the NWChem ASE calculator"""
+        """
+        Calculates TDDFT excitations with the NWChem ASE calculator
+
+        Optionally writes cube files of the first ``plot_trans_den`` transition
+        densities and of the orbitals given by ``plot_homo`` and ``plot_lumo`` (an
+        int, for that many orbitals, or a list of orbital indices).
+
+        Returns ``(s_excit, energy)``, where ``s_excit`` is the tuple returned by
+        :meth:`read_excitations` and ``energy`` is the ground state energy in eV.
+        With ``writeonly``, writes the input file and returns 0.
+        """
         # Set up calculator
         basis, xc, target, disp = self.unpack_params(calc_params)
         calc_nw = NWChem(label=label, basis=basis, xc=self.check_func(xc))
@@ -466,7 +518,14 @@ class NWChemWrapper():
         return s_excit, energy
 
     def read_excitations(self, filename):
-        """Read Excitations from nwchem calculator."""
+        """
+        Read singlet excitations from an NWChem output file
+
+        Returns ``(s_excit, trans_lines)``: ``s_excit`` is an array with one row
+        ``(root, energy in eV, oscillator strength)`` per root, and ``trans_lines``
+        lists the orbital transitions contributing to each root. If the file contains
+        several TDDFT outputs, only the last is returned.
+        """
 
         file = open(filename, 'r')
         lines = file.readlines()
@@ -511,7 +570,13 @@ class NWChemWrapper():
         return np.array(s_excit, ndmin=2), trans_lines
 
     def read_freq(self, calc):
-        """Read Vibrational Frequencies and Normal Modes from results of nwchem calculator."""
+        """
+        Read Vibrational Frequencies and Normal Modes from the output file of an NWChem calculator
+
+        Reads ``calc.label + '.nwo'``, stores the frequencies, normal modes, IR
+        intensities and derivative dipole moments in ``calc.results``, and returns the
+        frequencies.
+        """
         file = open(calc.label + '.nwo', 'r')
         lines = file.readlines()
         file.close()

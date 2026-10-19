@@ -27,33 +27,34 @@ class QMDTrajTask:
     # Main routine
     def run(self):
         """
-        Sets up and runs an ab initio molecular dynamics run on a given molecule (whose name is
-        provided by ``args.seed``) in the ground or excited state (specified by ``args.target``).
+        Sets up and runs ab initio molecular dynamics for a given molecule (whose name is
+        provided by ``self.seed``) in the ground or excited state (specified by ``self.target``).
 
-        Results, including a trajectory file with the stored snapshots, are saved to files
-        appending ``args.suffix`` to the seed and state, for use in future runs.
+        One trajectory is generated for each label in ``self.which_trajs`` (default: all
+        ``self.ntraj`` labels 'A', 'B', ...), starting from the geometry found by
+        :func:`esteem.trajectories.find_initial_geometry` (no geometry optimisation is performed).
+        The stored snapshots are written to ``{seed}_{targ}_{label}_{traj_suffix}.traj``, where
+        ``targ`` is 'gs', 'es1' and so on, for use in future runs.
 
-        The run is divided into equilibration (``args.nequil`` runs of ``args.md_steps`` MD steps
-        each, with timestep ``args.md_timestep``), then snapshot generation (``args.nsnap`` runs of
-        ``args.md_steps`` MD steps each, with timestep ``args.md_timestep``).
+        The run is divided into equilibration (``self.nequil`` runs of ``self.md_steps`` MD steps
+        each, with timestep ``self.md_timestep``), then snapshot generation (``self.nsnap`` runs of
+        ``self.md_steps`` MD steps each, with timestep ``self.md_timestep``), with one snapshot
+        stored at the end of each snapshot run.
 
-        A thermostat (wrapper-dependent) at temperature ``args.temp`` means we stay in the NVT ensemble.
+        A thermostat (wrapper-dependent) at temperature ``self.temp`` means we stay in the NVT ensemble.
 
-        Constraints can be applied using ``args.constraints`` - the meaning depends on the underlying wrapper.
+        Constraints can be applied using ``self.constraints`` - the meaning depends on the underlying wrapper.
 
-        Optionally can be used to recalculate singlepoint energies for the steps of a pre-existing trajectory.
+        If ``self.input_suffix`` is set, no MD is run: instead the energies and forces of the frames
+        of a pre-existing trajectory are recalculated (see
+        :func:`esteem.trajectories.recalculate_trajectory`).
 
-        args: namespace or class
-            Full set of arguments to the QMD_Trajectories task - see below for a listing.
+        The task settings are attributes of the task object (see below for a listing). Key settings
+        include ``basis``, ``func``, ``md_timestep``, ``md_steps``, ``nsnap``, ``nequil``, ``temp``
+        and ``constraints``.
 
-            Key arguments include ``basis``, ``func``, ``md_timestep``, ``md_steps``, ``nsnap``,
-            ``nequil``, ``temp``, ``constraints``
-
-            Generate with a call to qmd_trajectories.make_parser()
-        wrapper: namespace or class
-            List of functions for running components of the job, with members including:
-
-            ``singlepoint``, ``geom_opt`` and ``qmd``.
+        ``self.wrapper`` must be set to a wrapper object providing ``run_md`` (for the MD) and
+        ``singlepoint`` (for the snapshots, and for recalculating an existing trajectory).
         """
 
         # Check input args are valid

@@ -32,7 +32,7 @@ Standalone module routines
 --------------------------
 
 .. automodule:: esteem.tasks.ml_testing
-   :exclude-members: MLTestTask
+   :exclude-members: MLTestingTask
    :members:
 
 

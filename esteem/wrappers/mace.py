@@ -11,6 +11,12 @@ class MACEWrapper():
     """
     Sets up, trains and runs a MACE Neural Network Calculator to represent a
     potential energy surface.
+
+    ``MACEWrapper(xmace=True)`` uses X-MACE (the ``xmace`` package) instead of MACE.
+    Setting the ``foundation_model`` attribute to a (family, model) tuple, eg
+    ``('polar', 'polar-1-m')``, makes ``load`` return that MACE foundation model
+    instead of a trained one. The ``charge`` attribute (default 0) is the total
+    charge used for charge-aware models when the task does not supply one.
     """
 
     from mace import tools
@@ -23,6 +29,9 @@ class MACEWrapper():
             Use X-MACE (the xmace package) instead of MACE: one model for several
             electronic states, trained with a target dict such as {0: 'gs', 1: 'es1'},
             whose head names select the state to evaluate
+
+        kwargs: dict
+            Ignored. Change training arguments through the ``train_args`` attribute.
         """
         from copy import deepcopy
         self.xmace = xmace
@@ -83,16 +92,31 @@ class MACEWrapper():
 
     def load(self, seed, target=None, prefix="", suffix="", dir_suffix=""):
         """
-        Loads an existing MACE Calculator
+        Loads an existing MACE Calculator, or a committee of them
+
+        Calculators are cached, so loading the same parameters again returns the
+        already-loaded calculator(s). If ``foundation_model`` is set, the foundation
+        model is returned and the other arguments are ignored.
 
         seed: str
+            Seed name of the calculator
 
-        target: int
+        target: int, str, dict or list
+            Target state (eg 0 or 1), a dict of targets for a multi-head or X-MACE
+            model (eg ``{0: 'gs', 1: 'es1'}``), or a list of targets to load one
+            calculator for each
 
-        suffix: str
+        prefix: str
+            Prefix to the directory containing the calculator
 
-        kwargs: dict
-            other keywords
+        suffix: str or dict
+            Suffix of the calculator name. A dict, mapping each calculator suffix to
+            the random seed it was trained with, loads a committee.
+
+        dir_suffix: str
+            Suffix of the directory ``{seed}_{targ}_{dir_suffix}`` containing the model file(s)
+
+        *Returns*: a MACECalculator, or a list of them for a committee or a list of targets
         """
 
         # Check against or store previous calculator parameters
@@ -161,13 +185,21 @@ class MACEWrapper():
 
     def traj_to_extxyz(self, trajfile, outfilename, use_json=False):
         """
-        Converts a ASE Trajectory object to a extxyz format text file
-        Adds "REF_" to the data tags so that ASE does not nuke them
+        Converts an ASE Trajectory file to an extxyz format text file.
+        Prefixes the data tags with ``REF_`` so that ASE does not overwrite them.
 
         trajfile: str or list
+            Trajectory filename, or (with ``use_json``) a list of trajectories of the
+            same frames, one per state
 
         outfilename: str
+            Name of the extxyz file to write
 
+        use_json: bool
+            If True, write the energies, dipoles and forces of all the states in each
+            frame as JSON strings, as X-MACE expects
+
+        *Returns*: (outfilename, number of frames written)
         """
 
         from ase.io import Trajectory
@@ -203,7 +235,8 @@ class MACEWrapper():
 
     def reset_loss(self, seed, prefix="", suffix="", target=None):
         """
-        Runs training for MACE model using an input trajectory as training points
+        Placeholder for resetting the loss before further training. For MACE it
+        does nothing, so a ``reset_loss`` request has no effect.
 
         seed: str
 
@@ -224,9 +257,15 @@ class MACEWrapper():
         MACE keeps changing its mind about the naming scheme for the finished model.
         So we loop over all the possibilities and try them all.
         We can probably remove this nonsense eventually but keep it for now
+
         dirname: str
+            Directory containing the model
         calcfn: str
+            Calculator name
         seed_suffix: str
+            Random seed used in training, which MACE adds as ``_run-{seed}``
+
+        *Returns*: the path of the first model file found, or None
         """
         best_model = None
         modelfiles = []
@@ -248,14 +287,36 @@ class MACEWrapper():
     def train(self, seed, prefix="", suffix="", dir_suffix="", trajfile="", validfile=None, testfile=None,
               targets_in=None, restart=False, **kwargs):
         """
-        Runs training for MACE model using an input trajectory as training points
+        Runs training for MACE model using input trajectories as training points
+
+        Training runs in the directory ``{seed}_{targ}_{dir_suffix}``, which must contain
+        the atom energies trajectory ``{seed}_atoms_{suffix}.traj``. It is skipped if a
+        finished model already exists. Set training options through ``train_args``.
 
         seed: str
-        target: int
+            Seed name of the calculator
+        prefix: str
+            Ignored: training always runs relative to the current directory
         suffix: str
-        trajfile: str
+            Suffix of the calculator name
+        dir_suffix: str
+            Suffix of the training directory
+        trajfile: dict
+            Training trajectory filename for each target, keyed by target string
+            (the values of ``targets_in``, or ``str(targets_in)`` for a single target)
+        validfile: dict or None
+            Validation trajectory filenames, keyed as for ``trajfile``. If None, a
+            validation fraction of 5% of the training data is used.
+        testfile: dict or None
+            Test trajectory filenames, keyed as for ``trajfile``. If None, the training
+            data are also used as the test set.
+        targets_in: int or dict
+            Target state, or a dict such as ``{0: 'gs', 1: 'es1'}`` to train a multi-head
+            model (or, with X-MACE, one model for all the states)
         restart: bool
+            Ignored (MACE restarts from its latest checkpoint by default)
         kwargs: dict
+            Ignored
         """
 
         # Not sensible to try training in other directory than current, so prefix is
@@ -441,13 +502,19 @@ class MACEWrapper():
         """
         Runs a heating up Molecular Dynamics calculation with the MACE ASE calculator.
 
+        The temperature is ramped up to ``temp0`` in 10 stages of Langevin dynamics,
+        using the ``temp0``, ``dt`` and ``friction`` attributes (set by the Solvate task).
+        The final structure of each stage is written to heat.xyz.
+
         model: ASE Atoms
 
         seed: str
 
         calc_params: dict
+            Calculator parameters, as for ``run_md``
 
         nsteps: int
+            Total number of MD steps over all the stages
         """
 
         if not hasattr(self, 'dynamics') or self.dynamics is None:
@@ -467,9 +534,17 @@ class MACEWrapper():
     def densityequil(self, model, seed, calc_params={}, nsteps=100):
         """
         Runs a density equilibration Molecular Dynamics calculation with the MACE ASE calculator.
+
+        Uses NPT dynamics at ``temp0``, with the ``dt`` and ``ttime`` attributes, and
+        writes the final structure to density.xyz.
+
         model: ASE Atoms
+
         seed: str
+
         calc_params: dict
+            Calculator parameters, as for ``run_md``
+
         nsteps: int
         """
 
@@ -489,9 +564,17 @@ class MACEWrapper():
     def equil(self, model, seed, calc_params={}, nsteps=100):
         """
         Runs an equilibration Molecular Dynamics calculation with the MACE ASE calculator.
+
+        Uses Langevin dynamics at fixed volume at ``temp0``, and writes the final
+        structure to equil.xyz.
+
         model: ASE Atoms
+
         seed: str
+
         calc_params: dict
+            Calculator parameters, as for ``run_md``
+
         nsteps: int
         """
 
@@ -507,11 +590,28 @@ class MACEWrapper():
 
     def snapshots(self, model, seed, calc_params={}, nsnaps=1, nsteps=100, start=0, nat_solu=0, nat_solv=0):
         """
-        Runs a density equilibration Molecular Dynamics calculation with the MACE ASE calculator.
+        Generates snapshots from Langevin Molecular Dynamics with the MACE ASE calculator.
+
+        Each snapshot follows ``nsteps`` steps of MD; it is reimaged (if there is a cell)
+        and written to ``{seed}.traj`` and to snapNNNN.xyz.
+
         model: ASE Atoms
+
         seed: str
+
         calc_params: dict
+            Calculator parameters, as for ``run_md``
+
+        nsnaps: int
+            Number of snapshots
         nsteps: int
+            Number of MD steps between snapshots
+        start: int
+            Snapshot to resume from (0 starts a new trajectory)
+        nat_solu: int
+            Number of atoms in the solute, for reimaging
+        nat_solv: int
+            Number of atoms in each solvent molecule, for reimaging
         """
         from ase.io import Trajectory
 
@@ -552,25 +652,43 @@ class MACEWrapper():
 
         model: ASE Atoms
 
-        seed: str
+        mdseed: str
+            Name for the output trajectory ``{mdseed}.traj``
 
         calc_params: dict
+            Calculator parameters: ``calc_seed``, ``target``, ``calc_suffix``,
+            ``calc_dir_suffix``, ``calc_prefix``, and ``calc_head`` if ``target`` is a dict
 
         md_steps: int
 
         md_timestep: float
+            Timestep in ASE time units
 
         superstep: int
+            Ignored
 
         temp: float
-
-        target: int or None
+            Temperature in K
 
         solvent: str or None
+            Ignored
+
+        charge: int
+            Total charge, stored in ``model.info['charge']`` (the ``charge`` attribute is used if 0)
 
         restart: bool
+            Ignored
 
         readonly: bool
+            If True, recalculate the energy of the final image in ``{mdseed}.xyz``
+            instead of running MD
+
+        dynamics:
+            Either an object with attributes ``type`` ('LANG' or 'NPT'), ``friction`` and
+            ``new_traj`` (plus ``ttime`` and ``pfactor`` for NPT), or the ASE dynamics
+            object returned by a previous call, which is then continued. Must not be None.
+
+        *Returns*: the ASE dynamics object, or None if ``readonly``
         """
 
         from ase.md.velocitydistribution import MaxwellBoltzmannDistribution, Stationary, ZeroRotation
@@ -640,23 +758,29 @@ class MACEWrapper():
                  solvent=None, charge=0, spin=0, writeonly=False, readonly=False, continuation=False, cleanup=False,
                  traj=None):
         """
-        Runs a geometry optimisation calculation with the MACE ASE calculator
+        Runs a BFGS geometry optimisation calculation with the MACE ASE calculator
 
         model: ASE Atoms
 
         seed: str
+            Ignored
 
         calc_params: dict
+            Calculator parameters, as for ``run_md``
 
-        dummy: str
+        driver_tol: str
+            Force tolerance: 'default' (0.00045 eV/Ang), 'loose' (0.0045), 'veryloose' (0.1)
+            or 'tight' (0.000015)
 
-        driver_tol:
+        charge: int
+            Total charge, as for ``run_md``
 
-        target: int or None
+        traj: str or None
+            Trajectory file for the optimisation steps
 
-        solvent: str or None
+        The other arguments are ignored.
 
-        readonly: bool
+        *Returns*: energy (eV), forces (eV/Ang) and positions (Ang) of the optimised structure
         """
         from ase.io import Trajectory
 
@@ -699,23 +823,22 @@ class MACEWrapper():
         """
         Runs a Vibrational Frequency calculation with the MACE ASE calculator
 
+        Uses ASE's ``Infrared`` class, and writes the IR spectrum to ``{name}_ir_spectrum.dat``.
+
         model_opt: ASE Atoms
 
         seed: str
+            Seed for the name of the vibrational calculation
 
-        suffix: str
+        calc_params: dict
+            Calculator parameters, as for ``run_md``
 
-        dummy: str
+        charge: int
+            Total charge, as for ``run_md``
 
-        driver_tol:
+        The other arguments are ignored.
 
-        target: int or None
-
-        solvent: str or None
-
-        temp: float
-
-        readonly: bool
+        *Returns*: the ASE ``Infrared`` object
         """
 
         from ase.vibrations import Vibrations, Infrared
@@ -752,21 +875,34 @@ class MACEWrapper():
                     forces=False, dipole=False, calc=False, readonly=False, continuation=False,
                     cleanup=True):
         """
-        Runs a singlepoint calculation with the MACE ASE calculator
+        Runs a singlepoint calculation with the MACE ASE calculator, or a committee
 
         model: ASE Atoms
 
         seed: str
+            Ignored
 
-        suffix: str
+        calc_params: dict
+            Calculator parameters, as for ``run_md``. A dict ``calc_suffix`` gives a committee.
 
-        dummy: str
+        charge: int
+            Total charge, as for ``run_md``
 
-        target: int or None
+        forces: bool
+            Also return the forces
 
-        solvent: str or None
+        dipole: bool
+            Also return the dipole (None if the model does not provide one)
 
-        readonly: bool
+        calc: bool
+            Also return the calculator(s)
+
+        The other arguments are ignored.
+
+        *Returns*: a list of the energy (eV), then forces (eV/Ang), dipole (e Ang) and
+        calculator if requested. For a committee, each result is an array over members,
+        and ``model.calc`` becomes a SinglePointCalculator holding them (plus
+        ``energy_std`` etc).
         """
 
         calc_seed = calc_params['calc_seed']

@@ -166,7 +166,9 @@ class OpenQPWrapper():
         """
         Runs a singlepoint calculation with OpenQP
 
-        For a list of targets, returns arrays over targets (as the ORCA wrapper does).
+        Returns a list, as the ORCA wrapper does: the energy (eV), then, if requested,
+        the forces (eV/Angstrom), the dipole (e*Angstrom), the excitation spectrum and
+        the calculator. For a list of targets, each result is an array over targets.
         Dipoles are the relaxed MRSF state dipoles, available only when forces are
         calculated: otherwise they are NaN. The excitation spectrum (excitations=True
         with a list of targets) is not read, so None is returned in its place.
@@ -257,7 +259,8 @@ class OpenQPWrapper():
         """
         Optimises the geometry of one state with OpenQP (runtype=optimize)
 
-        The optimised positions are written into model_opt. driver_tol is not used:
+        Returns ``(energy, forces, positions)``, in eV, eV/Angstrom and Angstrom, and
+        writes the optimised positions into model_opt. driver_tol is not used:
         OpenQP's own convergence criteria apply. An optimisation that does not
         converge raises an Exception.
         """
@@ -302,10 +305,13 @@ class OpenQPWrapper():
         """
         Vertical MRSF-TDDFT excitations from the S0 of the MRSF manifold
 
-        Returns (s_excit, energy) as the ORCA wrapper does: s_excit is a list of
-        (root, excitation energy in eV, oscillator strength) for roots 1..nroots, and
-        energy is the total MRSF S0 energy in eV. Oscillator strengths are None if
-        OpenQP did not write the transition dipoles. The plot_* arguments are ignored.
+        Returns ``(s_excit, energy)``: ``s_excit`` is a list of
+        ``(root, excitation energy in eV, oscillator strength)`` for roots 1..nroots, and
+        ``energy`` is the total MRSF S0 energy in eV. Unlike the ORCA and NWChem
+        wrappers, ``s_excit`` is the list itself, not a ``(list, transitions)`` tuple.
+        Oscillator strengths are None if OpenQP did not write the transition dipoles.
+        With ``writeonly``, writes the input file and returns 0. The ``plot_*``
+        arguments are ignored.
         """
         basis, xc, target, disp = self.unpack_params(calc_params)
         if disp:

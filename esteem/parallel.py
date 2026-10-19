@@ -157,6 +157,22 @@ sulis_1node_100['command'] = gnu_parallel_command
 
 
 def get_default_script_settings(wrapper):
+    """
+    Returns default job script settings for the current machine and wrapper.
+
+    The machine is identified from the fully-qualified hostname (Warwick SCRTP, Avon, Sulis or
+    ARCHER2), and the settings are then chosen according to the type of ``wrapper``: for example
+    a GPU node for PhysNet or MACE, or a bash loop over several array task IDs for ORCA or
+    OpenQP. For some wrappers (eg ONETEP, and ORCA or OpenQP at Warwick) this also calls
+    ``wrapper.setup()`` with machine-specific executable and pseudopotential settings.
+
+    wrapper: class
+        Wrapper object that the job will use.
+
+    *Returns*: dict of job script settings, suitable as keyword arguments to :func:`make_sbatch`.
+
+    Raises an Exception if the hostname is not recognised.
+    """
 
     from esteem.wrappers.onetep import OnetepWrapper
     from esteem.wrappers.nwchem import NWChemWrapper
@@ -253,15 +269,43 @@ def get_default_script_settings(wrapper):
 
 def make_sbatch(seed, task='', **kwargs):
     """
-    Writes a SLURM sbatch script for a task
+    Writes a SLURM sbatch script for a task, to the file '{jobname}_sub' in the current directory.
 
+    The script runs ``{command} {execpath}{scriptname}.py {task} {seed} [{target}]``, with
+    output appended to the log file '{logdir}/{jobname}.log' (with '_{array task ID}' added
+    before '.log' in an array job).
+
+    seed: str
+        Seed name, passed to the script as its seed argument. Also the default script name.
     task: str
         Name of the task to be performed
-    kwargs: dict of strings
-        Many options to control script parameters, including possible keys:
+    kwargs: dict
+        Many options to control script parameters. Possible keys:
 
-        ``account``, ``partition``, ``qos``, ``nodes``, ``ntask``, ``ncpu``,
-        ``time``, ``mem``, ``execpath``, ``target``, ``jobname``
+        ``account``, ``partition``, ``qos``, ``gres``, ``nodes``, ``time``, ``mem``, ``export``:
+        written as the corresponding ``#SBATCH`` options.
+
+        ``ntask``: tasks per node (``--ntasks-per-node``). ``ncpu``: CPUs per task
+        (``--cpus-per-task``, default 1).
+
+        ``num_threads``: value of ``OMP_NUM_THREADS`` (default ``ncpu``).
+
+        ``command``: command that runs the script (default 'python'). ``exec``: program run by
+        ``command``, used only if ``command`` does not end in 'python'.
+
+        ``declarations``: text inserted before the command. ``endmatter``: text appended after it.
+
+        ``execpath``: path prepended to the script name. ``scriptname``: name of the Python
+        script, without '.py' (default ``seed``).
+
+        ``target``: target passed to the script. An integer (or string of digits) adds '_gs' (for 0)
+        or '_es{target}' to the default job name; any other value adds '_{target}'.
+
+        ``jobname``: job name (default '{seed}{_target}_{task}').
+
+        ``logdir``: directory for the log file (default the current directory).
+
+        ``postfix``: text replacing the default ``| tee -a`` redirection to the log file.
     """
 
     # Other defaults
@@ -385,15 +429,21 @@ def make_sbatch(seed, task='', **kwargs):
 
 def make_pbs(seed, dest='local', task='solutes', execpath='', ncpu=None, target=None):
     """
-    Writes a PBS script for a task. Possibly out-of-date (not recently used)
+    Writes a PBS script for a task, to the file '{seed}_{task}_sub'. Possibly out-of-date (not
+    recently used): the settings are hard-coded for the old ARCHER machine.
 
+    seed: str
+        Seed name: the script runs '{execpath}{seed}.py'.
+    dest: str
+        Destination machine. Only 'archer' is recognised; any other value raises an Exception.
     task: str
         Name of the task to be performed
-    kwargs: dict of strings
-        Many options to control script parameters, including possible keys:
-
-        ``account``, ``partition``, ``nodes``, ``ntask``, ``ncpu``, ``time``, ``mem``,
-        ``execpath``, ``target``, ``jobname``
+    execpath: str
+        Path prepended to the script name.
+    ncpu: int
+        Not currently used.
+    target: int
+        Not currently used in the script written.
     """
 
     if target is not None:
@@ -477,6 +527,11 @@ module load python-compute/3.6.0_gcc6.1.0
 
 
 def get_array_task_id():
+    """
+    Returns the array task ID of the current job, as an int, from the environment variable
+    ``SLURM_ARRAY_TASK_ID`` or ``PBS_ARRAY_INDEX`` (the latter takes precedence if both are set).
+    Returns None if the job is not an array task.
+    """
 
     task_id = None
 

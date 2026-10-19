@@ -99,18 +99,22 @@ def generate_md_trajectory(model, seed, traj_target, traj_label, traj_suffix, tr
 
     This generic function gets called by both AIMD and by MLMD.
 
+    The snapshots are written to '{seed}_{targ}_{traj_label}_{traj_suffix}.traj' for each target
+    evaluated (see :func:`md_output_names`), with the runs performed in the directories
+    '{traj_suffix}_equil', '{traj_suffix}_md' and '{traj_suffix}_snaps'.
+
     model: ASE Atoms
         Initial geometry for the MD trajectory
     seed: str
-        String containing name of molecule and excited state index
-    traj_target: int or None
-        Excited state index
+        String containing name of molecule (the target state string is appended to it)
+    traj_target: int or list
+        Target (state index) on which the MD is run. A list such as [1, 0] means the first
+        drives the MD and all are evaluated at each snapshot. If traj_calc_params['target'] is a
+        dict (multi-head calculator), traj_target is a key of it, selecting the head.
     traj_label: character or str
         String labelling trajectory (usually A,B,C..)
-    seed: str
-        String containing name of molecule and excited state index
     traj_suffix: str
-        String appended to seed and target state to give full trajectory filename
+        String appended to seed, target state and label to give full trajectory filename
     traj_wrapper: ESTEEM wrapper class
         Wrapper containing run_md and singlepoint functions
     count_snaps: int
@@ -119,21 +123,38 @@ def generate_md_trajectory(model, seed, traj_target, traj_label, traj_suffix, tr
         Number of equilibration runs
     md_steps: int
         Number of molecular dynamics timesteps in each run above
-    md_timestep: float
-        Molecular dynamics timestep within the runs
-    store_full_traj: bool
-        Determines whether the full step-by-step trajectory is written, or just the snapshots each md_steps
+    md_timestep: float or dict
+        Molecular dynamics timestep within the runs, in ASE time units. May be a dict with keys
+        'EQ' and 'MD' giving separate values for equilibration and snapshot runs
+    md_friction: float or dict
+        Langevin friction coefficient, in inverse ASE time units. May be a dict with keys 'EQ' and 'MD'
     temp: float
-        Thermostat temperature (NVT ensemble)
-    traj_calc_params: 
+        Thermostat temperature in K. A run is aborted if the temperature exceeds ten times this
+    traj_calc_params: dict
         Control-parameters for the wrapper (for QM this is the basis, functional, and target;
         for ML this is the calculator seed, suffix, prefix and target)
+    charge: int
+        Total charge of the system
     solvent:
         Implicit solvent description
     constraints: wrapper-dependent type
         Variables controlling the constraints
     dynamics: wrapper-dependent type
-        Variables controlling the dynamics
+        Variables controlling the dynamics. If None, Langevin dynamics with md_friction is used
+    snap_target: int, list or None
+        Target(s) to evaluate at each snapshot. Currently it does not change which targets are
+        evaluated: those are taken from traj_target
+    snap_wrapper: ESTEEM wrapper class or None
+        Wrapper used to evaluate each snapshot (eg a committee). If None, traj_wrapper is used
+    snap_calc_params: dict or None
+        Control-parameters for snap_wrapper. If None, traj_calc_params is used
+    continuation: bool
+        If True, skip equilibration and append to an existing output trajectory; if False, any
+        existing output is removed first
+    store_full_traj: bool
+        Determines whether the full step-by-step trajectory is written, or just the snapshots each md_steps
+    debugger: object or None
+        If set, its check(model) method is called after each equilibration run
     stop_stde_thresh: float or None
         If set, the snap_wrapper committee is also evaluated after each equilibration step, and the
         trajectory stops once the committee energy standard deviation per atom exceeds this. If that
@@ -475,7 +496,10 @@ def cycle_step_labels_and_restarts(seed, traj_label,
                                    prevstep, currstep, nextstep,
                                    count, prevcount, exts, use_subdirs=False):
     """
-    Move restart files around so that each step continues from the previous one
+    Move restart files around so that each step continues from the previous one.
+
+    Returns the label for the current step, and flags for whether it should be run readonly
+    (it has already been completed) and as a continuation (a restart file is available).
     """
 
     # Find name of next restart files
@@ -565,13 +589,24 @@ def find_initial_geometry(seed, geom_opt_func=None, calc_params={}, which_traj=N
     Obtains a suitable initial geometry for the current seed and state.
     Optimises it if not present.
 
+    If which_traj is given and a trajectory '{seed}_{targ}_md_init.traj' exists, a frame of it is
+    used. Otherwise the optimised geometry is read from '{seed}_{targ}.xyz' or, failing that,
+    '{seed}.xyz' is read and optimised with geom_opt_func (if given), and the result written to
+    '{seed}_{targ}.xyz'. Returns the geometry as an ASE Atoms object.
+
     seed: str
         String indicating name of molecule, used to find xyz file
     geom_opt_func: function
         Wrapper function that runs a geometry optimisation
-    calc_params: 
+    calc_params: dict
         Control-parameters for the wrapper (for QM this is the basis, functional, and target;
         for ML this is the calculator seed, suffix, prefix and target)
+    which_traj: str or None
+        Trajectory label. The frame of the md_init trajectory is chosen at random, seeded with
+        which_traj plus calc_params['calc_suffix'] (if present)
+    ntraj: int
+        If equal to the length of the md_init trajectory, frame i is used for the i-th trajectory
+        label instead of a random frame
     """
 
     # Construct name for input geometries
@@ -639,13 +674,46 @@ def recalculate_trajectory(seed, target, traj_label, traj_suffix, input_target, 
                            geom_opt_kernel=False, vibfreq_kernel=False,
                            skip_failed=False, max_frames=None):
     """
-    Loads snapshots from a trajectory and recalculates the energy and forces with the current settings
+    Loads snapshots from a trajectory and recalculates the energy and forces with the current settings.
+
+    The input trajectory is '{seed}_{input_targ}_{input_traj_label}_{input_suffix}.traj'. Calculations
+    run in the directory traj_suffix, and the results are written to
+    '{seed}_{targ}_{traj_label}_{traj_suffix}.traj' for each target, unless only part of the
+    trajectory is being calculated (output_traj_offset > 0, or a single frame).
+
     seed: str
-        String containing name of molecule and excited state index
-    target: int or None
-        Excited state index
+        String containing name of molecule (the target state string is appended to it)
+    target: int, None, list or dict
+        Target (state index, None meaning the ground state) to calculate, or a list of them (which may include strings such as
+        'diff10' for the difference between two states), or a dict mapping targets to calculator heads
     traj_label: character or str
         String labelling trajectory (usually A,B,C..)
+    traj_suffix: str
+        Suffix of the output trajectory, also used as the directory in which calculations run
+    input_target: int or None
+        Target of the input trajectory
+    input_suffix: str
+        Suffix of the input trajectory
+    wrapper: ESTEEM wrapper class
+        Wrapper whose singlepoint (and geom_opt or freq) functions are used
+    calc_params: dict
+        Control-parameters for the wrapper
+    input_traj_range: range or None
+        Indices of the input frames to recalculate. If None, all frames are used
+    input_traj_label: str or None
+        Label of the input trajectory, if different from traj_label
+    output_traj_offset: int
+        Offset added to each input frame index to give the output frame index
+    charge: int
+        Total charge of the system
+    solvent:
+        Implicit solvent description
+    calc_forces, calc_dipole: bool
+        Whether to calculate forces and dipoles
+    geom_opt_kernel: bool
+        If True, first optimise the geometry of each frame with atoms not tagged 1 held fixed
+    vibfreq_kernel: bool
+        If True, also calculate vibrational frequencies of each frame (stored in frame.info)
     skip_failed: bool
         If True, a frame whose calculation failed is left out of the output trajectory rather than
         stopping (only when it fails before anything is written for that frame, ie at its first target)
@@ -962,7 +1030,8 @@ def check_completed_and_cleanup(label, wrapper, input_traj_range):
 
 def cycle_restarts(seed, traj_label, traj_suffix, prevtarg, currtarg, prevstep, currstep, db_ext):
     """
-    Move db files around so that each step continues from the previous one
+    Copy the restart file (extension db_ext) of the previous target or step to the current one,
+    so that each step continues from the previous one
     """
 
     # Find name of previous step file
@@ -989,9 +1058,8 @@ def cycle_restarts(seed, traj_label, traj_suffix, prevtarg, currtarg, prevstep, 
 
 def get_trajectory_list(ntraj):
     """
-    Returns a list of characters to be used as trajectory labels
-    Currently ABCDEDFGHIJKLMNOPQRSTUVWXYZ (26)
-    then uses AA,AB,...,ZZ (26^2)
+    Returns a list of the first ntraj trajectory labels:
+    A, B, ..., Z (26), then AA, AB, ..., ZZ (26^2)
     """
     import itertools
     import string
@@ -1009,6 +1077,22 @@ def merge_traj(trajnames, trajfile, trajfile_valid=None, valid_fraction=0.0, spl
     """
     Merges a list of trajectories supplied as a list of filenames,
     and writes the result to another trajectory supplied as a filename
+
+    trajnames: list of str
+        Filenames of the trajectories to merge
+    trajfile: str
+        Filename of the merged (training) trajectory to write
+    trajfile_valid: str or None
+        Filename of the trajectory to which validation frames are written. Required if
+        valid_fraction > 0
+    valid_fraction: float
+        Fraction of the frames of each trajectory written, chosen at random, to trajfile_valid
+        rather than trajfile
+    split_seed: int
+        Random seed for the split; it is combined with each trajectory's filename
+    split_seed_dict: dict
+        Seeds used, keyed by position in trajnames. A seed already present is reused, so that
+        trajectories for different targets can be split in the same way
     """
     import hashlib
 
@@ -1051,8 +1135,8 @@ def merge_traj(trajnames, trajfile, trajfile_valid=None, valid_fraction=0.0, spl
 
 def diff_traj(gstrajfile, es1trajfile, outtrajfile):
     """
-    Takes two trajectory filenames and finds the energy and force difference between
-    them, outputting the result to a trajectory name outtrajfile
+    Takes two trajectory filenames and finds the energy, force and dipole difference between
+    them (es1trajfile minus gstrajfile), outputting the result to a trajectory name outtrajfile
     """
     outtraj = Trajectory(outtrajfile, 'w')
     gstraj = Trajectory(gstrajfile)
@@ -1071,7 +1155,9 @@ def diff_traj(gstrajfile, es1trajfile, outtrajfile):
 
 def split_traj(input_traj_file, output_trajs=None, ntrajs=None, randomise=False, start=0, end=-1):
     """
-    Takes in a trajectory filename, and splits it into sections, randomly or sequentially
+    Takes in a trajectory filename, and splits frames start to end of it sequentially into
+    ntrajs sections, written to the filenames in output_trajs (by default
+    '{input_traj_file stem}_{i}.traj'). The randomise option currently has no effect
     """
     import numpy as np
     if output_trajs is not None:
@@ -1129,7 +1215,8 @@ def atom_energy(atoms, e_at):
 def subtract_atom_energies_from_traj(traj, atom_traj, trajout):
     """
     Subtracts the energies associated with isolated atoms from the total energies
-    in a trajectory
+    in a trajectory, writing the frames to trajout (an open Trajectory). atom_traj contains
+    one single-atom frame per element
     """
     e_at = atom_energies(atom_traj)
     for i, t in enumerate(traj):
@@ -1199,11 +1286,18 @@ def compare_traj_to_traj(trajx, trajy, plot_func=plot_diff, plot_file=None, xlab
     trajx: ASE Trajectory
         Trajectory whose energy is plotted along x-axis
     trajy: ASE Trajectory
-        Trajectory whose energy is plotted along y-axis
+        Trajectory whose energy is plotted along y-axis (for a committee, the mean energy is used)
+    plot_func: function or None
+        Function that makes the plot, called as
+        plot_func(e_x, e_y, rms_fd, xlabel, ylabel, clabel, stats, plot_file). If None, plot_diff is used
     plot_file:
-        Filename to write plot image to.
-    xlabel, ylabel: str
-        Axis labels for plots.
+        Filename to write plot image to ('show' to display it, None for no plot).
+    xlabel, ylabel, clabel: str
+        Axis and colour bar labels for plots.
+
+    Returns rms_e_err, max_e_err, rms_fd_err, max_fd_err, e_x, e_y, rms_fd: the RMS and maximum
+    energy errors (eV), the RMS and maximum of the per-frame RMS force deviations (eV/Ang), the
+    energies from each trajectory and the RMS force deviation of each frame.
     """
     import numpy as np
 

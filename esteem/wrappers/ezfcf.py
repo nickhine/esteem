@@ -12,6 +12,21 @@ import numpy as np
 class ezFCFWrapper():
     """
     Writes input xml files for ezFCF, runs them, and reads results
+
+    The ``data`` list holds the states added by ``add_model_data``, from structures with
+    ``info['modes']`` and ``info['freqs']`` (only atoms with tag 1 are used): the first is
+    the initial state and the rest are target states. ``read`` returns the stick spectrum
+    from ``{xml_filename}.spectrum_dushinsky`` as (energy, intensity) rows, or None.
+
+    :ivar temp: temperature in K - default 300
+    :ivar threshold: spectrum intensity threshold - default 0.001
+    :ivar max_vib_init: maximum vibrational excitations in the initial state - default 1
+    :ivar max_vib_target: maximum vibrational excitations in the target state - default 4
+    :ivar initial_state_thresh: initial state energy threshold in eV - default 0.1
+    :ivar target_state_thresh: target state energy threshold in eV - default 0.4
+    :ivar xml_filename: name of the ezFCF input file - default "ezfcf.xml"
+    :ivar exec: ezFCF executable, set by the ``ez_exec`` argument - default
+        "~/ezSpectrum_2021/bin/ezFCF_linux.exe", which users will probably need to change
     """
 
     def __init__(self,
@@ -202,7 +217,13 @@ class ezFCFWrapper():
 
     # Adapted from make_xml.py in the ezFCF distrbution
     def write_state_xml_file(self, xmlF, data: dict, which_state: str):
-        """ Write the state to the xml file. """
+        """ Write the state to the xml file.
+
+        data: dict
+            State data, as added by ``add_model_data``
+        which_state: str
+            "initial" or "target" (a target state also gets an optional normal modes reordering block)
+        """
         # To improve readability, each item of the data dictionary is unpacked to a variable.
 
         xmlF.write('  <geometry\n')

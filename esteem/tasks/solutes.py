@@ -26,35 +26,42 @@ class SolutesTask:
         Main routine for the Solutes task. Iterates through the sub-tasks, some of which are optional:
 
         Geometry optimisation, rotamer checks, rotation to plane, excited state calculations,
-        and vibrational frequency calculations.
+        and vibrational frequency calculations, in gas phase and then (if ``solvent`` is set)
+        in implicit solvent.
 
         namelist: list of str
             Short names of the solutes to be optimised. Initial geometries
             should be present in './xyz' directory.
-        self: namespace or class
-            Member variables contain argument list for the whole job, with members including:
 
-            ``solvent``, ``target``, ``rotate``, ``rotamers``, ``vibrations``, ``charges``, ``directory``
-            ``solvent_settings``, ``basis``, ``func``, ``nroots``
+        Settings are taken from the task attributes (see the argument listing for details), including:
 
-            Generate default arguments first with a call to solutes.make_parser(), then adjust the
-            member variables as required.
-        wrapper: class
-            Wrapper for running components of the job, with members including:
+            ``solvent``, ``target``, ``rotate``, ``rotamers``, ``vibrations``, ``nroots``, ``charges``,
+            ``calc_params`` (or ``basis``, ``func``, ``disp``), ``fc_fallback_dir``,
+            ``plot_homo``, ``plot_lumo``, ``plot_trans_den``
+
+        ``self.wrapper`` must be set to a wrapper for running components of the job, with members including:
 
             ``singlepoint``, ``geom_opt``, ``excitations``, ``freq``
 
-        *Outputs for each species*:
+        *Outputs for each species* (named ``{solute}_es{target}`` for an excited-state ``target``):
 
             In the directory 'xyz': initial geometries (either input, or from get_xyz_files)
 
-            In the directory 'geom': outputs of geometry optimisations.
+            In the directory 'geom': working directories of the geometry optimisations.
 
             In the directory 'opt': optimised gas-phase geometries.
 
-            In the directory 'is_opt': optimised implicit solvent geometries. These may be used as inputs for the Solvate task.
+            In the directories 'best_rota' and 'opt_rot': geometries after the rotamer search and
+            rotation to the xy-plane, if requested.
+
+            In the directories 'tddft' and 'freq': gas-phase TDDFT and vibrational frequency results,
+            if requested and no solvent is set.
+
+            In the directory 'is_opt_{solvent}': optimised implicit solvent geometries. These may be used as inputs for the Solvate task.
 
             In the directory 'is_tddft_{solvent}': implicit solvent tddft results. These may be used as inputs for spectral warping in the Spectra task.
+
+            In the directory 'is_freq_{solvent}': implicit solvent vibrational frequencies, if requested.
 
         """
 
@@ -132,12 +139,15 @@ class SolutesTask:
 
         This needs internet access, so if the machine you are using cannot reach PubChem,
         this routine will fail, in which case put starting point geometries in the directory
-        'xyz'. Molecules that already have a file in 'xyz' are not downloaded.
+        ``out_path``. Molecules that already have a file there are not downloaded. All the
+        conformers PubChem returns for a molecule are written to its file.
 
         namelist: dict
             Keys are shortnames (eg "cate"), entries are full names (eg "catechol" or "1,2-dihydroxybenzene")
         out_path: str
             String for directory name where xyz files will be written (eg "xyz"). Created if not present
+
+        *Returns*: list of the shortnames
         """
         from os import path, makedirs
         from ase.io import write
@@ -224,13 +234,15 @@ class SolutesTask:
         calc_params: dict
             Contents varies between different wrappers, but generally specifies basis, functional etc
         driver_tol: str
-            Geometry optimisation tolerance level (eg in NWChem)
-        target: int
-            Excited state index, or None for ground state
-        solvent: str
-            Implicit solvent name, or None for gas-phase
+            Geometry optimisation tolerance level passed to the wrapper (eg 'default', 'tight', 'loose')
+        solvent: str or dict
+            Implicit solvent name (or dict of solvent settings), or None for gas-phase
         charges: dict
             Keys are strings corresponding to some or all of the entries in solute names, entries are net charges on each molecule
+
+        The excited state to optimise is taken from ``calc_params['target']``. Calculations run in
+        'geom/{seed}'. If an excited-state optimisation fails and ``fc_fallback_dir`` is set,
+        ``fc_fallback`` is used instead.
         """
         from ase.io import read, write
         from os import path, makedirs, getcwd, chdir
@@ -341,8 +353,8 @@ class SolutesTask:
         """
         Finds the lowest energy rotamer for each of a list of solutes.
         Proceeds by identifying -OH groups attached to C-C units, and tries 'flipping' the dihedral, then optimising
-        the resulting geometry if it within a certain tolerance of the original energy. If any lower energy structure
-        is found, this will be returned instead of the original one.
+        the resulting geometry if its energy is within 0.2 (in the wrapper's energy units, normally eV) of the
+        original energy. If any lower energy structure is found, this will be returned instead of the original one.
 
         solute_names: list of str
             Short names of the solutes to be tested
@@ -357,7 +369,7 @@ class SolutesTask:
         calc_params: dict
             Contents varies between different wrappers, but generally specifies basis, functional etc
         solvent: str
-            Implicit solvent name, or None for gas-phase
+            Implicit solvent name, or None for gas-phase (currently not passed to the calculations)
         charges: dict
             Keys are strings corresponding to some or all of the entries in solute names, entries are net charges on each molecule
         """
@@ -470,7 +482,10 @@ class SolutesTask:
 
     def rotate_all_to_xy_plane(self, solute_names, in_path, out_path, target=None):
         """
-        Rotates each of a list of solutes so that the longest two C-C distances lie in the xy plane.
+        Rotates each of a list of solutes so that the plane defined by its two furthest-apart pairs of C atoms
+        lies in the xy plane, and centres it on the origin, using ``clusters.rotate_and_center_solute``.
+        Molecules with fewer than two C atoms are copied unchanged, and those of 10 atoms or fewer are
+        centred but not rotated.
 
         solute_names: list of str
             Short names of the solutes to be tested
@@ -527,8 +542,8 @@ class SolutesTask:
     def find_range_sep(self, solute_names, in_path, out_path, wrapper,
                        calc_params, solvent=None, charges={}, rs_range=[0.1, 0.2, 0.3], all_readonly=False):
         r'''
-        Optimises the range separation parameter gamma in a range-separated Hybrid functional with
-        Yukawa-switching.
+        Runs the calculations needed to optimise the range separation parameter gamma in a
+        range-separated hybrid functional with Yukawa-switching.
         See 'Using optimally tuned range separated hybrid functionals in ground-state
         calculations: Consequences and caveats',  Andreas Karolewski, Leeor Kronik, and Stephan Kümmel
         J. Chem. Phys. 138, 204115 (2013)
@@ -538,10 +553,34 @@ class SolutesTask:
         B. Moore, et al, D. Jacquemin, J. Chem. Theory Comput. 2014, 10, 10, 4599
         https://pubs.acs.org/doi/10.1021/ct500712w
 
-        Minimises J^2 = \Sum_i=0^1 [eps_H[N+i] + IP(N+i)))]^2
-        where IP(N) = E(N-1) - E(N)
-        so J^2 = \Sum_i=0^1 [eps_H[N+i] + E(N-1+i) - E(N+i)]^2
-               = [eps_H[N] + E(N-1) - E(N)]^2 + [eps_H[N+1] + E(N) - E(N+1)]^2 
+        The optimal gamma minimises::
+
+            J^2 = \Sum_i=0^1 [eps_H[N+i] + IP(N+i)))]^2
+            where IP(N) = E(N-1) - E(N)
+            so J^2 = \Sum_i=0^1 [eps_H[N+i] + E(N-1+i) - E(N+i)]^2
+                   = [eps_H[N] + E(N-1) - E(N)]^2 + [eps_H[N+1] + E(N) - E(N+1)]^2
+
+        For each value of gamma in ``rs_range``, singlepoint calculations are run with
+        ``wrapper.singlepoint`` for net charges Q, Q+1 and Q-1, in '{out_path}/{seed}'. The
+        minimisation of J^2 itself is not performed here.
+
+        solute_names: list of str
+            Short names of the solutes, read from '{in_path}/{seed}.xyz'
+        wrapper: class
+            Wrapper whose ``singlepoint`` returns the energy and a calculator object
+        calc_params: dict
+            Calculator parameters; ':{gamma}' is appended to its 'func' entry for each calculation
+        solvent: str
+            Implicit solvent name, or None for gas-phase
+        charges: dict
+            Net charge Q of each solute, keyed by shortname (default 0)
+        rs_range: list of float
+            Values of gamma to try
+        all_readonly: bool
+            If True, read existing outputs rather than running any calculations
+
+        *Returns*: dicts ``energy``, ``calc``, ``evals``, ``occs``, keyed by (gamma string, charge),
+        for the first solute only.
         '''
         from os import path, makedirs, getcwd, chdir
         from ase.io import read
@@ -628,12 +667,16 @@ class SolutesTask:
             Contents varies between different wrappers, but generally specifies basis, functional etc
         nroots: int
             Number of excitations to find
-        target: int
-            Excited state index, or None for ground state
-        solvent: str
-            Implicit solvent name, or None for gas-phase
+        solvent: str or dict
+            Implicit solvent name (or dict of solvent settings), or None for gas-phase
         charges: dict
             Keys are strings corresponding to some or all of the entries in solute names, entries are net charges on each molecule
+        plot_homo, plot_lumo, plot_trans_den: int
+            Numbers of occupied orbitals, unoccupied orbitals and transition densities to write as cube files,
+            or None for none (passed to the wrapper)
+
+        The excited state whose geometry is read (``{seed}_es{target}``) is taken from ``calc_params['target']``.
+        Calculations run in '{out_path}/{seed}', and the geometries are copied to '{out_path}/{seed}.xyz'.
         """
         from ase.io import read, write
         from os import path, makedirs, getcwd, chdir
@@ -711,12 +754,13 @@ class SolutesTask:
             A function wrapping creation of an ASE calculator and using it to perform a vibrational frequency calculation.
         calc_params: dict
             Contents varies between different wrappers, but generally specifies basis, functional etc
-        target: int
-            Excited state index, or None for ground state
-        solvent: str
-            Implicit solvent name, or None for gas-phase
+        solvent: str or dict
+            Implicit solvent name (or dict of solvent settings), or None for gas-phase
         charges: dict
             Keys are strings corresponding to some or all of the entries in solute names, entries are net charges on each molecule
+
+        The excited state whose geometry is read (``{seed}_es{target}``) is taken from ``calc_params['target']``.
+        Calculations run in '{out_path}/{seed}', and the geometries are copied to '{out_path}/{seed}.xyz'.
         """
         from ase.io import read, write
         from os import path, makedirs, getcwd, chdir

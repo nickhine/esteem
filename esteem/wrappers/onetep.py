@@ -91,7 +91,16 @@ class OnetepWrapper():
 
     def setup(self, nprocs=None, mthreads=None, onetep_cmd=None, mpirun=None,
               set_pseudo_path=None, set_pseudo_suffix=None):
-        """Sets up the internal variables of the OnetepWrapper Class"""
+        """
+        Sets up the internal variables of the OnetepWrapper Class, including run command
+
+        ``set_pseudo_path`` and ``set_pseudo_suffix`` give the location and file suffix
+        of the pseudopotentials (default ``~/JTH_PBE/`` and ``.PBE-paw.abinit``; PAW is
+        used only for the default suffix). The ``ASE_ONETEP_COMMAND`` environment
+        variable is set to run ``onetep_cmd`` (default ``onetep``) with ``mpirun``
+        (default ``mpirun``, with ``nprocs`` processes and ``mthreads`` OpenMP
+        threads) or ``aprun`` (using ``APRUN_ARGS``).
+        """
 
         # Set up pseudopotential/PAW information
         if set_pseudo_path is None:
@@ -170,7 +179,17 @@ class OnetepWrapper():
 
     def singlepoint(self, model, label, calc_params, solvent=None, charge=0,
                     forces=False, restart=False, readonly=False, writeonly=False, calconly=False):
-        """Runs a singlepoint calculation with the ONETEP ASE calculator"""
+        """
+        Runs a singlepoint calculation with the ONETEP ASE calculator
+
+        ``calc_params`` must contain ``ngwf_rad``, ``cutoff``, ``func``,
+        ``energy_range`` and ``target``. A cell with 10 Angstrom of vacuum is added if
+        ``model`` has none. ``solvent`` and ``restart`` are not used.
+
+        Returns ``(energy, forces)``, in eV and eV/Angstrom, with forces None unless
+        ``forces`` is True. With ``writeonly``, writes the input file and returns 0;
+        with ``calconly``, returns only the calculator.
+        """
         calc_on = Onetep(label=label)
         ngwf_rad, cutoff, func, energy_range, target = self.unpack_params(calc_params)
         if (model.cell == 0.0).all():
@@ -209,7 +228,16 @@ class OnetepWrapper():
 
     def geom_opt(self, model_opt, label, calc_params, driver_tol='default',
                  solvent=None, charge=0, readonly=False, writeonly=False, calconly=False):
-        """Runs a Geometry Optimisation calculation with the ONETEP ASE calculator"""
+        """
+        Runs a Geometry Optimisation calculation with the ONETEP ASE calculator
+
+        ``calc_params`` is as for :meth:`singlepoint`. ``driver_tol`` and ``solvent``
+        are not used.
+
+        Returns ``(energy, forces, positions)``, in eV, eV/Angstrom and Angstrom. With
+        ``writeonly``, writes the input file and returns 0; with ``calconly``, returns
+        only the calculator.
+        """
         calc_on = Onetep(label=label)
         ngwf_rad, cutoff, func, energy_range, target = self.unpack_params(calc_params)
         if (model_opt.cell == 0.0).all():
@@ -245,7 +273,19 @@ class OnetepWrapper():
     def excitations(self, model, label, calc_params={}, nroots=1, solvent=None, charge=0, writeonly=False,
                     readonly=False, continuation=False, cleanup=False,
                     plot_homo=None, plot_lumo=None, plot_trans_den=None):
-        """Calculates TDDFT excitations with the ONETEP ASE calculator"""
+        """
+        Calculates LR-TDDFT excitations with the ONETEP ASE calculator
+
+        Runs a singlepoint, conduction NGWF optimisation and LR-TDDFT calculation for
+        ``nroots`` states (only LR-TDDFT if ``continuation``). Atoms with non-zero tags
+        define the TDDFT kernel species. ``solvent`` must be a key of
+        ``self.dielectric``. The ``plot_*`` arguments are not used.
+
+        Returns ``(excitations, energies)``: the excitations read by
+        :meth:`read_excitations`, and the total energies (eV) of the ground state
+        followed by each excited state. With ``writeonly``, writes the input file and
+        returns 0.
+        """
         calc_on = Onetep(label=label)
         ngwf_rad, cutoff, func, energy_range, target = self.unpack_params(calc_params)
         if (model.cell == 0.0).all():

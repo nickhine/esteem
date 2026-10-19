@@ -2,8 +2,8 @@
 # coding: utf-8
 
 """Defines a task to use a Machine Learning calculator to generate
-Molecular Dynamics trajectories, and also to process the results
-to generate infrared spectra from trajectory data"""
+Molecular Dynamics trajectories. Also contains helper functions to calculate
+infrared spectra from trajectory dipoles, which the task does not currently use"""
 
 
 # # Main Routine
@@ -28,7 +28,9 @@ class MLTrajTask:
     Defines a task to use a Machine Learning calculator to generate
     Molecular Dynamics trajectories
 
-    The main routine is :meth:`esteem.tasks.ml_trajectories.run`
+    The main routine is :meth:`MLTrajTask.run`. Carving clusters from the
+    resulting snapshots (carve_trajectory_radius) is done afterwards by
+    :func:`esteem.drivers.mltraj_cleanup`.
     """
 
     def __init__(self, **kwargs):
@@ -45,7 +47,13 @@ class MLTrajTask:
 
     # Main routine
     def run(self):
-        """Main routine for the ML_Trajectories task"""
+        """Main routine for the ML_Trajectories task.
+
+        Runs each trajectory in which_trajs with
+        :func:`esteem.trajectories.generate_md_trajectory`, starting from
+        :func:`esteem.trajectories.find_initial_geometry` (or continuing an existing output file
+        if continuation is True). Aborted trajectories are restarted from a new initial geometry,
+        up to max_restarts times."""
 
         # Check input args are valid
         # validate_args(self)
@@ -251,8 +259,12 @@ class MLTrajTask:
 
 def load_trajectory_dipole(seed_state_str, traj_suffix, ntraj, nsnaps, mdsteps, extension='.traj'):
     '''
-    Loads a set of saved trajectory files and extracts the dipole moment as a 
-    function of time
+    Loads a set of saved trajectory files and extracts the dipole moment as a
+    function of time.
+
+    For each of ntraj trajectories (labelled A, B, ...) and each of nsnaps segments, reads
+    '{seed_state_str}_{label}_{traj_suffix}{j:04}{extension}' and stores the dipoles of all
+    but its first frame. Returns an array of shape (ntraj, nsnaps*mdsteps, 3).
     '''
 
     from ase.io import read, Trajectory
@@ -284,7 +296,12 @@ def load_trajectory_dipole(seed_state_str, traj_suffix, ntraj, nsnaps, mdsteps, 
 def calculate_ir_spectrum(mu_t, dt, freq_scale_fac, sigma):
     '''
     Processes the dipole moment as a function of time for a collection of trajectories,
-    to calculate IR absorption spectrum
+    to calculate IR absorption spectrum.
+
+    mu_t is an array of shape (ntraj, nsteps, 3) (eg from :func:`load_trajectory_dipole`), dt the
+    time between its frames, freq_scale_fac a factor converting frequencies to the desired units
+    (eg cm^-1) and sigma the width of the Gaussian broadening in those units. Returns the
+    broadened spectrum and the frequencies.
     '''
 
     import numpy as np

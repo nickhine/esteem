@@ -32,16 +32,20 @@ class AMPWrapper():
 
     def load(self, seed, target=None, prefix="", suffix="", **kwargs):
         """
-        Loads an existing AMP Calculator
+        Loads an existing AMP Calculator from ``{prefix}{seed}_{targ}_{suffix}.amp``
 
         seed: str
 
         target: int
 
+        prefix: str
+
         suffix: str
 
         kwargs: dict
-            other keywords to pass to AMP.load
+            other keywords to pass to Amp.load
+
+        *Returns*: the Amp calculator
         """
 
         from amp import Amp
@@ -58,16 +62,27 @@ class AMPWrapper():
 
         seed: str
 
-        target: int
+        prefix: str
 
         suffix: str
 
         trajfile: str
+            Filename of the training trajectory
+
+        target: int
 
         restart: bool
+            If True, continue training the existing calculator instead of starting afresh
 
         kwargs: dict
+            ``cutoff`` (for the Gaussian descriptor), ``hiddenlayers`` (for the neural
+            network), ``cores`` (for Amp), ``energy_rmse``, ``force_rmse``,
+            ``energy_maxresid``, ``force_maxresid`` (convergence criteria),
+            ``force_coefficient`` (for the loss function) and ``Tmax``, ``Tmin``,
+            ``steps`` (for the Annealer, which is run first if ``steps`` > 0).
+            Other keywords are ignored with a warning.
 
+        *Returns*: the trained Amp calculator
         """
 
         from amp import Amp
@@ -120,27 +135,35 @@ class AMPWrapper():
         """
         Runs a Molecular Dynamics calculation with the AMP ASE calculator.
 
+        Runs Langevin dynamics (friction 0.002) unless ``dynamics`` is given, and writes
+        the final structure to ``{mdseed}.xyz``.
+
         model: ASE Atoms
 
-        seed: str
+        mdseed: str
 
         calc_params: dict
+            Calculator parameters: ``calc_seed``, ``target``, ``calc_suffix`` and ``calc_prefix``
 
         md_steps: int
 
         md_timestep: float
+            Timestep in ASE time units
 
         superstep: int
+            Index of this run, for printing
 
         temp: float
-
-        target: int or None
-
-        solvent: str or None
-
-        restart: bool
+            Temperature in K
 
         readonly: bool
+            If True, recalculate the energy of the final image in ``{mdseed}.xyz``
+            instead of running MD
+
+        dynamics:
+            ASE dynamics object to continue, or None
+
+        The other arguments are ignored. Returns None.
         """
 
         from ase.md.velocitydistribution import MaxwellBoltzmannDistribution, Stationary, ZeroRotation
@@ -184,23 +207,26 @@ class AMPWrapper():
     def geom_opt(self, model, seed, calc_params, driver_tol='default',
                  solvent=None, readonly=False):
         """
-        Runs a geometry optimisation calculation with the AMP ASE calculator
+        Runs a BFGS geometry optimisation calculation with the AMP ASE calculator
 
         model: ASE Atoms
 
         seed: str
+            Seed name used to load the calculator (``calc_params['calc_seed']`` is not used)
 
         calc_params: dict
+            Calculator parameters: ``target``, ``calc_suffix`` and ``calc_prefix``
 
-        dummy: str
-
-        driver_tol:
-
-        target: int or None
+        driver_tol: str
+            Force tolerance: 'default' (0.00045 eV/Ang), 'loose' (0.0045) or 'tight' (0.000015)
 
         solvent: str or None
+            Ignored
 
         readonly: bool
+            Ignored
+
+        *Returns*: energy (eV), forces (eV/Ang) and positions (Ang) of the optimised structure
         """
 
         calc_seed = calc_params['calc_seed']
@@ -234,25 +260,20 @@ class AMPWrapper():
     def freq(self, model_opt, seed, calc_params, solvent=None, charge=0,
              temp=300, writeonly=False, readonly=False, continuation=False, cleanup=True):
         """
-        Runs a Vibrational Frequency calculation with the AMP ASE calculator
+        Runs a Vibrational Frequency calculation with the AMP ASE calculator, using
+        ASE's ``Vibrations`` class
 
         model_opt: ASE Atoms
 
         seed: str
+            Seed name used to load the calculator (``calc_params['calc_seed']`` is not used)
 
-        suffix: str
+        calc_params: dict
+            Calculator parameters: ``target``, ``calc_suffix`` and ``calc_prefix``
 
-        dummy: str
+        The other arguments are ignored.
 
-        driver_tol:
-
-        target: int or None
-
-        solvent: str or None
-
-        temp: float
-
-        readonly: bool
+        *Returns*: array of the vibrational frequencies (cm^-1)
         """
 
         from ase.vibrations import Vibrations
@@ -281,6 +302,9 @@ class AMPWrapper():
         """
         Runs a singlepoint calculation with the AMP ASE calculator
 
+        Unlike the other ML wrappers, this takes the calculator seed, suffix and target
+        as separate arguments rather than a ``calc_params`` dict.
+
         model: ASE Atoms
 
         seed: str
@@ -288,12 +312,17 @@ class AMPWrapper():
         suffix: str
 
         dummy: str
+            Ignored
 
         target: int or None
 
         solvent: str or None
+            Ignored
 
         readonly: bool
+            Ignored
+
+        *Returns*: energy (eV) and forces (eV/Ang)
         """
 
         # Load the appropriate AMP Calculator
