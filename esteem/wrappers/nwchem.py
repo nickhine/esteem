@@ -386,7 +386,7 @@ class NWChemWrapper():
         Runs a Quantum Molecular Dynamics calculation with the NWChem ASE calculator
 
         Uses NWChem's QMD module with a stochastic velocity rescaling thermostat at
-        ``temp`` (K). ``qmd_timestep`` is in fs, and the run is set to
+        ``temp`` (K). ``qmd_timestep`` is in ASE time units (eg ``0.5 * ase.units.fs``), and the run is set to
         ``qmd_steps * (superstep + 1)`` steps in total, so that a restarted run
         continues to the end of the current superstep. ``dynamics`` is not used.
 
@@ -401,7 +401,7 @@ class NWChemWrapper():
         randseed = random.randint(0, 100000)
 
         qmd_block = {'nstep_nucl': qmd_steps * (superstep + 1),
-                     'dt_nucl': qmd_timestep / 0.024188843313701584,
+                     'dt_nucl': qmd_timestep / ase.units.fs / 0.024188843313701584,  # fs per atomic time unit
                      'targ_temp': temp,
                      'com_step': 10,
                      'rand_seed': randseed,

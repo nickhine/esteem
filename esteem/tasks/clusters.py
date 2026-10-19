@@ -146,6 +146,8 @@ class ClustersTask:
         solvstr = f'_{self.solvent}' if self.solvent is not None else ''
         input_traj_label = self.which_traj
         if self.subset_selection_method is not None:
+            if self.subset_selection_nmax is None:
+                raise Exception('subset_selection_nmax must be set when subset_selection_method is set')
             input_suffix = f'{self.selected_suffix}'
             if self.subset_selection_which_traj is not None:
                 input_traj_label = self.subset_selection_which_traj
@@ -677,7 +679,7 @@ class ClustersTask:
         parser.add_argument('--min_snapshots', '-I', default=None, type=int, help='Index of the first frame of the input trajectory to process. None for 0.')
         parser.add_argument('--valid_snapshots', '-D', default=None, type=int, help='Number of frames in the separate validation trajectory that create_clusters_tasks makes when separate_valid is True, taken from just after max_snapshots. None for the same number of frames as the main trajectory.')
         parser.add_argument('--subset_selection_method', '-Y', default=None, type=str, help='How to select a subset of frames from the input trajectory: \'R\' random; \'E\' highest committee energy standard deviation; \'D\' highest committee dipole standard deviation; \'U\' random, biased towards high energy standard deviation (see subset_selection_bias_beta). None for no subset selection; methods other than \'R\' need committee energies in the input trajectory.')
-        parser.add_argument('--subset_selection_nmax', '-y', default=None, type=int, help='Number of frames to select when subset_selection_method is set.')
+        parser.add_argument('--subset_selection_nmax', '-y', default=None, type=int, help='Number of frames to select when subset_selection_method is set (required in that case).')
         parser.add_argument('--subset_selection_min_spacing', '-g', default=1, type=int, help='Minimum separation, in frames, between any two frames selected for the subset.')
         parser.add_argument('--subset_selection_bias_beta', '-a', default=20, type=int, help='Inverse temperature beta, in atoms/eV, for method \'U\': frames are chosen with weight exp(beta*s), where s is the committee energy standard deviation per atom in eV.')
         parser.add_argument('--subset_selection_stde_thresh', '-E', default=0.02, type=float, help='Threshold for committee energy standard deviation per atom, in eV, for subset selection methods other than \'R\': each input trajectory is truncated at the first frame that exceeds it.')

@@ -1006,7 +1006,7 @@ def qmd_driver(qmdtraj, all_solutes, all_solvents):
     requested trajectory only.
 
     The calculations run in the directory '{seed}_qmd', into which the geometry
-    '{geom_prefix}/{seed}.xyz' is copied.
+    '{geom_prefix}/{seed}.xyz' is copied ('{seed}.xyz' if ``geom_prefix`` is '').
 
     qmdtraj: QMDTrajTask class
         Settings for the whole QMD_Trajectories job - see QMD_Trajectories module documentation for more detail.
@@ -1042,7 +1042,7 @@ def qmd_driver(qmdtraj, all_solutes, all_solvents):
             except FileExistsError:
                 print(f"# Possible mid-air collision between jobs - directory {qmd_dir} exists")
         if not path.isfile(f'{qmd_dir}/{seed_xyz}'):
-            copyfile(f'{qmdtraj.geom_prefix}/{seed_xyz}', f'{qmd_dir}/{seed_xyz}')
+            copyfile(path.join(qmdtraj.geom_prefix, seed_xyz), f'{qmd_dir}/{seed_xyz}')
             print(f'# Source file {seed_xyz} copied to {qmd_dir}')
         chdir(qmd_dir)
 
@@ -1963,9 +1963,11 @@ def spectra_driver(all_solutes, all_solvents, task, warp_params=None, cluster_sp
         if task.files is not None:
             task.files = []
             for f in orig_files:
-                task.files.append(sub_solu_solv_names(f, f'{solute}_{solvent}', all_solutes, all_solvents))
-            if '*' in task.files:
-                task.files = glob.glob(task.files)
+                f = sub_solu_solv_names(f, f'{solute}_{solvent}', all_solutes, all_solvents)
+                if any(c in f for c in '*?['):
+                    task.files = task.files + sorted(glob.glob(f))
+                else:
+                    task.files.append(f)
             if task.renorm == -1:
                 task.renorm = 1.0 / float(len(task.files))
 
@@ -1987,16 +1989,16 @@ def spectra_driver(all_solutes, all_solvents, task, warp_params=None, cluster_sp
             print('Cluster files to process: ', len(task.files), task.files)
 
         if task.trajectory is not None:
-            for i in range(len(task.trajectory)):
-                for j in range(len(task.trajectory[i])):
-                    t = task.trajectory[i][j]
-                    task.trajectory[i][j] = sub_solu_solv_names(t, f'{solute}_{solvent}', all_solutes, all_solvents)
+            for k in range(len(task.trajectory)):
+                for j in range(len(task.trajectory[k])):
+                    t = task.trajectory[k][j]
+                    task.trajectory[k][j] = sub_solu_solv_names(t, f'{solute}_{solvent}', all_solutes, all_solvents)
                     if task.correction_trajectory is not None:
-                        t = task.correction_trajectory[i][j]
-                        task.correction_trajectory[i][j] = sub_solu_solv_names(t, f'{solute}_{solvent}', all_solutes, all_solvents)
+                        t = task.correction_trajectory[k][j]
+                        task.correction_trajectory[k][j] = sub_solu_solv_names(t, f'{solute}_{solvent}', all_solutes, all_solvents)
                     if task.vibration_trajectory is not None:
-                        t = task.vibration_trajectory[i][j]
-                        task.vibration_trajectory[i][j] = sub_solu_solv_names(t, f'{solute}_{solvent}', all_solutes, all_solvents)
+                        t = task.vibration_trajectory[k][j]
+                        task.vibration_trajectory[k][j] = sub_solu_solv_names(t, f'{solute}_{solvent}', all_solutes, all_solvents)
             if hasattr(task.wrapper, 'rootname'):
                 task.wrapper.rootname = sub_solu_solv_names(task.wrapper.rootname,
                                                             f'{solute}_{solvent}', all_solutes, all_solvents)
