@@ -135,7 +135,9 @@ class SolvateTask:
 
         # Handle restraints, if present
         if self.restraints is not None:
-            self.wrapper.add_restraint(solvatedseed, self.solute[:3], self.restraints, self.rest_r)
+            if self.rest_r is None:
+                raise Exception('rest_r must be set when restraints are used')
+            self.wrapper.add_tors_restraint(solvatedseed, self.solute[:3], self.restraints, self.rest_r)
 
         # Pass common inputs into Amber module
         from ase import units

@@ -27,15 +27,21 @@ class SpectraTask:
         all_excitations = []
         all_transition_origins = []
 
+        # Routine used to read excitations from each of self.files
+        read_excitations = getattr(self.wrapper, 'read_excitations', None)
+
         if self.inputformat is None and self.trajectory is not None:
             self.inputformat = 'traj'
-        elif hasattr(self.inputformat, 'read_excitations'):
+        if hasattr(self.inputformat, 'read_excitations'):
             read_excitations = self.inputformat.read_excitations
+        elif self.inputformat is None:
+            pass
         elif self.inputformat.lower() == "precalculated":
             from types import SimpleNamespace
             self.wrapper = SimpleNamespace()
             all_excitations = np.zeros((0, 2))
             self.wrapper.read_excitations = self.read_precalculated
+            read_excitations = self.read_precalculated
         elif self.inputformat.lower() == "traj":
             if self.files != [] and self.files is not None:
                 raise Exception("Cannot specify traj and set files simultaneously")
@@ -201,10 +207,13 @@ class SpectraTask:
                         self.wrapper.write_excitations(np.array(all_excitations))
 
         if self.files is not None:
+            if self.files and read_excitations is None:
+                raise Exception('Cannot read excitations from files: set inputformat to a wrapper or to '
+                                '"precalculated", or set a task wrapper with a read_excitations method')
             for f in self.files:
                 if not os.path.isfile(f):
                     raise OSError(f'# Could not read file {f}')
-                stick_spectrum, transition_origins = self.wrapper.read_excitations(f)
+                stick_spectrum, transition_origins = read_excitations(f)
                 if self.vib_files is not None:
                     vibronic_excitations = []
                     s_elec = stick_spectrum
@@ -399,7 +408,7 @@ class SpectraTask:
         parser.add_argument('--stride_frames', '-F', default=1, type=int, help='Interval between processed trajectory frames (1 uses every frame).')
         parser.add_argument('--wavelength', '-w', default=[200.0, 800.0, 1.0], nargs=3, type=float, help='Wavelength grid for the broadened spectrum, as minimum, maximum and step, in nm. Must be set to None if energies is used.')
         parser.add_argument('--energies', '-E', default=None, nargs=3, type=float, help='Energy grid for the broadened spectrum, as minimum, maximum and step, in eV. None means the wavelength grid is used instead; if set, wavelength must be set to None.')
-        parser.add_argument('--warp_params', '-s', default=[0.0], nargs='?', type=float, help="List of spectral warp parameters applied to each excitation energy (in eV), with meaning set by warp_scheme: [beta] for 'beta' and 'avgebeta' (shift), [alpha, beta] for 'alphabeta' (scale then shift), [beta1, beta2, omega1, omega2] for 'betabeta'. Note that spectra_driver overwrites this with the warp parameters it is passed, or None.")
+        parser.add_argument('--warp_params', '-s', default=[0.0], nargs='?', type=float, help="List of spectral warp parameters applied to each excitation energy (in eV), with meaning set by warp_scheme: [beta] for 'beta' and 'avgebeta' (shift), [alpha, beta] for 'alphabeta' (scale then shift), [beta1, beta2, omega1, omega2] for 'betabeta'. If spectra_driver is passed a list of warp parameters (one per solvent-solute pair), these replace this value.")
         parser.add_argument('--warp_scheme', default="beta", nargs='?', type=str, help="Spectral warping scheme: 'beta', 'avgebeta', 'alphabeta' or 'betabeta' (see warp_params), or None to apply no spectral warping.")
         parser.add_argument('--broad', '-b', default=0.05, type=float, help='Width (standard deviation) of the Gaussian broadening applied to each stick of the spectrum, in eV.')
         parser.add_argument('--mode', '-m', default="absorption", help="Type of spectrum: 'absorption' or 'emission'. For 'emission', the sign of energy differences read from trajectories (and of vibronic offsets) is reversed.")

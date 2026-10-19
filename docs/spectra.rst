@@ -13,7 +13,10 @@ of the solvated system. It can also:
 * apply a *spectral warp*: a shift and/or scaling of the excitation energies
   that maps a cheap level of theory onto a more accurate one. The warp
   parameters are fitted by comparing two :ref:`solutes` calculations of the
-  same molecule (``warp_origin_files`` and ``warp_dest_files``).
+  same molecule (``warp_origin_files`` and ``warp_dest_files``). The ``spectra``
+  task in :func:`esteem.drivers.main` does not fit them: call
+  :func:`esteem.drivers.spectral_warp_driver` from your script, and pass the
+  parameters it returns to :func:`esteem.drivers.spectra_driver`.
 * compute the perceived RGB colour of the solution from the spectrum, under a
   given illuminant.
 * plot the result and write it to ``output``.

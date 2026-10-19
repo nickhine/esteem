@@ -264,7 +264,7 @@ class ClustersTask:
         writeonly = (self.output == "nw") or (self.output == "dat") or (self.output == "xyz")
         if self.calc_forces:
             mintarget = 0
-            if hasattr(self, 'target'):
+            if self.target is not None:
                 if isinstance(self.target, list):
                     target = self.target
                 elif isinstance(self.target, dict):
@@ -666,6 +666,7 @@ class ClustersTask:
         parser.add_argument('--rotate', '-O', default=True, type=bool, help='If True, rotate each carved cluster so the solute lies in the xy plane, and centre it (see boxsize).')
         parser.add_argument('--output', '-o', default='nw', type=str, help='Name of the output: selects what is done to each frame and is also the name of the subdirectory and the suffix of the output trajectories. Values containing \'nw\', \'orca\', \'openqp\', \'physnet\' or \'mace\' recalculate energies (and forces) with the wrapper; \'dat\' or \'onetep\' run ONETEP excitations, \'xyz\' writes xyz files and \'amber\' runs Amber. Set from wrapper.output when the wrapper is assigned.')
         parser.add_argument('--nroots', '-n', default=5, type=int, help='Number of excited states to calculate. Unless target is set, states 0 to nroots are calculated. Set to 0 by clusters_driver when solute and solvent are the same.')
+        parser.add_argument('--target', default=None, nargs='*', type=int, help='The electronic states to calculate: a list of state indices, a dict of ML model heads, or an int n meaning states n to nroots. None means states 0 to nroots. Only used if calc_forces is True.')
         parser.add_argument('--calc_forces', '-F', default=True, type=bool, help='If True, calculate energies and forces for each target state separately; if False, calculate only the energies of the ground state and nroots excited states.')
         parser.add_argument('--task_id', '-t', default=None, type=int, help='Index of the single frame to process in an array job, or None to process every frame. Set automatically by clusters_driver from the array task ID.')
         parser.add_argument('--cleanup', '-c', default=False, action='store_true', help='If True, delete temporary files after each calculation. Only used for \'dat\' or \'onetep\' output.')

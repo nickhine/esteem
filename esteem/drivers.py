@@ -778,7 +778,9 @@ def clusters_driver(all_solutes, all_solvents, seed, task, make_sbatch=None, dry
             task.solvent = solvent
             if task.solute == task.solvent:
                 reset_roots = False
-                if type(task.target) is not list:
+                if task.target is None:
+                    reset_roots = task.nroots > 0
+                elif type(task.target) is not list:
                     if task.nroots > task.target:
                         reset_roots = True
                 else:
@@ -1245,7 +1247,8 @@ def mltrain_driver(mltrain_task, all_solutes={}, all_solvents={}, setup_only=Fal
         mltrain_task.calc_prefix = train_dir + "/"
 
     # Process any traj_links present in the input task
-    make_traj_links(mltrain_task, mltrain_task.traj_links, train_dir, '', all_solutes, all_solvents)
+    if mltrain_task.traj_links is not None:
+        make_traj_links(mltrain_task, mltrain_task.traj_links, train_dir, '', all_solutes, all_solvents)
     if mltrain_task.traj_links_valid is not None:
         make_traj_links(mltrain_task, mltrain_task.traj_links_valid, train_dir, 'valid', all_solutes, all_solvents)
     if mltrain_task.traj_links_test is not None:
@@ -1826,7 +1829,7 @@ def spectral_warp_driver(all_solutes, all_solvents, task, annotation=None):
             raise Exception(f"Error in spectral_warp_driver: No files were found matching origin task.files: {pre_glob_files}")
         origin_spectrum, spec, s_fig, s_ax, trans_orig_origin, _ = task.run(s_fig, s_ax, plotlabel='origin')
         pyplot.setp(spec, color='b')
-        wp = task.find_spectral_warp_params(dest_spectrum, origin_spectrum, arrow1_pos, arrow2_pos)
+        wp = spectra.find_spectral_warp_params(task, dest_spectrum, origin_spectrum, arrow1_pos, arrow2_pos)
         warp_params.append(wp)
         task.warp_params = warp_params[-1]
         task.wavelength = [min(store_wavelength[0], task.warp_origin_ref_peak_range[0], task.warp_dest_ref_peak_range[0]),
@@ -1888,7 +1891,7 @@ def spectra_driver(all_solutes, all_solvents, task, warp_params=None, cluster_sp
         ``task.vibration_trajectory``, ``task.output``
     warp_params: list
         Spectral warping parameters for each solvent-solute pair, as returned by
-        :func:`spectral_warp_driver`, or None for no warping.
+        :func:`spectral_warp_driver`, or None to use ``task.warp_params`` for every pair.
     cluster_spectra: list
         List to which the spectrum of each pair is appended.
     c_fig, c_ax: matplotlib Figure and Axes
@@ -2000,11 +2003,9 @@ def spectra_driver(all_solutes, all_solvents, task, warp_params=None, cluster_sp
                 task.wrapper.input_filename = sub_solu_solv_names(task.wrapper.input_filename,
                                                                   f'{solute}_{solvent}', all_solutes, all_solvents)
 
-        # Retrieve spectral warping parameters
+        # Retrieve spectral warping parameters (otherwise keep those already in the task)
         if warp_params is not None:
             task.warp_params = warp_params[i]
-        else:
-            task.warp_params = None
 
         rgb = np.array((0, 0, 1.0))
         if isinstance(task.line_colours, list):
@@ -2017,7 +2018,7 @@ def spectra_driver(all_solutes, all_solvents, task, warp_params=None, cluster_sp
                                                                                                plotlabel=f'{fullsolute} in {fullsolvent}', rgb=rgb)
         cluster_spectra.append(cluster_spectrum)
 
-        if 'png' in task.output:
+        if task.output is not None and 'png' in task.output:
             outdat = task.output.replace('png', 'dat')
             np.savetxt(outdat, cluster_spectrum)
             outdat = task.output.replace('png', 'sticks')

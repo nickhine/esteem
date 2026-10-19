@@ -73,6 +73,8 @@ class MLTrajTask:
         # Set up calculator parameters dict
         if self.calc_seed is None:
             self.calc_seed = self.seed
+        if self.calc_dir_suffix is None:
+            self.calc_dir_suffix = self.calc_suffix
         calc_params = {'calc_seed': self.calc_seed,
                        'calc_suffix': self.calc_suffix,
                        'calc_dir_suffix': self.calc_dir_suffix,
@@ -220,7 +222,7 @@ class MLTrajTask:
         parser.add_argument('--traj_suffix', '-S', default="mldyn", type=str, help="Suffix of the trajectory files generated, which are named '{seed}_{targ}_{label}_{traj_suffix}.traj' (where {targ} is eg 'gs' or 'es1' and {label} is the trajectory label A, B, ...). Also names the '{traj_suffix}_equil', '{traj_suffix}_md' and '{traj_suffix}_snaps' working directories.")
         parser.add_argument('--calc_seed', '-Z', default=None, type=str, help="Base name of the calculator to use (eg 'all_{solv}'), if different from seed; '{solu}' and '{solv}' are replaced by the solute and solvent names. If None, seed is used.")
         parser.add_argument('--calc_suffix', '-C', default='', type=str, help="Suffix naming the calculator that drives the MD (eg 'MACEac0u'), often encoding the ML method, generation and committee member.")
-        parser.add_argument('--calc_dir_suffix', '-D', default=None, type=str, help="Suffix of the directory containing the calculator, named '{calc_seed}_{targ}_{calc_dir_suffix}'. Unlike the training and testing tasks, it is not defaulted to calc_suffix, so it should be set.")
+        parser.add_argument('--calc_dir_suffix', '-D', default=None, type=str, help="Suffix of the directory containing the calculator, named '{calc_seed}_{targ}_{calc_dir_suffix}'. If None, calc_suffix is used, as in the training and testing tasks.")
         parser.add_argument('--traj_dir_suffix', '-Y', default=None, type=str, help="Suffix of the directory in which the trajectories are run and written, named '{seed}_{targ}_{traj_dir_suffix}'. If None, '{calc_dir_suffix}_mldyn' is used (or '{calc_suffix}_mldyn' if calc_dir_suffix is None).")
         parser.add_argument('--calc_prefix', '-P', default='', type=str, help="Prefix for the path to the calculator, relative to the base directory (the task adds '../' or '../../' as it runs in subdirectories).")
         parser.add_argument('--target', '-t', default=0, type=int, help="Electronic state on which the MD is run: 0 for the ground state, n for excited state n. For a multi-head calculator, a dict mapping state indices to state names (eg {0: 'gs', 1: 'es1'}), the head being chosen from which_targets.")
@@ -245,6 +247,7 @@ class MLTrajTask:
         parser.add_argument('--recalculate_carved_traj', '-J', default=False, type=bool, help="If True, recalculate the energies and forces of the carved clusters with snap_wrapper and snap_calc_params, writing '{traj_suffix}_recalc_{carved_suffix}' trajectories, instead of evaluating snapshots with snap_wrapper during the MD. Requires carve_trajectory_radius.")
         parser.add_argument('--constraints', '-c', default=None, type=str, help='ASE constraint objects to apply during the MD, as a list (FixBondLengths, Hookean and FixInternals are supported), or a dict mapping solute names to such lists. None for no constraints.')
         parser.add_argument('--dynamics', '-d', default=None, type=str, help="Object specifying the type of dynamics, passed to the wrapper's run_md (eg with type 'LANG' for Langevin or 'NPT'). If None, Langevin dynamics with md_friction is used.")
+        parser.add_argument('--ref_mol_dir', default=None, type=str, help="Directory, relative to the base directory, of Solutes task outputs that give reference energies for the sanity check of the recalculated carved clusters (passed to the Clusters task: '{target}' is replaced by the state, eg 'gs', and '{ref_solv}' by the solvent name or 'gas'). Only used if recalculate_carved_traj is True; None skips the check.")
         parser.add_argument('--carved_suffix', default=None, type=str, help="Suffix added to traj_suffix in the names of the carved-cluster trajectories, '{traj_suffix}_{carved_suffix}'. If None, 'carved' is used.")
         parser.add_argument('--corr_traj', default=False, type=bool, help="If True, when recalculating carved clusters, also calculate each cluster with the solute removed ('_nosolu' trajectories), for use in correction calculations.")
 
@@ -336,7 +339,7 @@ if __name__ == '__main__':
     mltraj = MLTrajTask()
 
     # Parse command line values
-    args = mltraj.make_parser.parse_args()
+    args = mltraj.make_parser().parse_args()
     for arg in vars(args):
         setattr(mltraj, arg, getattr(args, arg))
     print('#', args)
