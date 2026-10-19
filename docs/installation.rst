@@ -3,14 +3,15 @@ Installation
 
 ESTEEM is a python-based project, originally written within Jupyter notebooks, and is tightly integrated with the Atomic Simulation Environment (ASE). This integration means that a range of electronic structure, molecular dynamics and machine-learning packages with calculators available in ASE can be used by ESTEEM to perform its tasks. ASE functionality is accessed via Wrapper modules which create default settings for a package. These packages are each individually optional, though there is little that can be done without at least one MD code and one electronic structure code.
 
-Apart from the calculators, the code has the following dependencies:
+Apart from the calculators, the code has the following dependencies, which follow those of the current release of ASE (3.29.0):
 
-    * Python, version 3.6 or above
-    * ASE
-    * NumPy
-    * Matplotlib for graphical outputs
+    * Python, version 3.10 or above
+    * ASE, version 3.23.0 or above (the ORCA wrapper uses the calculator profiles introduced in 3.23.0)
+    * NumPy, version 1.21.6 or above
+    * SciPy, version 1.8.1 or above
+    * Matplotlib, version 3.5.2 or above, for graphical outputs
 
-Compiling the Python files from the ipynb notebooks requires IPython (though this may be dropped in future).
+NumPy, SciPy and Matplotlib are installed automatically when ASE is installed with pip. The development version of ASE requires Python 3.11 or above, NumPy 1.24, SciPy 1.10 and Matplotlib 3.7.
 
 Manual installation
 -------------------
@@ -19,7 +20,9 @@ Currently the best way to install the code is to clone the git repository. In fu
 
 **Install ASE.**
 
-It is highly advisable to use an up-to-date version of ASE. Many calculator bugs in relevant calculators have been fixed in versions 3.18-3.20 so older versions may well fail. This should be done before installing ESTEEM as currently ESTEEM will attempt to apply a tiny bugfix to ASE.
+It is highly advisable to use an up-to-date version of ASE. Version 3.23.0 is the oldest that will work with all of ESTEEM's wrappers, and the calculator interfaces of ASE change from version to version, so the latest release is the best choice::
+
+   $ pip install --upgrade ase
 
 There are instructions at the `ASE <https://wiki.fysik.dtu.dk/ase>`_ website for installing ASE.
 The following commands can be used to verify that ASE and other dependencies can be loaded successfully::
