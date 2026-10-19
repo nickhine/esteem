@@ -10,7 +10,7 @@ ESTEEM is an open source package for calculations of excited state and spectrosc
 
 It is built upon the python framework provided by the `Atomic Simulation Environment <https://wiki.fysik.dtu.dk/ase/index.html>`_ and can call upon a number of different electronic structure and molecular dynamics codes, and machine-learning techniques.
 
-The project is still under active development but is feature-complete and has some level of documentation (improving all the time). The code’s `git repository <https://bitbucket.org/ndmhine/esteem>`_ on bitbucket contains the latest development version and can be used to report any issues.
+The project is still under active development but is feature-complete and has some level of documentation (improving all the time). The code’s `git repository <https://github.com/nickhine/esteem>`_ on GitHub contains the latest development version (on the ``develop`` branch) and can be used to report any issues.
 
 The Explicit Solvent methodology that has been adapted to a workflow in ESTEEM is based on the ideas described in the papers below.
 If you find this project useful, I would appreciate if you cite these works:
@@ -47,6 +47,7 @@ Acknowledgements: Some parts of ESTEEM are based on python scripting by members 
    ml_training.rst
    ml_testing.rst
    ml_trajectories.rst
+   ml_debugger.rst
    wrappers.rst
 
 Indices and tables

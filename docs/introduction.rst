@@ -39,3 +39,35 @@ The ESTEEM code also has functionality for machine learning of potential energy 
   4. Generate molecular dynamics trajectories on the potential energy surfaces of the NN surrogate model, likely using snapshots from step 4 of the list above as starting points, and store snapshots from these.
   5. Extract Clusters from the snapshots (again using the :mod:`esteem.tasks.clusters` module) and perform ground and excited state calculations on them.
   6. Generate spectra as in steps 7 and 8 above.
+
+Active Learning
+---------------
+
+Training data generated in advance rarely covers all the configurations that an ML potential will
+visit in its own molecular dynamics. ESTEEM can therefore build up the training set by *active
+learning*, so that expensive ab initio calculations are spent only on the configurations where the
+model is least reliable. A typical workflow runs as follows:
+
+  1. Generate initial geometries, for example by MD with a MACE foundation model such as
+     MACE-POLAR-1, or by classical MD.
+  2. Select a random subset of these snapshots, and calculate their energies and forces with DFT
+     and TDDFT (with the :mod:`esteem.tasks.clusters` module), for each electronic state of interest.
+  3. Train a *committee* of ML models (for example 3 MACE models with different random seeds) for
+     each state, using the :mod:`esteem.tasks.ml_training` module.
+  4. Run ML molecular dynamics driven by each committee member (with the
+     :mod:`esteem.tasks.ml_trajectories` module), with the whole committee evaluating each snapshot.
+     The spread of the committee's predictions measures the uncertainty of the model, and a
+     trajectory is stopped if the committee disagrees too strongly.
+  5. Select new snapshots from these trajectories, biased towards high committee uncertainty, and
+     calculate their DFT and TDDFT energies and forces.
+  6. Test the current models on these new snapshots, which they have not seen before (with the
+     :mod:`esteem.tasks.ml_testing` module), then train the next generation of models on all the
+     data so far.
+
+Steps 4 to 6 are repeated for several generations, until the models are accurate enough. The final
+models can then be used for production MD, for example ground-state MD to sample the ensemble
+followed by excited-state trajectories started from it.
+
+Each generation of an active-learning cycle needs many similar tasks, for each state, committee
+member and generation. The :mod:`esteem.active_learning` module creates all of these from a single
+prototype of each task, and the example script ``examples/cate_ml.py`` shows how to set this up.

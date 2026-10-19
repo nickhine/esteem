@@ -17,7 +17,7 @@ These inputs will consist of solutes, solvents or pairs of solutes and solvent, 
 
 
 import argparse
-from esteem import parallel
+from esteem import parallel, __version__
 from esteem.trajectories import get_trajectory_list
 import itertools
 import glob
@@ -61,7 +61,7 @@ def main(all_solutes, all_solvents, all_solutes_tasks={}, all_solvate_tasks={},
     time_stamp = time.time()
     date_time = datetime.fromtimestamp(time_stamp)
     str_date_time = date_time.strftime("%d-%m-%Y, %H:%M:%S")
-    print(f'# ESTEEM version 1.0.0 started at {str_date_time}\n')
+    print(f'# ESTEEM version {__version__} started at {str_date_time}\n')
 
     # Parse arguments to script
     parser = argparse.ArgumentParser(description=f'ESTEEM Main driver script')

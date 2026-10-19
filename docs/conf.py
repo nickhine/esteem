@@ -18,11 +18,11 @@ sys.path.insert(0, os.path.abspath('..'))
 # -- Project information -----------------------------------------------------
 
 project = 'ESTEEM'
-copyright = '2023, Nicholas Hine'
+copyright = '2023-2026, Nicholas Hine'
 author = 'Nicholas Hine'
 
 # The full version, including alpha/beta/rc tags
-release = '1.0.1'
+from esteem import __version__ as release  # noqa: E402
 
 
 # -- General configuration ---------------------------------------------------
@@ -60,3 +60,5 @@ exclude_patterns = []
 html_static_path = ['_static']
 
 autodoc_member_order = 'bysource'
+# Optional ML packages that may not be installed where the docs are built
+autodoc_mock_imports = ['mace', 'xmace']

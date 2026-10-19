@@ -13,8 +13,9 @@ train a Machine Learned Interatomic Potential for Theoretical Spectroscopy.
 
 ## Dependencies:
 
-* Python 3
-* ASE
+* Python >= 3.10
+* ASE >= 3.23.0
+* NumPy, SciPy and Matplotlib (installed with ASE)
 
 ## Codes which can be interfaced with (all optional):
 * ORCA (>= 5.0.2)
@@ -35,9 +36,17 @@ This package is distributed under the MIT License.
 
 ## Setup:
 
-Install the package via pip:
+Install ASE, then install the package via pip:
 
-pip install esteem
+    pip install ase
+    pip install esteem
+
+or, for the latest development version, clone this repository and install it
+in editable mode:
+
+    git clone https://github.com/nickhine/esteem.git
+    cd esteem
+    pip install -e .
 
 Write a script that imports esteem tasks and wrappers (or adapt something from
 /examples)
@@ -46,9 +55,10 @@ Run the script, specifying the task, seedname and task_target
 
     python my_script.py <task> <seedname> <task_target>
 
-eg
+eg, to run the Solutes task with the PBE0 ground-state settings from
+examples/cate_dft.py:
 
-    python cate.py solutes cate gs_PBE
+    python cate_dft.py solutes cate_dft gs_PBE0
 
 The script should invoke the main drivers routine once the tasks are set up.
 
@@ -57,3 +67,4 @@ installed the code should work. Other wrappers require a binary, and
 in most cases this will need to be specified - see the instructions on 
 each wrapper for more details.
 
+Full documentation is at https://esteem.readthedocs.io/en/latest/
