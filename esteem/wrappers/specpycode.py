@@ -14,28 +14,35 @@ from esteem.tasks.spectra import wavelength_eV_conv as hc
 
 class SpecPyCodeWrapper():
     """
-    Writes input files for Spectroscopy Python Code, runs them, and reads results
+    Writes input files for MolSpeckPy (the Spectroscopy Python Code), runs it, and reads results
 
-    :ivar input_filename: default value: "input_file"
-    :ivar rootname: name given to all trajX.dat files - default value: "rootname"
-    :ivar rootname: default "rootname"
-    :ivar input_filename: default "input_file"
-    :ivar third_order_cumulant: default TRUE
+    The excitations of each block of trajectory frames are written to
+    ``{rootname}_trajN.dat`` by ``write_excitations``; ``write_input_file`` and ``run``
+    then calculate the spectrum, which ``read`` returns with the first column
+    converted from eV to wavelength in nm.
+
+    :ivar rootname: prefix of the ``{rootname}_trajN.dat`` files and of the results file - default "rootname"
+    :ivar input_filename: name of the MolSpeckPy input file - default "input_file"
+    :ivar md_output_suffix: default ""
+    :ivar third_order_cumulant: default "TRUE"
     :ivar num_steps: default 1000
     :ivar max_t: default 300.0
     :ivar correlation_length_3rd: default 300
+    :ivar cumulant_nongaussian_prefactor: default "FALSE"
     :ivar decay_length: default 500
-    :ivar num_trajs: default 0
+    :ivar num_trajs: number of excitation files written so far - default 0
     :ivar task: default "ABSORPTION"
     :ivar temperature: default 300.0
     :ivar method: default "CUMULANT"
     :ivar spectral_window: default 1.5
     :ivar md_step: default 0.5
     :ivar chromophore_model: default "MD"
-    :ivar exec_path: default "/storage/nanosim/Spectroscopy_python_code/"
     :ivar ncores: default 4
     :ivar solvent_model: default "NONE"
-    :ivar solvent_reorg: default 0.0
+    :ivar solvent_reorg: default "0.0"
+    :param exec_path: directory containing MolSpeckPy's generate_spectra.py, which is
+        added to ``sys.path``. The default, "/storage/nanosim/Spectroscopy_python_code/",
+        is a path on the Warwick cluster: other users must set it to their own installation.
     """
 
     def __init__(self,

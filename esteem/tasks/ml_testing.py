@@ -47,7 +47,12 @@ class MLTestingTask:
 
     # Main routine
     def run(self):
-        """Main routine for the ML_Testing task"""
+        """Main routine for the ML_Testing task.
+
+        Merges the trajectories to test against, evaluates each frame with the calculator
+        (see :func:`compare_wrapper_to_traj`), optionally subtracts reference energies, and
+        compares and plots the energies and forces with
+        :func:`esteem.trajectories.compare_traj_to_traj`."""
 
         from os.path import commonprefix
 
@@ -161,7 +166,11 @@ class MLTestingTask:
                 os.remove(outtrajfile_refsub)
 
     def subtract_reference_energies(self, trajin, trajout_file, traj_target):
-        """Subtract reference energies from a trajectory to just get energy above reference zero"""
+        """Subtract reference energies from a trajectory to just get energy above reference zero.
+
+        The calculator's energies for the isolated solute and solvent molecules (from ref_mol_dir)
+        are subtracted from each frame of trajin, as the solute energy plus one solvent energy per
+        solvent molecule, and the frames are written to the trajectory file trajout_file."""
         from esteem.drivers import get_solu_solv_names
         from esteem.trajectories import targstr
         from esteem.tasks.clusters import get_ref_mol_energy
@@ -254,7 +263,11 @@ class MLTestingTask:
 
 
 def compare_wrapper_to_traj(wrapper, calc_params, trajin, trajout_file):
-    """Compare the energy and force predictions of a calculator to results in an existing trajectory"""
+    """Compare the energy and force predictions of a calculator to results in an existing trajectory.
+
+    Each frame of trajin is evaluated with ``wrapper.singlepoint`` using calc_params, the deviations
+    are printed, and the calculator's energy, forces and dipole are written to the trajectory
+    file trajout_file."""
 
     trajout = Trajectory(trajout_file, 'w')
 

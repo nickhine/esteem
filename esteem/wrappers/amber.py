@@ -77,7 +77,15 @@ class AmberWrapper():
             self.amber_exe_parallel = self.amber_exe_serial
 
     def prepare_input_acpype(self, seed, netcharge=0, offset=0, pref='../'):
-        """Prepares input parameters and topologies for Amber calculations"""
+        """
+        Prepares input parameters and topologies for Amber calculations using ACPYPE
+
+        Reads ``{pref}{seed}.xyz`` and runs ACPYPE (charge type
+        ``self.acpype_charge_type``, atom type ``self.acpype_atom_type``) to write
+        ``{seed}.mol2``, ``.frcmod``, ``.prmtop``, ``.inpcrd`` and ``.lib``. The mol2
+        charges are then adjusted to sum to ``netcharge``, and atom name numbers are
+        shifted by ``offset``.
+        """
 
         import sys
         import signal
@@ -116,7 +124,14 @@ class AmberWrapper():
         sys.argv = store_argv
 
     def prepare_input(self, seed, netcharge=0, offset=0, pref="../"):
-        """Prepares input parameters and topologies for Amber calculations"""
+        """
+        Prepares input parameters and topologies for Amber calculations using AmberTools
+
+        Reads ``{pref}{seed}.xyz`` and runs antechamber (AM1-BCC charges), parmchk and
+        tleap (GAFF) to write ``{seed}.mol2``, ``.frcmod``, ``.prmtop`` and ``.inpcrd``.
+        The mol2 charges are adjusted to sum to ``netcharge``, and atom name numbers
+        are shifted by ``offset``.
+        """
 
         # Load molecular structure from .xyz file
         mol = read(f'{pref}{seed}.xyz')
@@ -278,7 +293,15 @@ class AmberWrapper():
             raise Exception("Symbols did not match when finding center atom")
 
     def add_solvent_box(self, solute, solvent, counterions, solvatedseed, box_size, pref='../'):
-        """Loads an Amber mol2 file for a solute and solvent, and creates a solvated box"""
+        """
+        Loads Amber mol2 and frcmod files for a solute and solvent, and creates a solvated box
+
+        Uses tleap to solvate ``solute`` in a box of ``solvent`` extending ``box_size``
+        Angstrom beyond the solute, adding any counterions given for the solute in the
+        ``counterions`` dict, and writes ``{solvatedseed}.prmtop``, ``.crd`` and
+        ``.pdb``. If there are counterions, distance restraints are added to keep them
+        away from the solute.
+        """
 
         if solute in counterions:
             sym = Atoms(counterions[solute]).get_chemical_symbols()
@@ -594,7 +617,8 @@ class AmberWrapper():
 
     def dipole(self, seed, crdfile):
         """Runs the cpptraj program with a simple script to get the dipole
-        moment from the final trajectory"""
+        moment of the whole system from the coordinates in ``crdfile``, and returns
+        it as a 3-vector"""
         f = open('ptraj.in', 'w')
         if False:  # just first molecule
             ptraj_str = (f"trajin {crdfile}\n" +
@@ -643,7 +667,17 @@ class AmberWrapper():
     # Set up Amber calculator
     def singlepoint(self, model, seed, calc_params={}, forces=False, solvent=None,
                     readonly=False, continuation=False, dipole=False, calc=False):
-        """Runs a singlepoint calculation with the Amber ASE calculator"""
+        """
+        Runs a singlepoint calculation with the Amber ASE calculator
+
+        Runs a zero-step sander MD run with topology ``{seed}.prmtop``, writing the
+        coordinates of ``model`` to ``{seed}.crd``. ``calc_params``, ``solvent``,
+        ``readonly`` and ``continuation`` are not used.
+
+        Returns a list containing the energy (eV), then, if requested, the forces
+        (eV/Angstrom, if ``forces``), the dipole from :meth:`dipole` (if ``dipole``)
+        and the calculator (if ``calc``).
+        """
         f = open(seed + '.in', 'w')
         mmin_str = f'''
 zero step md to get energy and force
@@ -678,7 +712,14 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
         return res
 
     def geom_opt(self, model, seed, calc_params={}, solvent=None, driver_tol=0.01):
-        """Runs a geometry optimisation calculation with the Amber ASE calculator"""
+        """
+        Runs a geometry optimisation calculation with the Amber ASE calculator
+
+        Runs a sander minimisation (input ``min.in``, output ``min.out`` and
+        ``min.rst``) with topology ``{seed}.prmtop`` and any restraints set up
+        previously. ``calc_params``, ``solvent`` and ``driver_tol`` are not used.
+        Returns None.
+        """
         minin_str = (f'''
     Initial minimisation
     &cntrl
@@ -704,7 +745,14 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
         print("Pot, Kin Energy after minimisation: ", model.get_potential_energy(), model.get_kinetic_energy())
 
     def heatup(self, model, seed, calc_params={}, nsteps=100):
-        """Runs a heatup temperature-ramp calculation with the Amber ASE calculator"""
+        """
+        Runs a heatup temperature-ramp calculation with the Amber ASE calculator
+
+        Runs ``nsteps`` steps of constant-volume MD, ramping the temperature from 0 K
+        to ``self.temp0``, with bonds to hydrogen constrained by SHAKE. Starts from the
+        coordinates of ``model`` (written to ``min.rst``) and writes ``heat.rst``,
+        updating ``model``. ``calc_params`` is not used. Returns None.
+        """
         # NTC = 2, NTF = 2: hydrogens constrained at this stage
         # irest = 0 (new simulation)
         heatin_str = (f'''
@@ -742,7 +790,14 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
         print("Pot, Kin Energy after heating: ", new_pe, new_ke)
 
     def densityequil(self, model, seed, calc_params={}, nsteps=100):
-        """Runs a density equilibration calculation with fixed hydrogens with the Amber ASE calculator"""
+        """
+        Runs a density equilibration calculation with fixed hydrogens with the Amber ASE calculator
+
+        Runs ``nsteps`` steps of constant-pressure MD at ``self.temp0``, with bonds to
+        hydrogen constrained by SHAKE, restarting from ``heat.rst`` and writing
+        ``density.rst``, and updates ``model``. ``calc_params`` is not used. Returns
+        None.
+        """
 
         # NTB = 2, NTP = 1, TAUP = 1.0: Use constant pressure periodic boundary. Isotropic position scaling
         # should be used to maintain the pressure (NTP=1) and a relaxation time of 1 ps should be used (TAUP=1.0).
@@ -779,7 +834,13 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
         print("Pot, Kin Energy after density equilibration: ", new_pe, new_ke)
 
     def equil(self, model, seed, calc_params={}, nsteps=100):
-        """Runs an equilibration calculation at constant volume with flexible hydrogens with the Amber ASE calculator"""
+        """
+        Runs an equilibration calculation with flexible hydrogens with the Amber ASE calculator
+
+        Runs ``nsteps`` steps of constant-pressure MD (``ntb=2, ntp=1``) at
+        ``self.temp0``, without SHAKE, restarting from ``density.rst`` and writing
+        ``equil.rst``, and updates ``model``. ``calc_params`` is not used. Returns None.
+        """
         # NTP = 0: No pressure scaling (constant volume)
         # NTC = 1: SHAKE not used - no constraints
         # Energies at this stage no longer comparable to previous steps
@@ -815,7 +876,15 @@ ntpr=1,ntwf=1,ntwe=1,ntwx=1 ! (output frequencies)
         print("Pot, Kin Energy after equilibration: ", new_pe, new_ke)
 
     def snapshots(self, model, seed, calc_params={}, nsnaps=1, nsteps=100, start=0, nat_solu=0, nat_solv=0):
-        """Runs a long MD trajectory for snapshot generation with the Amber ASE calculator"""
+        """
+        Runs a long MD trajectory for snapshot generation with the Amber ASE calculator
+
+        Runs ``nsnaps`` successive constant-pressure MD runs of ``nsteps`` steps each,
+        starting from ``equil.rst`` (or resuming at snapshot ``start``). After each
+        run, the frame is reimaged around the solute and appended, with its energy and
+        dipole, to ``../{seed}.traj``. ``calc_params``, ``nat_solu`` and ``nat_solv``
+        are not used. Returns None.
+        """
         # NTC = 1: SHAKE not used - no constraints
         snap_str = (f'''
     Snapshot Generation

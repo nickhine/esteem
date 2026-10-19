@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
-"""Defines a task to train a Machine Learning calculator on a trajectory of snapshots
-by calling the train() function of the MLWrapper"""
+"""Defines a task to train a Machine Learning calculator on trajectories of snapshots,
+by merging them and calling the train() method of the ML wrapper"""
 
 from esteem.trajectories import merge_traj, diff_traj, get_trajectory_list, targstr
 import sys
@@ -76,7 +76,12 @@ class MLTrainingTask:
 
     # Main routine
     def run(self):
-        """Main routine for the ML_Training task"""
+        """Main routine for the ML_Training task.
+
+        Merges the training trajectories for each target into
+        '{calc_prefix}{seed}_{targ}_{traj_suffix}_merged_{calc_suffix}.traj' (and the validation
+        data, split off at random or from which_trajs_valid, into the corresponding '_validmerged_'
+        file), then calls the wrapper's train() method and returns the calculator it gives."""
 
         # Check input args are valid
         # validate_args(args)

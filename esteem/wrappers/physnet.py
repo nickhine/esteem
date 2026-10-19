@@ -53,7 +53,12 @@ class PhysNetWrapper():
                           'record_run_metadata': 0}
 
     def __init__(self, **kwargs):
-        """Sets up instance attributes for PhysNetWrapper """
+        """Sets up instance attributes for PhysNetWrapper
+
+        kwargs: dict
+            Overrides for any of the ``default_train_args``, and the loading arguments
+            ``lr_cut``, ``use_ewald``, ``ewald_alpha``, ``ewald_kmax``, ``ewald_Nmax`` and ``skin``
+        """
         from copy import deepcopy
         self.train_args = deepcopy(self.default_train_args)
 
@@ -105,14 +110,23 @@ class PhysNetWrapper():
         """
         Loads an existing PhysNet Calculator
 
+        The checkpoint is read from ``{calcfn}/best``, and the atom energies from
+        ``{prefix}{seed}_atoms_{suffix}.traj``. Once loaded, the calculator is reused,
+        and changing the parameters raises an Exception.
+
         seed: str
 
         target: int
 
+        prefix: str
+
         suffix: str
 
-        kwargs: dict
-            other keywords
+        atoms: ASE Atoms or None
+            Structure used to set up the calculator. If None, it is read from
+            ``{prefix}{seed}_gs_opt.xyz`` or ``{prefix}{seed}.xyz``.
+
+        *Returns*: the PhysNet NNCalculator
         """
 
         # Check against or store previous calculator parameters
@@ -214,7 +228,8 @@ class PhysNetWrapper():
 
     def reset_loss(self, seed, prefix="", suffix="", target=None):
         """
-        Runs training for PhysNet model using an input trajectory as training points
+        Resets the best loss values stored in ``{label}/best/best_loss.npz`` to infinity,
+        so that further training (eg on new data) saves a new best checkpoint
 
         seed: str
 
@@ -223,6 +238,7 @@ class PhysNetWrapper():
         suffix: str
 
         prefix: str
+            Ignored
 
         """
 
@@ -272,17 +288,27 @@ class PhysNetWrapper():
         """
         Runs training for PhysNet model using an input trajectory as training points
 
+        The trajectory has the atom energies (from ``{seed}_atoms_{suffix}.traj``)
+        subtracted, is converted to npz format and split 90:10 into training and
+        validation data, then PhysNet's train.py is run.
+
         seed: str
 
-        target: int
+        prefix: str
+            Ignored
 
         suffix: str
 
         trajfile: str
+            Filename of the training trajectory
+
+        target: int
 
         restart: bool
+            Continue the run found in the calculator directory
 
         kwargs: dict
+            Overrides for any of the ``train_args``; other keywords are ignored
 
         """
 
@@ -395,25 +421,35 @@ class PhysNetWrapper():
 
         model: ASE Atoms
 
-        seed: str
+        mdseed: str
+            Name for the output trajectory ``{mdseed}.traj``
 
         calc_params: dict
+            Calculator parameters: ``calc_seed``, ``target``, ``calc_suffix`` and ``calc_prefix``
 
         md_steps: int
 
         md_timestep: float
+            Timestep in ASE time units
 
         superstep: int
+            Ignored
 
         temp: float
-
-        target: int or None
-
-        solvent: str or None
-
-        restart: bool
+            Temperature in K
 
         readonly: bool
+            If True, recalculate the energy of the final image in ``{mdseed}.xyz``
+            instead of running MD
+
+        dynamics:
+            None, an object with attributes ``type`` ('LANG' or 'NPT'), ``friction`` and
+            ``new_traj``, or the ASE dynamics object returned by a previous call.
+            Defaults are Langevin dynamics with friction 0.01.
+
+        The other arguments are ignored.
+
+        *Returns*: the ASE dynamics object, or None if ``readonly``
         """
 
         from ase.md.velocitydistribution import MaxwellBoltzmannDistribution, Stationary, ZeroRotation
@@ -453,23 +489,27 @@ class PhysNetWrapper():
                  solvent=None, charge=0, spin=0, writeonly=False, readonly=False, continuation=False, cleanup=False,
                  traj=None):
         """
-        Runs a geometry optimisation calculation with the PhysNet ASE calculator
+        Runs a BFGS geometry optimisation calculation (at most 1000 steps) with the
+        PhysNet ASE calculator
 
         model: ASE Atoms
 
         seed: str
+            Ignored
 
         calc_params: dict
+            Calculator parameters, as for ``run_md``
 
-        dummy: str
+        driver_tol: str
+            Force tolerance: 'default' (0.001 eV/Ang), 'loose' (0.0045) or 'tight' (0.000015)
 
-        driver_tol:
+        traj: str or None
+            Trajectory file for the optimisation steps
 
-        target: int or None
+        The other arguments are ignored.
 
-        solvent: str or None
-
-        readonly: bool
+        *Returns*: energy (eV), forces (eV/Ang) and positions (Ang). The energy is that of
+        the network, without the atom energies that ``singlepoint`` adds back.
         """
         from ase.io import Trajectory
 
@@ -518,23 +558,19 @@ class PhysNetWrapper():
         """
         Runs a Vibrational Frequency calculation with the PhysNet ASE calculator
 
+        Uses ASE's ``Infrared`` class, displacing only atoms not fixed by a FixAtoms constraint.
+
         model_opt: ASE Atoms
 
         seed: str
+            Seed for the name of the vibrational calculation
 
-        suffix: str
+        calc_params: dict
+            Calculator parameters, as for ``run_md``
 
-        dummy: str
+        The other arguments are ignored.
 
-        driver_tol:
-
-        target: int or None
-
-        solvent: str or None
-
-        temp: float
-
-        readonly: bool
+        *Returns*: the ASE ``Infrared`` object (not yet cleaned up)
         """
 
         from ase.vibrations import Vibrations, Infrared
@@ -583,16 +619,22 @@ class PhysNetWrapper():
         model: ASE Atoms
 
         seed: str
+            Ignored
 
-        suffix: str
+        calc_params: dict
+            Calculator parameters, as for ``run_md``
 
-        dummy: str
+        forces: bool
+            Also return the forces
 
-        target: int or None
+        dipole: bool
+            Also return the dipole
 
-        solvent: str or None
+        The other arguments are ignored.
 
-        readonly: bool
+        *Returns*: energy (eV, including the atom energies), then forces and dipole if
+        requested, and always the calculator as the last item. If the ``store_atom_e``
+        attribute is True, the calculator is a SinglePointCalculator holding the total energy.
         """
 
         from esteem.trajectories import atom_energy

@@ -30,6 +30,11 @@ from ase import Atoms
 def counterion_charge(counterions):
     """
     Calculate the net charge on the solute, given a set of counterions
+
+    counterions: ASE Atoms
+        Counterion atoms: alkali metals and H count as +1, alkaline earths as +2, halides as -1
+
+    *Returns*: the net charge on the solute that these counterions balance (eg -1 for one Na)
     """
     netcharge = 0
     for at in counterions:
@@ -67,16 +72,11 @@ class SolvateTask:
 
             4. A box of solvent is added to the solute, and counterions added
 
-            5. Restraints are calculated for the counterions
+            5. Torsional restraints on the solute are set up, if ``restraints`` is set
 
-        args: namespace or class
-
-            Input variables to the routine - see listing under Command-Line usage for details
-
-            Generate with a call to solvate.make_parser()
-
-        wrapper: class
-            Wrapper to run calculations of this task
+        Input variables are taken from the task attributes - see listing under Command-Line usage for details.
+        ``self.wrapper`` must be an AmberWrapper. The MD settings ``timestep``, ``temp``, ``ewaldcut`` and
+        ``gammaln`` are then passed to the wrapper.
         """
 
         # Check input args are valid
@@ -146,10 +146,11 @@ class SolvateTask:
 
     def setup_lammps(self):
         """
-        Handles setup of the solvated model for a LAMMPS calculation (also uses AmberTools)
+        Handles setup of the solvated model for a LAMMPS calculation: runs ``setup_amber`` with an
+        AmberWrapper, then converts the Amber files '{solute}_{solvent}_solv.prmtop' and '.crd' to
+        LAMMPS input with InterMol.
 
-        args: namespace or class
-            input variables to the routine - see listing under Command-Line usage for details
+        Input variables are taken from the task attributes - see listing under Command-Line usage for details.
         """
 
         from esteem.wrappers.amber import AmberWrapper
@@ -177,7 +178,11 @@ class SolvateTask:
 
     def setup_packmol(self):
         """
-        Handles setup of the solvated model using Packmol 
+        Handles setup of the solvated model using Packmol, placing one solute molecule and
+        ``nmol_solvent`` solvent molecules (read from '../{seed}.xyz') in a cubic periodic box of side
+        ``boxsize``, or sized from ``init_density`` if ``boxsize`` is None. Writes '{solute}_{solvent}_solv.xyz',
+        and does nothing if that file already exists.
+
         Requires MDAnalysis and mdapackmol packages (pip installed)
         and packmol executable in PATH
         """
@@ -270,27 +275,27 @@ class SolvateTask:
 
         There are five phases to the task:
 
-        Setup, Heating, Density Equilibration, Equilibration and Snapshot Generation
+        Setup (performed beforehand by ``setup``), Heating, Density Equilibration, Equilibration and
+        Snapshot Generation. For wrappers other than Amber, the solvated model is first minimised.
+        Density Equilibration is skipped if ``boxsize`` is None. Each phase is skipped if its
+        output coordinates already exist, and Snapshot Generation resumes from the last saved snapshot.
 
-        Constraints are turned on and off as appropriate in different phases:
+        With Amber, SHAKE constraints on -H are used during heating and density equil, and no
+        constraints on -H during equil and snapshots.
 
-        SHAKE constraints on -H during heating and density equil, no constraints on -H during equil and snapshots
+        Settings are taken from the task attributes (see the argument listing for details).
 
-        Counterions are restrained from coming too close to the solute
+        ``self.wrapper`` must be set to a wrapper for running components of the job, with members including:
 
-        args: namespace or class
-            Argument list for the whole job, with members including:
-        wrapper: namespace or class
-            Wrapper for running components of the job, with members including:
-
-            ``singlepoint``, ``minimise``, ``heatup``, ``densityeq``, ``equil`` and ``snapshots``
+            ``singlepoint``, ``geom_opt``, ``heatup``, ``densityequil``, ``equil``, ``snapshots`` and
+            ``restore_from_coordinates``
 
         *Outputs*:
-            A trajectory file, named '{solute}_{solvent}_{md_suffix}/{solute}_{solvent}_solv.traj' which
-            contains ``self.nsnaps`` geometries of the solvated box, each spaced by ``self.nsteps`` steps
-            of ``self.timestep`` units of time (wrapper-dependent).
 
-            An example for catechol in water with the default ``md_suffix``
+            A trajectory file, named '{solute}_{solvent}_solv.traj', which contains ``nsnaps`` geometries
+            of the solvated box, each spaced by ``nsteps`` steps of ``timestep``. The task runs in the
+            wrapper's output subdirectory (eg 'amber') of the MD directory '{solute}_{solvent}_{md_suffix}';
+            the Amber wrapper writes the trajectory to the MD directory itself, others to the subdirectory.
         """
 
         from os.path import isfile, isdir

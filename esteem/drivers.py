@@ -35,22 +35,44 @@ def main(all_solutes, all_solvents, all_solutes_tasks={}, all_solvate_tasks={},
     Main driver routine which chooses other tasks to run as appropriate.
 
     Control of what driver is actually called depends on command-line arguments with which the script
-    was invoked: 'python <seed>.py <task> <seed> <target>'
+    was invoked: ``python <script>.py <task> <seed> [<target>]``
+
+    ``<task>`` may contain several space-separated task names. Recognised names are:
+
+    - ``scripts``: write a job script for every task and target (or only for ``<target>``, if given), then exit
+    - ``solutes``, ``solvents``, ``solvate``, ``spectra``: run the corresponding driver
+    - ``clusters`` or ``mlclus``: run :func:`clusters_driver`, stopping before the calculations if ``setup`` is also present
+    - ``atoms``: run :func:`atom_energies_driver`, using the QMD task
+    - ``qmd``: run :func:`qmd_driver`
+    - ``train`` (or any name containing it): run :func:`mltrain_driver`, only setting up the directory if ``setup`` is also present
+    - ``test`` or ``mltest``: run :func:`mltest_driver`
+    - ``traj`` (or any name containing it): run :func:`mltraj_driver`, with ``setup`` or ``cleanup`` selecting only those stages
+
+    Each ``all_*_tasks`` argument is either a single task object, or a dict of task objects keyed
+    by target, from which the entry for ``<target>`` is used.
 
     all_solutes: dict of strings
         Keys are shortnames of the solutes. Entries are the full names.
     all_solvents: dict of strings
         Keys are shortnames of the solvents. Entries are the full names.
-    all_solutes_tasks: namespace or class
-        Argument list for the Solutes task - see solutes_driver documentation below for more detail.
-    all_solvate_tasks: namespace or class
-        Argument list for the Solvate task - see solvate_driver documentation below for more detail.
-    all_clusters_tasks: namespace or class
-        Argument list for the Clusters task - see clusters_driver documentation below for more detail.
-    all_spectra_tasks: namespace or class
-        Argument list for the Spectra task - see spectra_driver documentation below for more detail.
-    make_script: dict of strings
-        Routine that can write a job submission script. Usually parallel.make_sbatch.
+    all_solutes_tasks: SolutesTask or dict
+        Solutes task(s), used by the ``solutes`` and ``solvents`` tasks - see :func:`solutes_driver`.
+    all_solvate_tasks: SolvateTask or dict
+        Solvate task(s) - see :func:`solvate_driver`.
+    all_clusters_tasks: ClustersTask or dict
+        Clusters task(s) - see :func:`clusters_driver`.
+    all_spectra_tasks: SpectraTask or dict
+        Spectra task(s) - see :func:`spectra_driver`.
+    all_qmd_tasks: QMDTrajTask or dict
+        QMD task(s), used by the ``qmd`` and ``atoms`` tasks - see :func:`qmd_driver`.
+    all_mltrain_tasks: MLTrainingTask or dict
+        ML training task(s) - see :func:`mltrain_driver`.
+    all_mltest_tasks: MLTestingTask or dict
+        ML testing task(s) - see :func:`mltest_driver`.
+    all_mltraj_tasks: MLTrajTask or dict
+        ML trajectory task(s) - see :func:`mltraj_driver`.
+    make_script: function
+        Function that writes a job submission script. Usually :func:`esteem.parallel.make_sbatch`.
 
     """
 
@@ -247,12 +269,12 @@ def solutes_driver(all_solutes, all_solvents, task):
     all_solvents: dict of strings
         Keys are shortnames of the solvents (implicit only, here). Entries are the full names.
     task: SolutesTask class
-        Argument list for the whole Solutes job - see Solutes module documentation for more detail.
+        Settings for the whole Solutes job - see Solutes module documentation for more detail.
 
         Arguments used only within the driver routine include:
 
-        ``task.directory``: Directory prefix for where output of this particular 'target' of the Solutes
-        calculation will be written
+        ``task.directory``: Directory in which output of this particular 'target' of the Solutes
+        calculation will be written. It is created if needed, and the 'xyz' directory is copied into it.
     """
 
     base_path = path.basename(getcwd())
@@ -305,20 +327,17 @@ def solvents_driver(all_solvents, task):
     Driver to run a range of DFT/TDDFT calculations on a range of solvent molecules.
     See the Solutes module documentation for more info on what tasks are run.
 
-    all_solutes: dict of strings
-        Keys are shortnames of the solutes. Entries are the full names.
+    Each solvent is run in an implicit model of itself.
+
     all_solvents: dict of strings
         Keys are shortnames of the solvents. Entries are the full names.
     task: SolutesTask class
-        Argument list for the whole Solutes job - see Solutes module documentation for more detail.
+        Settings for the whole Solutes job - see Solutes module documentation for more detail.
 
         Arguments used only within the driver routine include:
 
-        ``task.directory``: Directory prefix for where output of this particular 'target' of the Solutes
-        calculation will be written
-
-    wrapper: namespace or class
-        Functions that will be used in the Solutes task - see Solutes module documentation for more detail.
+        ``task.directory``: Directory in which output of this particular 'target' of the Solutes
+        calculation will be written. It is created if needed, and the 'xyz' directory is copied into it.
     """
 
     if task.directory is not None:
@@ -437,25 +456,39 @@ def range_sep_driver(all_solutes, all_solvents, task, wrapper):
 
 def solvate_driver(all_solutes, all_solvents, seed, task, make_sbatch=None):
     """
-    Driver to run set up and run MD on solvated boxes containing a solute molecule and solvent.
-    If the script is run as an array task, it performs the task for the requested solute/solute pair
+    Driver to set up and run MD on solvated boxes containing a solute molecule and solvent.
+
+    If invoked from the base directory, it creates the directory '{solute}_{solvent}_{md_suffix}'
+    for each solute-solvent pair, copies in the optimised geometries of the solute and solvent,
+    and writes a job script '{solute}_{solvent}_{md_suffix}_solvate_sub' there, then exits.
+    If the script is run as an array task, it does this for the requested solute/solvent pair
     only, out of the nsolutes * nsolvents possible combinations.
+
+    If invoked from one of those directories (by submitting the job script), it runs the MD
+    for that pair.
 
     all_solutes: dict of strings
         Keys are shortnames of the solutes. Entries are the full names.
     all_solvents: dict of strings
         Keys are shortnames of the solvents. Entries are the full names.
+    seed: str
+        Overall 'seed' name for the run. Not currently used: job scripts use '{solute}_{solvent}'.
     task: SolvateTask class
-        Argument list for the whole clusters job - see Solvate module documentation for more detail.
+        Settings for the whole Solvate job - see Solvate module documentation for more detail.
+        The wrapper used is ``task.wrapper``.
 
         Arguments used within this routine include:
 
         ``task.md_suffix``: Directory suffix for where the MD runs will take place
 
-        ``task.md_geom_prefix``: Directory prefix for where the geometries from the Solutes calculation should be obtained.
+        ``task.md_geom_prefix``: Directory of the Solutes calculation from whose 'is_opt_{solvent}'
+        subdirectory the optimised geometries are obtained.
 
-    wrapper: class
-        Wrapper that will be used in the Solvate task - see Solvate module documentation for more detail.
+        ``task.script_settings``: Settings passed to ``make_sbatch``.
+
+        ``task.boxsize``: May be a dict keyed by solvent name.
+    make_sbatch: function
+        Function that writes a job submission script. If None, no script is written.
     """
 
     md_suffix = task.md_suffix
@@ -562,8 +595,8 @@ def clusters_driver(all_solutes, all_solvents, seed, task, make_sbatch=None, dry
     """
     Driver to extract isolated clusters from solvated models, for a range of solute/solvent pairs.
 
-    Takes MD results from the directory {task.md_prefix} and performs excitation
-    calculation in the directory {solute}_{solvent}_{task.exc_suffix}.
+    Takes MD results from the directory ``task.md_prefix`` and performs excitation
+    calculations in the directory '{solute}_{solvent}_{exc_suffix}'.
 
     If invoked from the base directory, rather than the excitation directory, it sets up the
     excitation directory and writes a job script then exits.
@@ -581,17 +614,27 @@ def clusters_driver(all_solutes, all_solvents, seed, task, make_sbatch=None, dry
     seed: str
         Overall 'seed' name for the run - used in creation of job scripts for the calculation
     task: ClustersTask class
-        Argument list for the whole clusters job - see Clusters module documentation for more detail.
+        Settings for the whole clusters job - see Clusters module documentation for more detail.
 
         Arguments used predominantly in the driver rather than the task main routine include:
 
-        ``task.md_prefix``: Directory where MD outputs are to be found.
+        ``task.md_prefix``: Directory where MD outputs are to be found. '{solu}', '{solv}' and
+        '{seed}' are substituted.
 
-        ``task.md_suffix``: Suffix of MD output trajectories.
+        ``task.md_suffix``: Suffix of MD output trajectories (may be a list).
 
-        ``task.exc_suffix``: Directory where results of Cluster excitation calculations will go.
+        ``task.exc_suffix``: Suffix of the directory where results of Cluster excitation calculations
+        will go, also used in job names. A trailing '_{which_traj}' is removed from the directory name.
+
+        ``task.exc_dir_suffix``: If present, used in place of ``exc_suffix`` for the directory name.
+
+        ``task.script_settings``: Settings passed to ``make_sbatch``.
+
+        ``task.radius``: May be a dict keyed by '{solute}_{solvent}' or by solvent name.
     make_sbatch: function
-        Function that writes a job submission script for the clusters jobs
+        Function that writes a job submission script for the clusters jobs. If None, no script is written.
+    dryrun: bool
+        If True, the clusters are set up but the calculations are not run.
 
     *Output*:
 
@@ -599,15 +642,16 @@ def clusters_driver(all_solutes, all_solvents, seed, task, make_sbatch=None, dry
         for each solute-solvent pair, with path '{solute}_{solvent}_{exc_suffix}'. The default value
         of ``exc_suffix`` is 'exc'.
 
-        To each directory, this routine will copy the trajectory file 
-        '{md_prefix}/{solute}_{solvent}_{md_suffix}.traj'
-        which consists of ``task.nsnaps`` snapshots.
+        In each directory, this routine will create a symbolic link to the trajectory file
+        '{md_prefix}/{solute}_{solvent}_{md_suffix}.traj' (the snapshots saved by the Solvate task),
+        and copy in the geometries of the solute and solvent.
 
-        It will then create a job script using ``make_sbatch`` and ``settings`` with the
-        name '{solute}_{solvent}_{exc_suffix}_sub' and exit.
+        It will then create a job script using ``make_sbatch`` and ``task.script_settings`` with the
+        name '{solute}_{solvent}_{exc_suffix}_{which_traj}_sub' and exit.
 
         The user then needs to run the individual job scripts from each subdirectory, probably
-        as a job array: the array task ID should range from 0 to ``task.nsnaps - 1``
+        as a job array: the array task ID should range from 0 to one less than the number of
+        snapshots (``nsnaps`` of the Solvate task).
 
         The output of those runs will be the excited state energies of the clusters, which
         can be averaged over in the Spectra task.
@@ -816,6 +860,19 @@ def merge_xyzs(solu, solv, seed_xyz, merge_path='.'):
 
 
 def atom_energies_driver(atomen):
+    """
+    Driver to calculate energies of isolated atoms, for use as reference energies.
+
+    The energy of each element present in '{seed}.xyz' is calculated with ``atomen.wrapper``, in
+    the directory '{seed}_atoms_{target}'. The atomic energies are then rescaled so that their
+    sum over the atoms of a reference molecule (the solvent, or the solute if there is no solvent)
+    equals that molecule's energy, and written to '{seed}_atoms_{target}.traj' in the base directory.
+
+    atomen: QMDTrajTask class
+        Settings for the calculation, including ``seed``, ``target``, ``wrapper``, ``basis``,
+        ``func`` and ``disp``. The optimised geometries are taken from the 'is_opt_{solv}' subdirectory
+        ('opt' without a solvent) of ``atomen.ref_mol_dir`` if set, otherwise of 'gs_PBE0'.
+    """
 
     from ase.io import read, Trajectory
     from ase import Atoms
@@ -946,21 +1003,23 @@ def qmd_driver(qmdtraj, all_solutes, all_solvents):
     If the script is run as an array task, it performs the task for the
     requested trajectory only.
 
+    The calculations run in the directory '{seed}_qmd', into which the geometry
+    '{geom_prefix}/{seed}.xyz' is copied.
+
+    qmdtraj: QMDTrajTask class
+        Settings for the whole QMD_Trajectories job - see QMD_Trajectories module documentation for more detail.
+
+        Arguments used within the driver routine include:
+
+        ``qmdtraj.which_trajs``: List of trajectory labels to run (default all ``qmdtraj.ntraj``).
+
+        Arguments for which the driver routine will perform solute & solvent name substitution:
+
+        ``qmdtraj.geom_prefix``, ``qmdtraj.solvent``
     all_solutes: dict of strings
         Keys are shortnames of the solutes. Entries are the full names.
     all_solvents: dict of strings
         Keys are shortnames of the solvents (implicit only, here). Entries are the full names.
-    task: QMDTrajTask class
-        Argument list for the whole QMD_Trajectories job - see QMD_Trajectories module documentation for more detail.
-
-        Arguments used only within the driver routine include:
-
-        ``task.directory``: Directory prefix for where output of this particular 'target' of the Solutes
-        calculation will be written
-
-        Arguments for which the driver routine will perform solute & solvent name substitution:
-
-        ``task.solvent``: 
     """
 
     import string
@@ -1098,22 +1157,28 @@ def mltrain_driver(mltrain_task, all_solutes={}, all_solvents={}, setup_only=Fal
     a dataset. Key arguments are the wrapper, which supplies the interface
     to the ML model, and the specification of the trajectory data.
 
+    Training takes place in the directory '{seed}_{targ}_{calc_dir_suffix}' (where {targ} is
+    eg 'gs' or 'es1'), which is created if needed, along with symbolic links to the trajectories.
+    An Exception is raised, before anything is changed, if any linked trajectory is missing or empty.
+
+    mltrain_task: MLTrainingTask class
+        Settings for the whole training job - see ML_Training module documentation for more detail.
+
+        Arguments used only within the driver routine include:
+
+        ``mltrain_task.traj_links``, ``mltrain_task.traj_links_valid``, ``mltrain_task.traj_links_test``:
+        Dictionaries mapping trajectory labels to paths of trajectory data files, relative to the
+        path from which the script was invoked
+
+        Arguments for which the driver routine will perform solute & solvent name substitution:
+
+        ``mltrain_task.geom_prefix``, and the paths in the ``traj_links`` dictionaries
     all_solutes: dict of strings
         Keys are shortnames of the solutes. Entries are the full names.
     all_solvents: dict of strings
         Keys are shortnames of the solvents (implicit only, here). Entries are the full names.
-    task: MLTrainTask class
-        Argument list for the whole MLTrainTask job - see ML_Training module documentation for more detail.
-
-        Arguments used only within the driver routine include:
-
-        ``mltrain_task.traj_links``: Expressed as a dictionary containing trajectory
-        labels and full paths of trajectory data files, relative to the path
-        from which the script was invokes
-
-        Arguments for which the driver routine will perform solute & solvent name substitution:
-
-        ``mltrain_task.seed``: 
+    setup_only: bool
+        If True, set up the directory and links, but do not train.
     """
     from os import symlink, path
     from ase.io import Trajectory, read, write
@@ -1198,24 +1263,27 @@ def mltest_driver(mltest, all_solutes, all_solvents):
     Key arguments are the wrapper, which supplies the interface
     to the ML model, and the specification of the test data.
 
+    The test runs in the directory '{calc_seed}_{targ}_{calc_dir_suffix}_test', which is created if needed.
+
+    mltest: MLTestingTask class
+        Settings for the whole testing job - see :mod:`~esteem.tasks.ml_testing` module documentation for more detail.
+
+        Arguments used only within the driver routine include:
+
+        ``mltest.traj_links``: Dictionary mapping trajectory labels to paths of trajectory data
+        files, relative to the path from which the script was invoked. Links to them are made in
+        the ``traj_prefix`` directory.
+
+        ``mltest.which_trajs``: If a dict, the test is run once for each entry, with
+        ``mltest.ref_mol_seed_dict`` giving the seed to use for each.
+
+        Arguments for which the driver routine will perform solute & solvent name substitution:
+
+        ``mltest.calc_seed``, ``mltest.traj_prefix``, ``mltest.plotfile``, and the paths in ``mltest.traj_links``
     all_solutes: dict of strings
         Keys are shortnames of the solutes. Entries are the full names.
     all_solvents: dict of strings
         Keys are shortnames of the solvents (implicit only, here). Entries are the full names.
-    mltest_task: MLTestTask class
-        Argument list for the whole MLTestTask job - see :mod:`~esteem.tasks.ml_testing` module documentation for more detail.
-
-        Arguments used only within the driver routine include:
-
-        ``mltest_task.traj_links``: Expressed as a dictionary containing trajectory
-        labels and full paths of trajectory data files, relative to the path
-        from which the script was invokes
-
-        Arguments for which the driver routine will perform solute & solvent name substitution:
-
-        ``mltest_task.calc_seed``:
-
-        ``mltest_task.traj_prefix``:
     """
 
     from ase.io import Trajectory
@@ -1364,6 +1432,34 @@ def mltest_driver(mltest, all_solutes, all_solvents):
 
 
 def mltraj_driver(mltraj, all_solutes, all_solvents, cleanup_only=False, setup_only=False):
+    """
+    Driver to run Machine-Learning-driven trajectories (eg MD with an ML calculator).
+    If the script is run as an array task, it runs the requested trajectory only.
+
+    The trajectories run in the directory '{seed}_{targ}_{traj_dir_suffix}', which is created if
+    needed. The initial geometries are copied there from '{geom_prefix}/is_opt_{solv}' ('opt' with
+    no solvent), and ``md_init_traj_link`` is linked (or, if a list, merged) to '{seed}_{targ}_md_init.traj'.
+
+    mltraj: MLTrajTask class
+        Settings for the whole job - see :mod:`~esteem.tasks.ml_trajectories` module documentation for more detail.
+
+        Arguments for which the driver routine will perform solute & solvent name substitution:
+
+        ``mltraj.calc_seed``, ``mltraj.snap_calc_params['calc_seed']``, ``mltraj.geom_prefix``,
+        ``mltraj.md_init_traj_link``
+
+        ``mltraj.constraints`` and ``mltraj.carve_trajectory_radius`` may be dicts, from which the entry for
+        this solute (or solute-solvent pair, or solvent) is used.
+    all_solutes: dict of strings
+        Keys are shortnames of the solutes. Entries are the full names.
+    all_solvents: dict of strings
+        Keys are shortnames of the solvents. Entries are the full names.
+    cleanup_only: bool
+        If True, do not run the trajectories, only the carving of clusters afterwards
+        (if ``mltraj.carve_trajectory_radius`` is set).
+    setup_only: bool
+        If True, set up the directory and files, then return.
+    """
     from os import symlink, path, remove
     from esteem.trajectories import get_trajectory_list, targstr, merge_traj
 
@@ -1615,13 +1711,9 @@ def spectral_warp_driver(all_solutes, all_solvents, task, annotation=None):
     all_solvents: dict of strings
         Keys are shortnames of the solvents. Entries are the full names.
     task: SpectraTask class
-        Argument list for the whole spectra job - see Spectra module documentation for more detail.
+        Settings for the whole spectra job - see Spectra module documentation for more detail.
 
         Arguments used only in the driver include:
-
-        ``task.exc_suffix``: Directory in which results of excitation calculations performed
-        by the Clusters task can be found. The pattern used to find matches is:
-        '{solute}_{solvent}_{exc_suffix}/{solute}_{solvent}_solv*.out'
 
         ``task.warp_origin_ref_peak_range``: Peak range searched when looking for 'reference' peaks.
         in the origin spectrum for spectral warping.
@@ -1634,11 +1726,14 @@ def spectral_warp_driver(all_solutes, all_solvents, task, annotation=None):
         ``task.warp_inputformat``: Format of the files to be loaded for origin and destination spectra.
         [TODO: May need to be adjusted to allow separate ``task.warp_ref_inputformat`` and ``task.warp_dest_inputformat``]
 
-        ``task.warp_files``: File pattern to search for when looking for origin and destination spectra
-        for spectral warping.
+        ``task.warp_origin_files``, ``task.warp_dest_files``: File patterns to search for when looking
+        for origin and destination spectra for spectral warping. '{solu}', '{solv}' and '{seed}' are
+        substituted.
+    annotation: str
+        Optional text added to each plot.
 
-        ``task.merge_solutes``: Dictionary: each entry should be a list of solute names that will be merged into the
-        corresponding key
+    *Returns*: list of the spectral warping parameters for each solvent-solute pair. A plot of the
+    warp for each pair is saved to '{solute}_{solvent}_check_warp.png'.
     """
     from copy import deepcopy
     import matplotlib.pyplot as pyplot
@@ -1769,6 +1864,38 @@ def spectral_warp_driver(all_solutes, all_solvents, task, annotation=None):
 
 
 def spectra_driver(all_solutes, all_solvents, task, warp_params=None, cluster_spectra=[], c_fig=None, c_ax=None):
+    """
+    Driver to plot spectra for a range of solute/solvent pairs, from the results of the Clusters
+    task (or other excited state calculations).
+
+    If invoked from the base directory with ``task.files`` set to None, it works in each directory
+    '{solute}_{solvent}_{exc_suffix}' in turn. If invoked from one of these directories, it plots
+    the spectrum for that pair only.
+
+    all_solutes: dict of strings
+        Keys are shortnames of the solutes. Entries are the full names.
+    all_solvents: dict of strings
+        Keys are shortnames of the solvents. Entries are the full names.
+    task: SpectraTask class
+        Settings for the whole spectra job - see Spectra module documentation for more detail.
+
+        Arguments used in the driver include ``task.exc_suffix``, which may be a dict keyed by solute,
+        and ``task.merge_solutes``.
+
+        Arguments for which the driver routine will perform solute & solvent name substitution:
+
+        ``task.files``, ``task.trajectory``, ``task.correction_trajectory``,
+        ``task.vibration_trajectory``, ``task.output``
+    warp_params: list
+        Spectral warping parameters for each solvent-solute pair, as returned by
+        :func:`spectral_warp_driver`, or None for no warping.
+    cluster_spectra: list
+        List to which the spectrum of each pair is appended.
+    c_fig, c_ax: matplotlib Figure and Axes
+        Existing plot to add the spectra to, if any.
+
+    *Returns*: ``cluster_spectra``, ``c_fig``, ``c_ax``
+    """
 
     import glob
     from copy import deepcopy

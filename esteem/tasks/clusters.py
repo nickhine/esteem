@@ -35,38 +35,53 @@ class ClustersTask:
 
         The steps involved are:
 
-            1. Load the trajectory file of MD snapshots, which for a given solvent solute pair 
-            it expects to find at '{solute}_{solvent}_{md_suffix}.traj' in the current directory
+            1. Load the trajectory file of MD snapshots, which for a given solvent solute pair
+               it expects to find at '{solute}_{solvent}_{md_suffix}.traj' in the current directory
+               (if ``self.md_suffix`` is a list, the trajectories for each suffix are merged).
 
-            2. 'Carve' spheres out of the trajectory, that is to say:
+            2. 'Carve' spheres out of the trajectory (skipped if ``self.radius`` is None), that is to say:
 
                 a. Delete counterions (checking they are not within the sphere first)
 
                 b. Delete any whole solvent molecules for which no atoms of the solvent molecule
-                are within ``self.radius`` of any atom in the solute molecule.
+                   are within ``self.radius`` of any atom in the solute molecule, then, if
+                   ``self.max_solvent_mols`` or ``self.max_atoms`` is set, the furthest remaining ones.
 
-                c. Label solvent molecules with a tag if they are within ``self.kernel`` by the
-                criteria above.
+                c. Label solvent molecules with tag 2 if they are within ``self.kernel`` by the
+                   criteria above (solute atoms get tag 1, other solvent atoms tag 0).
 
-                d. Rotate and center the cluster in the simulation cell, using the two most-distant
-                pairs of carbon atoms in the solute to find a common 'plane' for the solute snapshots.
+                d. If ``self.rotate`` is True, rotate and center the cluster in the simulation cell, using
+                   the two most-distant pairs of carbon atoms in the solute to find a common 'plane' for the
+                   solute snapshots.
 
-            3. Calculate energies or electronic excitations for each cluster, using the supplied wrapper
+               The carved clusters are written to
+               '{solute}_{solvent}_{target}_{which_traj}_{carved_suffix}.traj'.
+
+            3. Optionally select a subset of the frames (if ``self.subset_selection_method`` is set),
+               written to '{solute}_{solvent}_{target}_{which_traj}_{selected_suffix}.traj'.
+
+            4. Calculate energies (and forces) or electronic excitations for each cluster, using
+               ``self.wrapper``, or write input files, depending on ``self.output``.
 
         *Arguments*
 
-        self: Argument list for the task, with attributes including:
+        dryrun: bool
+            If True, stop after setting up the carved (or selected) trajectory and the output
+            directory, before any calculations are run.
 
-            ``solute``, ``solvent``, ``radius``, ``output``, ``task_id``, ``counterions``, ``charges``
-            ``kernel``, ``basis``, ``func``, ``boxsize``, ``impsolv``,``nroots``, ``cleanup``, ``continuation``
+        The task settings are attributes of the task object, including:
 
-        wrapper: class
-            Wrapper to use in the Clusters task
+            ``solute``, ``solvent``, ``radius``, ``output``, ``task_id``, ``counterions``, ``charges``,
+            ``kernel``, ``basis``, ``func``, ``boxsize``, ``impsolv``, ``nroots``, ``cleanup``, ``continuation``
+
+        ``self.wrapper`` is the wrapper used for the calculations.
 
         *Output*:
 
-            If ``self.task_id`` is None, excited state calculations for the whole trajectory.
-            If has a int value, then an excited state calculation for just that frame in the trajectory. 
+            If ``self.task_id`` is None, calculations for the whole trajectory.
+            If it has an int value, then a calculation for just that frame in the trajectory.
+            For wrapper outputs (eg 'nw', 'orca', 'mace') the results are written to
+            '{solute}_{solvent}_{targ}_{which_traj}_{output}.traj'.
         """
 
         from ase.io import Trajectory
@@ -416,7 +431,12 @@ class ClustersTask:
 
     def carve_spheres(self, counterions=None, solvent_radius=0.0, kernel_radius=0.0,
                       nmol_solvent_targ=None, boxsize=None, task_id=None):
-        """Carves out spheres from a periodic solvent model, centered on the solute"""
+        """
+        Carves out spheres from a periodic solvent model, centered on the solute, for the frames of
+        the input trajectory (or just frame ``task_id``), writing them to a carved trajectory.
+
+        Returns a list of (frame index, Atoms) pairs and the name of the carved trajectory file.
+        """
 
         from ase.io import Trajectory, read
         from esteem.trajectories import targstr
@@ -479,7 +499,10 @@ class ClustersTask:
         return list(enumerate(traj_carved, start=task_id)), traj_carved_file
 
     def remove_solute(self, traj_carved, soluseed, solvseed, seed, traj_label, traj_suffix, task_id=None):
-        """Removes solute molecules from a previously-carved trajectory"""
+        """
+        Removes solute molecules from a previously-carved trajectory, writing the result to a
+        '_nosolu' trajectory, and returns the name of that trajectory file.
+        """
 
         from ase.io import Trajectory, read
         from esteem.trajectories import targstr
@@ -736,7 +759,7 @@ def carve_sphere(t, solvent_radius, kernel_radius, nat_solute, nat_solvent,
 def delete_counterions(t, solvent_radius, nat_tot, nat_solute, nat_counterions,
                        deleted_atoms=None):
     """
-    Deletes counterions from an Atoms model.
+    Deletes counterions further than solvent_radius from any solute atom from an Atoms model.
     Assumes they appear in the range [nat_solute:nat_solute+nat_counterions]
     """
 
@@ -833,7 +856,8 @@ def delete_distant_molecules(t, solvent_radius, nat_tot, nat_solvent, nmol_solve
     """
     Deletes solvent molecules beyond a certain radius from the solute from an Atoms model
     Assumes that the first nat_solute atoms are the solute, and after that solvent
-    atoms are arranged in nmol_solvent groups of size nat_solvent
+    atoms are arranged in nmol_solvent groups of size nat_solvent.
+    If keep_idx is a list, the indices of the atoms that are kept are appended to it.
     """
 
     Rij = np.zeros((nat_solvent * nmol_solvent, nat_solute))
@@ -868,7 +892,8 @@ def delete_distant_molecules(t, solvent_radius, nat_tot, nat_solvent, nmol_solve
 
 def label_nearby_molecules(t, kernel_radius, nat_tot, nat_solvent, nmol_solvent, nat_solute):
     """
-    Adds a tag to solvent molecules within a certain radius from the solute to an Atoms model
+    Sets tags on an Atoms model: 1 for the solute, 2 for solvent molecules within kernel_radius
+    of the solute and 0 for other solvent molecules (no tags are set if kernel_radius is None).
     Assumes that the first nat_solute atoms are the solute, and after that solvent
     atoms are arranged in nmol_solvent groups of size nat_solvent
     """
@@ -908,7 +933,11 @@ def label_nearby_molecules(t, kernel_radius, nat_tot, nat_solvent, nmol_solvent,
 
 
 def rotate_and_center_solute(t, nat_solute=None, boxsize=None):
-    """Rotates a cluster model so the solute is centered and lies in the xy plane"""
+    """
+    Rotates a cluster model so the solute lies in the xy plane (solutes of 10 atoms or fewer
+    are not rotated), then centres the solute in a cubic cell of edge boxsize, or on the origin
+    with no cell if boxsize is None
+    """
 
     # Extract solute atoms as separate atoms object
     if nat_solute is None:
@@ -1126,7 +1155,7 @@ def write_subset_trajectory(trajin_file, trajout_file, nmax, method='R',
 def sanity_check(trajname='', wrapper=None, calc_params={},
                  ref_solu_dir='', ref_solu='', ref_solv_dir='', ref_solv=''):
     """Function to check a trajectory has reasonable dipole moments, energies, and forces.
-       return the index of suspected failed calculations (or empty list if none)"""
+       Returns a list of the indices of suspected failed calculations (empty if none)"""
 
     from os import path, getcwd, chdir
     from ase.io import Trajectory

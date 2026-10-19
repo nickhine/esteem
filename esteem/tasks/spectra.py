@@ -292,23 +292,25 @@ class SpectraTask:
 
         *Arguments*:
 
-        self: class
-            All arguments for the job - see documentation below.
+        Settings for the job are taken from the task attributes - see the argument listing for details.
+
         fig, ax: matplotlib objects
             Figure and axis objects for matplotlib.pyplot. Initialised anew if they have value None on entry.
         plotlabel:
             Label to add the key for this dataset.
         rgb:
-            Colour of the line/points for this dataset. If set to (-1.0,-1.0,-1.0), the RGB colour will be
+            Colour of the line/points for this dataset, on a 0 to 255 scale. If set to (-1.0,-1.0,-1.0), the RGB colour will be
             calculated from the spectrum.
+        linestyle, yoffs:
+            Matplotlib line style, and vertical offset added to the plotted spectrum.
 
         *Returns*:
 
-            broad_spectrum,spec_plot,fig,ax,all_transition_origins
+            broad_spectrum,spec_plot,fig,ax,all_transition_origins,stick_spectrum
 
         *Output*:
 
-            Plots the spectrum to 'self.output' as a png file if requested.
+            Saves the plot of the spectrum to the file ``self.output``, if set.
 
         """
 
@@ -436,25 +438,29 @@ def find_spectral_warp_params(args, dest_spectrum, origin_spectrum, arrow1_pos=N
 
     *Arguments*
 
+    args: class
+        Spectra task (or namespace) whose attributes below are used.
     dest_spectrum: numpy array of floats
         Contains the spectral warp 'destination' spectrum (usually a high level of theory that can only be afforded for the solute molecule)
     origin_spectrum: numpy array of floats
         Contains the spectral warp 'origin' spectrum (usually a cheap level of theory, same as in the Clusters job)
-    args.warp_scheme: str
-        The scheme used for the warping. Allowed values: 'beta', 'alphabeta', 'betabeta'
-    args.warp_origin_ref_peak_range: list of 2 floats
-        Peak range searched when looking for 'reference' peaks in the origin spectrum for spectral warping.
-    args.warp_dest_ref_peak_range: list of 2 floats
-        Peak range searched when looking for 'reference' peaks in the destination spectrum for spectral warping.
-    args.broad:
-        Energy gaussian broadening applied to the stick spectra, useful to merge peaks that you want to treat
-        as one peak in spectral warping.
+    arrow1_pos, arrow2_pos: lists of 4 floats, optional
+        If supplied, overwritten with the positions of arrows for spectral warp plots.
+    ``args.warp_scheme``: str
+        The scheme used for the warping. Allowed values: 'beta', 'avgebeta', 'alphabeta', 'betabeta', or None
+    ``args.warp_origin_ref_peak_range``: list of floats
+        Wavelength range (minimum and maximum, in nm) searched when looking for 'reference' peaks in the origin spectrum for spectral warping.
+    ``args.warp_dest_ref_peak_range``: list of floats
+        Wavelength range (minimum and maximum, in nm) searched when looking for 'reference' peaks in the destination spectrum for spectral warping.
+    ``args.broad``:
+        Gaussian broadening in eV; regions within 4 times this of the first reference peak are excluded
+        when searching for the second reference peak.
 
     *Returns*
 
-        [beta], [alpha, beta], [beta1, beta2, omega1o, omega2o]: floats describing spectral warp parameters
-
-        Also sets arrow1_pos, arrow2_pos for use in spectral warp plots.
+        [beta, origin_lambdamax, dest_lambdamax] ('beta'), [beta] ('avgebeta'), [alpha, beta] ('alphabeta'),
+        [beta1, beta2, omega1o, omega2o] ('betabeta'): floats describing spectral warp parameters (energies in eV,
+        wavelengths in nm), or None if ``args.warp_scheme`` is None.
     """
 
     if args.warp_scheme == None:
@@ -638,14 +644,17 @@ def RGB_colour(spectrum, args):
     Finds the RGB colour corresponding to a given absorption spectrum and illumination.
 
     spectrum: numpy array
-        Spectrum for which to find the colour
+        Stick spectrum for which to find the colour (columns: index, excitation energy in eV, intensity),
+        broadened with Gaussians of width ``args.broad``
     args: namespace or class
         Full set of arguments for the spectra task. Relevant to this routine are:
 
         ``args.XYZresponse`` and ``args.illuminant`` which supply the Color Space XYZ response
-        spectra and the illuminant spectrum, respectively.
+        spectra and the illuminant spectrum, respectively, and ``args.broad``.
 
-        These must be on the same wavelength scale as the spectrum.
+        The two files must be on the same wavelength grid.
+
+    *Returns*: numpy array of the R, G and B values, on a 0 to 255 scale
     """
 
     xyz_funcs = np.genfromtxt(args.XYZresponse)

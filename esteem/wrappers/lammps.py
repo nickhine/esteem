@@ -128,14 +128,20 @@ class LAMMPSWrapper():
         """
         Loads an existing AMP Calculator and converts it into a PROPhet-LAMMPS calculator
 
-        seed: str
+        Returns an ASE LAMMPS calculator using the converted ``nn`` potential.
 
-        target: int
+        seed: str
+            Seed of the AMP calculator, which is loaded from the file named by
+            :meth:`calc_filename` with extension ``.amp``
+
+        target: int or None
+
+        prefix: str
 
         suffix: str
 
         kwargs: dict
-            other keywords to pass to AMP.load
+            other keywords to pass to Amp.load
         """
 
         # Load AMP calculator and convert to PROPhet format
@@ -161,21 +167,27 @@ class LAMMPSWrapper():
     def geom_opt(self, model, seed, calc_params, driver_tol='default',
                  solvent=None, readonly=False):
         """
-        Runs a singlepoint calculation with the LAMMPS ASE calculator
+        Runs a geometry optimisation with the LAMMPS ASE calculator
+
+        Returns ``(energy, forces, positions)`` after minimisation.
 
         model: ASE Atoms
 
         seed: str
+            Not used
 
-        suffix: str
+        calc_params: dict
+            Must contain ``calc_seed``, ``target``, ``calc_suffix`` and ``calc_prefix``,
+            identifying the calculator to load with :meth:`load`
 
-        dummy: str
-
-        target: int or None
+        driver_tol: str
+            Not used: fixed tolerances are applied
 
         solvent: str or None
+            Not used
 
         readonly: bool
+            Not used
         """
 
         calc_seed = calc_params['calc_seed']
@@ -203,31 +215,32 @@ class LAMMPSWrapper():
     def run_mlmd(self, model, mdseed, calc_params, md_steps, md_timestep, superstep, temp,
                  solvent=None, restart=False, readonly=False, constraints=None, continuation=None):
         """
-        Runs a Molecular Dynamics calculation with the AMP ASE calculator.
+        Runs a Molecular Dynamics calculation with the LAMMPS ASE calculator.
+
+        Runs ``md_steps`` steps with an AMP potential converted by :meth:`load`,
+        initialising velocities at ``temp`` if ``model`` has none. Returns
+        ``(energy, forces)`` at the end of the run.
 
         model: ASE Atoms
 
-        seed: str
+        mdseed: str
+            Not used
 
-        target: int
-
-        suffix: str
+        calc_params: dict
+            Must contain ``calc_seed``, ``target``, ``calc_suffix`` and ``calc_prefix``
 
         md_steps: int
 
         md_timestep: float
+            Not used: the timestep and thermostat are not yet set
 
         superstep: int
+            Not used
 
         temp: float
 
-        target: int or None
-
-        solvent: str or None
-
-        restart: bool
-
-        readonly: bool
+        solvent, restart, readonly, constraints, continuation:
+            Not used
         """
 
         from ase.md.velocitydistribution import MaxwellBoltzmannDistribution, Stationary, ZeroRotation
@@ -266,19 +279,26 @@ class LAMMPSWrapper():
         """
         Runs a singlepoint calculation with the LAMMPS ASE calculator
 
+        Returns ``(energy, forces)``.
+
         model: ASE Atoms
 
         seed: str
+            Not used
 
-        suffix: str
-
-        dummy: str
+        calc_params: dict
+            Must contain ``calc_seed``, ``target``, ``calc_suffix`` and ``calc_prefix``,
+            identifying the calculator to load with :meth:`load`, and ``lammps_params``,
+            a dict of extra parameters for the LAMMPS calculator
 
         target: int or None
+            Not used: ``calc_params['target']`` is used instead
 
         solvent: str or None
+            Not used
 
         readonly: bool
+            Not used
         """
 
         calc_seed = calc_params['calc_seed']
@@ -299,7 +319,9 @@ class LAMMPSWrapper():
         return model.get_potential_energy(), model.get_forces()
 
     def minimise(self, solvated, minimised, seed):
-        """Runs a geometry optimisation calculation with the LAMMPS ASE calculator"""
+        """Minimises ``minimised`` with the LAMMPS ASE calculator, using ``self.lammps_files``
+        and ``self.lammps_params_amberconv``, and returns its potential energy.
+        ``solvated`` and ``seed`` are not used."""
 
         calc_min = LAMMPS(files=self.lammps_files)
         calc_min.set(**self.lammps_params_amberconv)
@@ -311,7 +333,12 @@ class LAMMPSWrapper():
         print("Energy after minimisation: ", minimised.get_potential_energy())
 
     def heatup(self, minimised, heated, seed, nsteps):
-        """Runs a heatup temperature-ramp calculation with the LAMMPS ASE calculator"""
+        """Runs a heatup temperature-ramp calculation with the LAMMPS ASE calculator
+
+        Runs ``nsteps`` steps of Langevin MD from 0 K to ``self.temp0``, starting from a
+        copy of ``minimised``. The ML potential loaded is currently hard-coded
+        (``calc_seed='cate'``), the ``heated`` argument is not updated, and ``seed`` is
+        not used."""
 
         # NTC = 2, NTF = 2: hydrogens constrained at this stage with SHAKE
         # irest = 0 (new simulation)
@@ -332,7 +359,9 @@ class LAMMPSWrapper():
         print("Energy after heating: ", heated.get_potential_energy())
 
     def densityequil(self, heated, densityeq, seed, nsteps):
-        """Runs a density equilibration calculation with fixed hydrogens with the LAMMPS ASE calculator"""
+        """Intended to run a density equilibration with the LAMMPS ASE calculator. Currently
+        only evaluates the energy of ``densityeq`` with ``self.lammps_params_amberconv``:
+        no MD run or barostat is set, and ``heated``, ``seed`` and ``nsteps`` are not used."""
 
         # NTB = 2, NTP = 1, TAUP = 1.0: Use constant pressure periodic boundary. Isotropic position scaling
         # should be used to maintain the pressure (NTP=1) and a relaxation time of 1 ps should be used (TAUP=1.0).
@@ -344,7 +373,10 @@ class LAMMPSWrapper():
         print("Energy after density equilibration: ", densityeq.get_potential_energy())
 
     def equil(self, densityeq, equbd, seed, nsteps):
-        """Runs an equilibration calculation at constant volume with flexible hydrogens with the LAMMPS ASE calculator"""
+        """Intended to run an equilibration at constant volume with the LAMMPS ASE calculator.
+        Currently only evaluates the energy of ``equbd`` with
+        ``self.lammps_params_amberconv``: no MD run is set, and ``densityeq``, ``seed``
+        and ``nsteps`` are not used."""
         # NTP = 0: No pressure scaling (constant volume)
         # NTC = 1: SHAKE not used - no constraints
         # Energies at this stage no longer comparable to previous steps
@@ -355,7 +387,10 @@ class LAMMPSWrapper():
         print("Energy after equilibration:", equbd.get_potential_energy())
 
     def snapshots(self, seed, snapin, snapout, nsnaps, nsteps):
-        """Runs a long MD trajectory for snapshot generation with the LAMMPS ASE calculator"""
+        """Intended to run a long MD trajectory for snapshot generation with the LAMMPS ASE
+        calculator. Currently, for each of ``nsnaps`` steps, evaluates the energy of
+        ``snapin`` and writes ``snapout`` to ``{seed}.traj`` and
+        ``{seed}_snap_solv{step:04}.xyz``: no MD run is set and ``nsteps`` is not used."""
         # NTC = 1: SHAKE not used - no constraints
 
         step = 0

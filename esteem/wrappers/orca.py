@@ -33,7 +33,16 @@ class ORCAWrapper():
         self.scf_block = None
 
     def setup(self, nprocs=None, orca_cmd=None, mpi_options=None, maxcore=None):
-        """Sets up the internal variables of the ORCAWrapper class, including run command"""
+        """
+        Sets up the internal variables of the ORCAWrapper class, including run command
+
+        ``orca_cmd`` is the path to the ORCA executable, used to create the ASE
+        ``OrcaProfile`` that runs ORCA. If it is not given, any existing profile is
+        kept, or else a default path is used. ``nprocs`` and ``maxcore`` set the
+        ``%pal nprocs`` and ``%maxcore`` (MB per process) values written to the input.
+        ``ASE_ORCA_COMMAND`` is also set from ``orca_cmd`` and ``mpi_options``, if not
+        already set, for older versions of ASE.
+        """
         profile_cmd = orca_cmd
         try:
             orca_cmd = environ["ASE_ORCA_COMMAND"]
@@ -218,7 +227,20 @@ class ORCAWrapper():
     def singlepoint(self, model, label, calc_params={}, solvent=None, charge=0, spin=0,
                     forces=False, dipole=True, continuation=False, readonly=False, calc=False,
                     excitations=False, cleanup=True):
-        """Runs a singlepoint calculation with the ORCA ASE calculator"""
+        """
+        Runs a singlepoint calculation with the ORCA ASE calculator
+
+        ``calc_params`` must contain ``basis``, ``func`` and ``target`` (and optionally
+        ``disp``). A non-zero integer target runs TDDFT for that root. A list of targets
+        runs TDDFT with gradients for every root in the list, and the results are
+        arrays over the targets. With ``readonly``, results are read from
+        ``{label}.out`` without running ORCA. ``continuation`` is not used.
+
+        Returns a list containing the energy (eV), then, if requested, the forces
+        (eV/Angstrom, if ``forces``), the dipole moment (e*Angstrom, if ``dipole``), the
+        excitation spectrum (if ``excitations`` and target is a list) and the
+        calculator (if ``calc``).
+        """
         basis, xc, target, disp = self.unpack_params(calc_params)
         dispstr = 'D3BJ' if disp else ''
         methstr = '' if not forces else 'engrad '
@@ -308,7 +330,18 @@ class ORCAWrapper():
     def geom_opt(self, model_opt, label, calc_params={}, driver_tol='default',
                  solvent=None, continuation=False, charge=0, spin=0, readonly=False,
                  calconly=False, cleanup=True):
-        """Runs a Geometry Optimisation calculation with the ORCA ASE calculator"""
+        """
+        Runs a Geometry Optimisation calculation with the ORCA ASE calculator
+
+        If ``driver_tol`` contains ``'tight'`` (eg ``'tight'``, ``'verytight'``), it is
+        prepended to the ORCA ``opt`` keyword. ``FixAtoms`` constraints on
+        ``model_opt`` are passed to ORCA as Cartesian constraints.
+
+        Returns ``(energy, forces, positions)``, in eV, eV/Angstrom and Angstrom, and
+        updates the positions of ``model_opt`` from the final frame of
+        ``{label}_trj.xyz``. With ``calconly``, returns only the calculator, without
+        running it.
+        """
         basis, xc, target, disp = self.unpack_params(calc_params)
         dispstr = 'D3BJ' if disp else ''
         methstr = ''
@@ -369,7 +402,13 @@ class ORCAWrapper():
     def freq(self, model_opt, label, calc_params={}, solvent=None, charge=0, spin=0,
              temp=300, writeonly=False, readonly=False, continuation=False,
              cleanup=True, summary=False):
-        """Runs a Vibrational Frequency calculation with the ORCA ASE calculator"""
+        """
+        Runs a Vibrational Frequency calculation with the ORCA ASE calculator
+
+        Note that the ORCA ``freq`` keyword is not currently added to the input, so
+        this runs a singlepoint energy calculation. Returns None: the frequencies are
+        not read back (:meth:`read_freq` is not called). ``temp``, ``writeonly``, ``continuation`` and ``summary`` are not used.
+        """
         basis, xc, target, disp = self.unpack_params(calc_params)
         dispstr = 'D3BJ' if disp else ''
         taskstr = 'freq'
@@ -410,7 +449,18 @@ class ORCAWrapper():
     def run_md(self, model, steplabel, calc_params, qmd_steps, qmd_timestep, superstep, temp,
                solvent=None, charge=0, spin=0, continuation=False, readonly=False,
                constraints=None, dynamics=None, cleanup=True):
-        """Runs a Quantum Molecular Dynamics calculation with the ORCA ASE calculator"""
+        """
+        Runs a Quantum Molecular Dynamics calculation with ORCA's MD module
+
+        Runs ``qmd_steps`` steps of timestep ``qmd_timestep`` (in ASE time units) with a
+        CSVR thermostat at ``temp`` (K), restarting from ``{steplabel}.mdrestart`` if it
+        exists. ``superstep`` is used only in the printed summary, and ``continuation``
+        and ``dynamics`` are not used.
+
+        Returns None. The positions of ``model`` are updated to those of the last MD
+        step, and a ``SinglePointCalculator`` holding that step's energy and forces is
+        attached to it.
+        """
         import random
 
         basis, xc, target, disp = self.unpack_params(calc_params)
@@ -467,8 +517,9 @@ end
         return None
 
     def _read_md_engrad(self, steplabel):
-        """Reads positions, energy and forces of the last step of an ORCA MD run,
-        from the {steplabel}-stepNNNNNN.engrad files written by 'dump engrad'"""
+        """Reads positions (Angstrom), energy (eV) and forces (eV/Angstrom) of the last step
+        of an ORCA MD run, from the ``{steplabel}-stepNNNNNN.engrad`` files written by
+        ``dump engrad``"""
         import glob
         from ase.units import Bohr
         engrad_files = sorted(glob.glob(f'{steplabel}-step*.engrad'))
@@ -486,7 +537,16 @@ end
     def excitations(self, model, label, calc_params={}, nroots=1, solvent=None, charge=0, spin=0,
                     writeonly=False, readonly=False, continuation=False, cleanup=True,
                     plot_homo=None, plot_lumo=None, plot_trans_den=None):
-        """Calculates TDDFT excitations with the ORCA ASE calculator"""
+        """
+        Calculates TDDFT excitations with the ORCA ASE calculator
+
+        Solves for ``nroots`` roots; the target in ``calc_params`` is not used. The
+        ``plot_*`` arguments are not used.
+
+        Returns ``(s_excit, energy)``, where ``s_excit`` is the tuple returned by
+        :meth:`read_excitations` and ``energy`` is the ground state energy in eV.
+        With ``writeonly``, writes the input file and returns 0.
+        """
         # Set up calculator
         basis, xc, target, disp = self.unpack_params(calc_params)
         dispstr = 'D3BJ' if disp else ''
@@ -521,7 +581,15 @@ end
         return s_excit, energy
 
     def read_excitations(self, filename):
-        """Read Excitations from ORCA calculator."""
+        """
+        Read Excitations from an ORCA output file (ORCA 5 or 6 format)
+
+        Returns ``(s_excit, trans_lines)``: ``s_excit`` is a list of
+        ``(root, energy in eV, oscillator strength)`` tuples, from the absorption
+        spectrum via transition electric dipole moments, and ``trans_lines`` is an
+        empty list (transition origins are not read). If the file contains several
+        spectra, only the last is returned.
+        """
 
         # if hasattr(calc,'label'):
         #    filename = calc.label+'.out'
@@ -572,7 +640,14 @@ end
         return s_excit, trans_lines
 
     def read_freq(self, calc):
-        """Read Vibrational Frequencies and Normal Modes from results of ORCA calculator."""
+        """
+        Read Vibrational Frequencies and Normal Modes from the output file of an ORCA calculator
+
+        Reads ``calc.label + '.out'``, stores the results in ``calc.results`` and
+        returns the frequencies. The parsing of normal modes, derivative dipoles and
+        IR intensities follows the NWChem output format, and is not called by
+        :meth:`freq`.
+        """
         file = open(calc.label + '.out', 'r')
         lines = file.readlines()
         file.close()
