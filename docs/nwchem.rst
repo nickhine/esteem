@@ -1,3 +1,5 @@
+.. _nwchem:
+
 NWChem Wrapper
 ==============
 

@@ -47,6 +47,7 @@ Acknowledgements: Some parts of ESTEEM are based on python scripting by members 
    ml_training.rst
    ml_testing.rst
    ml_trajectories.rst
+   ml_debugger.rst
    wrappers.rst
 
 Indices and tables

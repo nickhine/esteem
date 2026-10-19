@@ -12,7 +12,9 @@ Wrappers available in ESTEEM
    nwchem.rst
    onetep.rst
    orca.rst
+   openqp.rst
    physnet.rst
+   mace.rst
    amp.rst
    molspeckpy.rst
    ezfcf.rst
@@ -28,9 +30,10 @@ which might include "singlepoint" energy evaluations, geometry optimisation,
 or calculation of electronic excitations, can then be passed into the task
 as arguments.
 
-The wrappers fall into three categories at present: electronic structure wrappers
-(currently NWChem and ONETEP), Molecular Dynamics wrappers (currently Amber
-and LAMMPS) and Machine Learning wrappers (currently PhysNet and AMP).
+The wrappers fall into four categories at present: electronic structure wrappers
+(NWChem, ONETEP, ORCA and OpenQP), Molecular Dynamics wrappers (Amber
+and LAMMPS), Machine Learning wrappers (MACE, PhysNet and AMP) and spectrum
+generation wrappers (MolSpeckPy and ezFCF).
 Details of these wrappers can be found on their individual pages.
 
 If you have a new code you would like ESTEEM to be able to use, then adding a new

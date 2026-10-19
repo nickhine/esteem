@@ -7,7 +7,7 @@ ESTEEM is primarily intended to be invoked via a script or notebook that defines
 
 The overall model is: :ref:`solutes` -> :ref:`solvate` -> :ref:`clusters` -> :ref:`spectra`.
 
-In workflows utilising an ML-based NN surrogate model, there is an extra set of tasks between clusters and spectra: :ref:`ml_train` -> :ref:`ml_trajectories` -> :ref:`clusters`
+In workflows utilising an ML-based NN surrogate model, there is an extra set of tasks between clusters and spectra: :ref:`ml_training` -> :ref:`ml_trajectories` -> :ref:`clusters`
 
 The use of spectral warping will require the :ref:`solutes` or :ref:`clusters` to have been run twice, with different levels of theory (eg different XC functionals).
 

@@ -60,3 +60,5 @@ exclude_patterns = []
 html_static_path = ['_static']
 
 autodoc_member_order = 'bysource'
+# Optional ML packages that may not be installed where the docs are built
+autodoc_mock_imports = ['mace', 'xmace']
