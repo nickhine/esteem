@@ -22,7 +22,7 @@ copyright = '2023, Nicholas Hine'
 author = 'Nicholas Hine'
 
 # The full version, including alpha/beta/rc tags
-release = '1.0.1'
+from esteem import __version__ as release  # noqa: E402
 
 
 # -- General configuration ---------------------------------------------------
