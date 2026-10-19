@@ -29,6 +29,17 @@ Supported:
 Not yet supported: molecular dynamics, dispersion corrections, and forces in
 implicit solvent.
 
+:Source code: https://github.com/Open-Quantum-Platform/openqp
+:Documentation: https://open-quantum-platform.github.io/openqp-docs/
+:Citation: V. Mironov *et al.*, OpenQP: A Quantum Chemical Platform Featuring MRSF-TDDFT with an
+   Emphasis on Open-Source Ecosystem, *J. Chem. Theory Comput.* **20**, 9464 (2024).
+   `doi:10.1021/acs.jctc.4c01117 <https://doi.org/10.1021/acs.jctc.4c01117>`__
+
+   For MRSF-TDDFT: S. Lee, M. Filatov, S. Lee and C.H. Choi, Eliminating spin-contamination of
+   spin-flip time dependent density functional theory within linear response formalism by the use of
+   zeroth-order mixed-reference (MR) reduced density matrix, *J. Chem. Phys.* **149**, 104101 (2018).
+   `doi:10.1063/1.5044202 <https://doi.org/10.1063/1.5044202>`__
+
 OpenQPWrapper
 -------------
 

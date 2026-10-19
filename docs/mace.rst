@@ -31,6 +31,18 @@ With ``MACEWrapper(xmace=True)``, the wrapper uses the ``xmace`` package
 instead of ``mace``. X-MACE trains one ``ExcitedMACE`` model for several
 electronic states at once. The ``target`` dictionary gives the states in model
 order, and its values name the states that are selected at evaluation time.
+The X-MACE source code is at https://github.com/rhyan10/X-MACE.
+
+:Source code: https://github.com/ACEsuit/mace
+:Documentation: https://mace-docs.readthedocs.io
+:Citation: I. Batatia, D.P. Kovács, G.N.C. Simm, C. Ortner and G. Csányi, MACE: Higher Order
+   Equivariant Message Passing Neural Networks for Fast and Accurate Force Fields,
+   *Advances in Neural Information Processing Systems* **35**, 11423 (2022).
+   `doi:10.52202/068431-0830 <https://doi.org/10.52202/068431-0830>`__
+
+   For X-MACE: R. Barrett, C. Ortner and J. Westermayr, Transferable Machine Learning Potential
+   X-MACE for Excited States using Integrated DeepSets, arXiv:2502.12870 (2025).
+   `doi:10.48550/arXiv.2502.12870 <https://doi.org/10.48550/arXiv.2502.12870>`__
 
 MACEWrapper
 -----------
