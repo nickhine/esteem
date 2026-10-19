@@ -3,14 +3,102 @@
 
 
 """
-Defines routines that implement Active Learning by duplicating a prototype task
-across an array of iterations, targets, random seeds etc for each of the 4 steps
-of an Active Learning cycle: MLTrain, MLTraj, Clusters, MLTest, and spectra tasks
-once training is completed.
+Builds the many task objects needed by an Active Learning (AL) workflow for
+machine-learned interatomic potentials, by copying a prototype task across
+generations, target states and committee members.
 
-To use, create a prototype for each, and lists of calculators, targets, random seeds,
-and call then call each of the create_* routines to return lists of tasks to
-pass to drivers.main()
+.. rubric:: The Active Learning cycle
+
+Each generation of the cycle has four steps, each run as an ESTEEM task:
+
+1. **mltrain** (:func:`create_mltrain_tasks`): train a committee of ML models
+   (eg three MACE models with different random seeds) for each target state, on
+   the initial ground-truth data plus all the data selected by earlier generations.
+2. **mltraj** (:func:`create_mltraj_tasks`): run MD with each committee member,
+   with the whole committee evaluating every snapshot, so that the spread of the
+   committee's predictions measures the uncertainty.
+3. **mlclus** (:func:`create_clusters_tasks`): select snapshots from those
+   trajectories, biased towards high committee uncertainty, and label them with
+   the ground-truth method (eg DFT and TDDFT with ORCA).
+4. **mltest** (:func:`create_mltest_tasks`): test the models against the
+   ground-truth data, including the snapshots just selected, which the models
+   have not seen.
+
+The next generation is then trained on the enlarged data set. Once training is
+complete, :func:`create_spectra_tasks` sets up spectra from MD with the final
+models.
+
+.. rubric:: Calculator names
+
+Each AL calculator is named by a string such as ``'MACEac0u'``, given in the list
+``train_calcs`` (one entry per generation, eg ``['MACEac0u', 'MACEac1u', 'MACEac2u']``).
+The characters have fixed positions:
+
+- ``calc[0:4]`` (``'MACE'``): the ML method.
+- ``calc[4:6]`` (``'ac'``): a tag, conventionally ``'ac'``. :func:`pref` returns
+  ``calc[0:6]`` (``'MACEac'``), which is shared by all generations and names the
+  directories; :func:`suff` returns ``calc[4:]`` (``'ac0u'``), which names the
+  ground-truth trajectories of each generation, eg ``'orca_ac0u'``.
+- ``calc[6:-1]`` (``'0'``): the generation, returned as an integer by
+  :func:`get_gen_from_calc`. Generation 0 is trained on the initial data only.
+- ``calc[-1]`` (``'u'``): the selection type, which :func:`get_traj_from_calc`
+  maps to an upper-case trajectory label with ``calc_to_traj_map``
+  (``'r'``, ``'s'``, ``'t'``, ``'u'`` give ``'R'``, ``'S'``, ``'T'``, ``'U'``).
+  :func:`get_ssm_from_traj` maps that label to the clusters task's
+  ``subset_selection_method`` with ``traj_to_ssm_map``: ``'R'`` random,
+  ``'S'`` highest committee energy spread (``'E'``), ``'T'`` highest dipole
+  spread (``'D'``), ``'U'`` random biased towards high energy spread (``'U'``).
+  ``'Q'`` labels the separate validation trajectories, selected at random.
+
+Each committee member is a key of the dict ``rand_seed``, eg
+``{'a': 123, 'b': 456, 'c': 789}``: the key is appended to the calculator name
+(``'MACEac0ua'``) and the value is the random seed for training that member.
+The string ``meth`` (often ``''``) is prepended to calculator names, and
+``truth`` (eg ``'orca'``) names the ground-truth data.
+
+The states are given by ``targets``, a dict such as ``{0: 'gs', 1: 'es1'}``.
+An entry whose value is itself a dict (eg ``'mult': {0: 'gs', 1: 'es1'}``)
+describes a multi-head model; its name is the concatenation of the state names
+(``'gses1'``), leaving out any ``'diff'`` entry, which names an energy-difference head.
+A top-level ``'diff'`` key is skipped by most of the functions.
+
+.. rubric:: Names of tasks, directories and files
+
+With ``meth=''``, ``truth='orca'``, seed ``{solu}_{solv}`` (written ``{seed}``
+below), target ``'gs'``, committee members ``a``, ``b``, ``c`` and the calculator
+``'MACEac0u'``, the default names are:
+
+- mltrain: tasks ``'gs_MACEac0ua'``, ``'gs_MACEac0ub'``, ``'gs_MACEac0uc'``, all
+  training in the directory ``{seed}_gs_MACEac``.
+- mltraj: tasks ``'gs_MACEac0uax3'`` etc, writing
+  ``{seed}_gs_A_MACEac0ua_mldyn.traj`` (``B`` for member ``b``, and so on) in
+  the directory ``{seed}_gs_MACEac_mldyn``.
+- mlclus: task ``'gs_MACEac0u_U'``, which selects from the trajectories of all
+  the committee members and runs in the directory ``{seed}_gs_MACEac_mlclus``,
+  writing ``{seed}_{targ}_U_orca_ac0u.traj`` for each state ``{targ}``.
+- mltest: tasks ``'gs_MACEac0ua'`` (training data and this generation's new
+  data) and ``'gs_MACEac0ua_mltraj_MACEac1u'`` (only the data selected from the
+  MD of the generation-1 models), running in ``{seed}_gs_MACEac_test``.
+
+Trajectory labels in the training directory are ``A``, ``B``, ... for the
+initial ("static") data, then the selected data of generation ``g``, with
+labels whose first letter encodes ``g`` (no letter for ``g=0``, ``'A'`` for
+``g=1``, ``'B'`` for ``g=2``, ...), eg ``'B'``, ``'C'`` from generation 0 and
+``'AB'``, ``'AC'`` from generation 1. The prototype's ``ntraj`` must be large
+enough to include all these labels (eg 270).
+
+.. rubric:: Usage
+
+Set up a prototype task of each type (wrapper, script settings and
+the settings common to all its copies), then call each ``create_*`` function
+with the same ``train_calcs``, ``targets``, ``rand_seed``, ``meth`` and ``truth``,
+and pass the dicts it returns (merged with any other tasks) to
+:func:`esteem.drivers.main`, eg ``all_mltrain_tasks=create_mltrain_tasks(...)``.
+Each dict is keyed by task name, which is the target given on the command line,
+eg ``python script.py mltrain {solu}_{solv} gs_MACEac0ua``.
+The functions modify the prototype as they go and return deep copies of it,
+so the prototype is left with the settings of the last task made.
+See ``examples/cate_ml.py`` for a complete workflow script.
 """
 
 
@@ -30,6 +118,11 @@ calc_to_traj_map = {'r': 'R', 's': 'S', 't': 'T', 'u': 'U'}
 
 
 def get_traj_from_calc(calc):
+    """
+    Returns the trajectory label for a calculator name, from its last character
+    (the selection type) via ``calc_to_traj_map``, eg ``'MACEac0u'`` gives ``'U'``.
+    Raises an Exception if the character is not in the map.
+    """
     calc = calc[-1]
     if calc not in calc_to_traj_map:
         raise Exception(f'Unknown calculator label {calc}. Expected calculator labels: {calc_to_traj_map}')
@@ -37,12 +130,22 @@ def get_traj_from_calc(calc):
 
 
 def get_ssm_from_traj(traj):
+    """
+    Returns the subset selection method (``ClustersTask.subset_selection_method``) for
+    a trajectory label, via ``traj_to_ssm_map``, eg ``'U'`` gives ``'U'`` and ``'S'``
+    gives ``'E'``. Raises an Exception if the label is not in the map.
+    """
     if traj not in traj_to_ssm_map:
         raise Exception(f'Unknown trajectory label {traj}. Expected trajectory labels: {traj_to_ssm_map}')
     return traj_to_ssm_map[traj]
 
 
 def get_gen_from_calc(calc):
+    """
+    Returns the generation of a calculator as an integer, from the characters between
+    position 6 and the last character, eg ``'MACEac2u'`` gives 2. Returns None if they
+    do not form an integer.
+    """
     try:
         return int(calc[6:-1])
     except:
@@ -50,6 +153,11 @@ def get_gen_from_calc(calc):
 
 
 def pref(calc):
+    """
+    Returns the prefix of a calculator name shared by all its generations, used in
+    directory names: the part before the first ``'_'`` if there is one, otherwise the first
+    six characters, eg ``'MACEac0u'`` gives ``'MACEac'``.
+    """
     if '_' in calc:
         return calc.split('_')[0]
     else:
@@ -57,6 +165,11 @@ def pref(calc):
 
 
 def suff(calc):
+    """
+    Returns the calculator name from its fifth character onwards, eg ``'MACEac0u'`` gives
+    ``'ac0u'``. Used in the names of the ground-truth trajectories of each generation, such
+    as ``'orca_ac0u'``.
+    """
     return calc[4:]
 
 
@@ -64,11 +177,74 @@ def create_clusters_tasks(task: ClustersTask, train_calcs, seed, traj_suffix, md
                           md_dir_suffix, targets, rand_seed, meth, truth,
                           separate_valid=False):
     """
-    Returns a dictionary of clusters tasks, based on an input prototype task supplied by
-    the user, for all the required clusters tasks for an Active Learning task.
+    Returns a dict of clusters tasks, copied from a prototype, that select snapshots from
+    the ML MD of each AL generation and label them with the ground-truth method.
 
-    Takes lists of calculators, targets, random seeds, and strings stating the ML method
-    and the ground truth method
+    One task is made for each calculator in ``train_calcs`` and each target state of the MD.
+    It reads the trajectories written by the tasks of :func:`create_mltraj_tasks` for all
+    the committee members, from the directory ``{seed}_{targ}_{meth}{pref(calc)}_{md_dir_suffix}``
+    and the files ``{seed}_{targ}_{label}_{meth}{calc}{member}_{md_suffix}.traj``
+    (``label`` is ``A``, ``B``, ... for the members), selects snapshots with the subset selection
+    method given by the calculator's selection type (see :func:`get_ssm_from_traj`), and runs
+    the ground-truth calculations for all the states. With the defaults, the task for
+    ``'MACEac0u'`` on ``'gs'`` runs in ``{seed}_gs_MACEac_mlclus`` and writes
+    ``{seed}_{state}_U_orca_ac0u.traj`` for each state, which :func:`add_iterating_trajectories`
+    links into the training tasks of later generations.
+
+    task: ClustersTask
+        Prototype task, with the wrapper, script settings, functional, ``nroots`` and
+        subset selection settings (eg ``subset_selection_nmax``, ``subset_selection_bias_beta``)
+        set. If ``subset_selection_method`` is None, it is set from the first calculator.
+        If ``exc_dir_suffix`` or ``md_dir_suffix`` is set on the prototype, it replaces the
+        default directory name described below.
+    train_calcs: list of str
+        Calculator names, one per generation, eg ``['MACEac0u', 'MACEac1u', 'MACEac2u']``.
+    seed: str
+        Seed used in the name of the MD directory, eg ``'{solu}_{solv}'``.
+    traj_suffix: str
+        Name of this set of selected data, usually ``'mlclus'``. It is the suffix of the
+        directory in which the tasks run, and any other value is also appended to the output
+        names and the task name (``exc_suffix``).
+    md_suffix: str
+        Suffix of the MD trajectory files after the calculator name, eg ``'mldyn'``, or
+        ``'mldyn_recalc_carved'`` for clusters carved from MD in explicit solvent.
+    md_dir_suffix: str
+        Suffix of the MD directory after ``{meth}{pref(calc)}``, eg ``'mldyn'``.
+    targets: dict
+        Target states, eg ``{0: 'gs', 1: 'es1'}``. One task is made for MD on each
+        state. A dict-valued entry, eg ``{0: 'gs', 1: 'es1'}``, makes one task that reads the MD
+        of a multi-head model on all its states.
+    rand_seed: dict
+        Committee members and their random seeds, eg ``{'a': 123, 'b': 456, 'c': 789}``.
+        Only the keys are used here.
+    meth: str
+        Prefix of the calculator names, eg ``''``.
+    truth: str
+        Name of the ground-truth method, eg ``'orca'``, used in the output names.
+    separate_valid: bool
+        If True, also make a task selecting a separate validation set, labelled ``'Q'``,
+        from the frames after ``max_snapshots`` (``valid_snapshots`` of them, or as many as
+        in the main range if that is None).
+
+    Returns a dict of :class:`~esteem.tasks.clusters.ClustersTask` objects keyed by
+    ``'{targ}_{meth}{calc}_{X}'``, eg ``'gs_MACEac0u_U'``, where ``X`` is the trajectory
+    label from :func:`get_traj_from_calc` (or ``'Q'`` for the validation task), with
+    ``'_{traj_suffix}'`` before ``_{X}`` if ``traj_suffix`` is not ``'mlclus'``. The
+    attributes set on each task include:
+
+    - ``exc_suffix``: ``'{targ}_{meth}{calc}'``, used in job names;
+    - ``exc_dir_suffix``: ``'{targ}_{meth}{pref(calc)}_{traj_suffix}'``, so that all
+      generations share the directory ``{seed}_{targ}_MACEac_mlclus``;
+    - ``output``: ``'{truth}_{suff(calc)}'``, eg ``'orca_ac0u'``, also used as
+      ``script_settings['logdir']``;
+    - ``carved_suffix`` and ``selected_suffix``: ``'carved_{suff(calc)}'`` and
+      ``'selected_{suff(calc)}'``;
+    - ``md_prefix`` and ``md_suffix``: the MD directory and the list of MD trajectory
+      suffixes, one per committee member (a single string if there is only one);
+    - ``which_traj`` and ``subset_selection_which_traj``: the trajectory label, eg ``'U'``;
+    - ``which_target``: the target state of the MD;
+    - ``target``: the states to calculate (all the integer keys of ``targets``);
+    - ``min_snapshots`` and ``max_snapshots`` (offset for the validation task).
     """
 
     # By default, the trajectory for validation is the same size as the main traj
@@ -156,6 +332,10 @@ def create_clusters_tasks(task: ClustersTask, train_calcs, seed, traj_suffix, md
 
 
 def get_keys(task):
+    """
+    Returns the data sets a training or testing task has: ``['train']``, plus ``'valid'``
+    if ``task.traj_links_valid`` is set and ``'test'`` if ``task.traj_links_test`` is set.
+    """
     all_keys = ['train']
     if hasattr(task, 'traj_links_valid') and task.traj_links_valid is not None:
         all_keys += ['valid']
@@ -166,7 +346,50 @@ def get_keys(task):
 
 def add_trajectories(task, seeds, calc, traj_suffixes, dir_suffixes, ntraj, targets, target, truth):
     """
-    Adds static trajectories
+    Adds the "static" trajectories, which are the same for every generation (eg the initial
+    ground-truth data), to the ``traj_links``, ``which_trajs`` and ``which_targets`` of a
+    training or testing task (and to their ``_valid`` and ``_test`` versions, see
+    :func:`get_keys`). When ``which_trajs`` is a dict (testing tasks), the seed of each
+    trajectory is also stored in ``task.ref_mol_seed_dict``.
+
+    For each suffix in ``traj_suffixes``, each source state ``targets[target1]`` (the state
+    on which the data was sampled; ``'diff'`` and dict-valued entries are skipped) and each
+    seed, ``ntraj[(targets[target1], traj_suffix)]`` trajectories are linked, from the files::
+
+        {seed}_{dir_suffixes[traj_suffix]}/{seed}_{state}_{label}_{truth}.traj
+
+    where ``{state}`` is the state of this task's target (each state, for a multi-head
+    target) and ``{label}`` is ``A``, ``B``, ... (the validation and test sets use the labels
+    after those of the training set). If ``traj_suffix`` contains ``'qmd'``, the file
+    suffix is ``{targets[target1]}_{traj_suffix}`` instead of ``truth``. For the seed
+    ``'{solv}_{solv}'`` (solvent in solvent), the ``'gs'`` file is always used.
+
+    In the task, the labels follow on from those already added for the same source state,
+    with no prefix for the first source state, ``'A'`` for the second, ``'B'`` for the
+    third, and so on.
+
+    task: MLTrainingTask or MLTestingTask
+        Task to add the trajectories to. Its ``which_trajs`` (and ``which_targets``) must
+        already be a list or dict, and ``traj_links`` a dict.
+    seeds: list of str, or dict
+        Seeds (eg ``['{solu}_{solv}', '{solv}_{solv}']``) for which data is linked, or a dict
+        mapping ``(state name, traj_suffix)`` tuples to such lists.
+    calc: str
+        Calculator name (not used).
+    traj_suffixes: list of str
+        Names of the sources of static data, eg ``['orca']``.
+    dir_suffixes: dict
+        Directory suffix for each entry of ``traj_suffixes``, eg ``{'orca': 'init'}``, so that
+        the files are found in ``{seed}_init/``.
+    ntraj: dict
+        Number of trajectories for each ``(state name, traj_suffix)`` tuple, eg
+        ``{('gs', 'orca'): 1, ('es1', 'orca'): 0}``.
+    targets: dict
+        All the target states, eg ``{0: 'gs', 1: 'es1'}``.
+    target:
+        Key in ``targets`` of this task's target.
+    truth: str
+        Name of the ground-truth method, used as the file suffix, eg ``'orca'``.
     """
     # Loop over initial source trajectories
     targstr = targets[target]
@@ -251,7 +474,60 @@ def add_trajectories(task, seeds, calc, traj_suffixes, dir_suffixes, ntraj, targ
 
 def add_iterating_trajectories(task, seeds, calc, iter_dir_suffixes, targets, target, meth, truth, only_gen=None):
     """
-    Adds iterating trajectories
+    Adds the "iterating" trajectories, which are the ground-truth data selected by the
+    clusters tasks of earlier AL generations, to the ``traj_links``, ``which_trajs`` and
+    ``which_targets`` of a training or testing task (and to their ``_valid`` and ``_test``
+    versions, see :func:`get_keys`). When ``which_trajs`` is a dict (testing tasks), the seed
+    of each trajectory is also stored in ``task.ref_mol_seed_dict``.
+
+    The generations used depend on the generation ``gen`` of ``calc``:
+
+    - for a training task, generations 0 to ``gen-1`` (none for generation 0);
+    - for an :class:`~esteem.tasks.ml_testing.MLTestingTask`, generations 0 to ``gen``, or
+      only generation ``only_gen`` if it is given (none if it is -1).
+
+    For each generation ``g``, each source state ``targets[targetp]`` (the state of the MD;
+    ``'diff'`` and dict-valued entries are skipped), each entry of ``iter_dir_suffixes`` and
+    each seed, the files linked are::
+
+        {seed}_{targets[targetp]}_{meth}{pref(calc)}_{dir_suffix}/{seed}_{state}_{X}_{truth}_{suff(calcg)}.traj
+
+    where ``calcg`` is ``calc`` with its generation replaced by ``g`` (so the file suffix is
+    eg ``'orca_ac0u'``), ``{state}`` is the state of this task's target (each state, for a
+    multi-head target), and ``{X}`` is :func:`get_traj_from_calc` of ``calc``, or ``'Q'`` for
+    the validation set. These are the files written by the tasks of
+    :func:`create_clusters_tasks`. For the seed ``'{solv}_{solv}'``, only data from
+    ground-state MD is used, and its ``'gs'`` file.
+
+    The label of each trajectory in the task is a letter for the generation (none for
+    ``g=0``, ``'A'`` for ``g=1``, ``'B'`` for ``g=2``, ...) followed by successive letters
+    after the last label already used by the static trajectories.
+
+    task: MLTrainingTask or MLTestingTask
+        Task to add the trajectories to.
+    seeds: str, list of str, or dict
+        Seeds for which data is linked, or a dict mapping ``(state name, dir_suffix)``
+        tuples to lists of seeds. Overridden by seeds given in ``iter_dir_suffixes``.
+    calc: str
+        Calculator name of this task, eg ``'MACEac2u'``.
+    iter_dir_suffixes: list of str, or dict
+        Where to find the selected data. A list such as ``['mlclus']`` gives the
+        directory suffix (only its last entry is used). A dict maps an extra file suffix,
+        appended to ``{truth}_{suff(calcg)}`` unless it is ``None`` or ``''``, to a directory
+        suffix, or to a tuple ``(dir_suffix, seeds)``. This should match the ``traj_suffix``
+        given to :func:`create_clusters_tasks`: for ``traj_suffix='mlclus'``, use
+        ``['mlclus']``.
+    targets: dict
+        All the target states, eg ``{0: 'gs', 1: 'es1'}``.
+    target:
+        Key in ``targets`` of this task's target.
+    meth: str
+        Prefix of the calculator names, eg ``''``.
+    truth: str
+        Name of the ground-truth method, eg ``'orca'``.
+    only_gen: int or None
+        For testing tasks only: use only the data selected in this generation, or none if
+        -1. If None, generations 0 to ``gen`` are used.
     """
 
     gen = get_gen_from_calc(calc)
@@ -389,12 +665,63 @@ def create_mltrain_tasks(train_task: MLTrainingTask, train_calcs, seeds, targets
                          traj_suffixes=[], dir_suffixes={}, ntraj={},
                          iter_dir_suffixes=[], delta_epochs=200, separate_valid=False):
     """
-    Returns a dictionary of MLTrain tasks, based on an input prototype task supplied by
-    the user, for all the required MLTrain tasks for an Active Learning task.
+    Returns a dict of ML training tasks, copied from a prototype, for every target state,
+    calculator (generation) and committee member.
 
-    Takes lists of calculators, targets, random seeds, and strings stating the ML method
-    and the ground truth method, and lists of trajectories to use as initial inputs
-    (plus the number of trajectories for each target and their location)
+    Each task trains on the static data given by ``traj_suffixes``, ``dir_suffixes`` and
+    ``ntraj`` (see :func:`add_trajectories`), plus, from generation 1 on, the data selected
+    by the clusters tasks of all earlier generations (see :func:`add_iterating_trajectories`).
+    All the committee members and generations for a target share the training directory
+    ``{seed}_{targ}_{meth}{pref(calc)}``, eg ``{solu}_{solv}_gs_MACEac``.
+
+    train_task: MLTrainingTask
+        Prototype task, with the wrapper (whose ``train_args`` are set, eg
+        ``max_num_epochs`` and ``start_swa`` for MACE), script settings, ``geom_prefix`` and
+        ``ntraj`` set. ``ntraj`` must be large enough to include every trajectory label
+        used (eg 270).
+    train_calcs: list of str
+        Calculator names, one per generation, eg ``['MACEac0u', 'MACEac1u', 'MACEac2u']``.
+    seeds: list of str, or dict
+        Seeds whose data is used for training, eg ``['{solu}_{solv}']``, or
+        ``['cate_{solv}', '{solv}_{solv}']`` to train one calculator on several systems.
+        May be a dict mapping ``(state name, suffix)`` tuples to lists of seeds.
+    targets: dict
+        Target states, eg ``{0: 'gs', 1: 'es1'}``. A dict-valued entry (eg
+        ``'mult': {0: 'gs', 1: 'es1'}``) makes multi-head tasks; ``'diff'`` keys are skipped.
+    rand_seed: dict
+        Committee members and their random seeds, eg ``{'a': 123, 'b': 456, 'c': 789}``.
+    meth: str
+        Prefix of the calculator names, eg ``''``.
+    truth: str
+        Name of the ground-truth method, eg ``'orca'``, used as ``traj_suffix`` for the
+        trajectory files in the training directory.
+    traj_suffixes: list of str
+        Names of the sources of static data, eg ``['orca']``.
+    dir_suffixes: dict
+        Directory suffix for each entry of ``traj_suffixes``, eg ``{'orca': 'init'}`` for
+        data in ``{seed}_init/``.
+    ntraj: dict
+        Number of static trajectories for each ``(state name, traj_suffix)`` tuple, where
+        the state is the one on which the data was sampled, eg
+        ``{('gs', 'orca'): 1, ('es1', 'orca'): 0}``.
+    iter_dir_suffixes: list of str, or dict
+        Where to find the data selected by earlier generations, usually ``['mlclus']``
+        (see :func:`add_iterating_trajectories`).
+    delta_epochs: int
+        For wrappers whose ``train_args`` have ``max_num_epochs`` (MACE), the number of
+        epochs added to ``max_num_epochs`` and to ``start_swa`` for each generation.
+    separate_valid: bool
+        If True, set up separate validation sets (``traj_links_valid``,
+        ``which_trajs_valid``), using the ``'Q'`` trajectories of the clusters tasks.
+        Otherwise validation data is drawn at random from the training data.
+
+    Returns a dict of :class:`~esteem.tasks.ml_training.MLTrainingTask` objects keyed by
+    ``'{targ}_{meth}{calc}{member}'``, eg ``'gs_MACEac0ua'``. The attributes set on each
+    task include ``target``, ``calc_suffix`` (``'{meth}{calc}{member}'``),
+    ``calc_dir_suffix`` (``'{meth}{pref(calc)}'``), ``calc_prefix`` (``''``),
+    ``traj_suffix`` (``truth``), ``traj_links``, ``which_trajs`` and ``which_targets`` (and
+    their ``_valid`` versions), ``rand_seed`` and ``wrapper.train_args.seed`` (the member's
+    random seed), and for MACE ``max_num_epochs`` and ``start_swa``.
     """
 
     new_mltrain_tasks = {}
@@ -455,11 +782,63 @@ def create_mltrain_tasks(train_task: MLTrainingTask, train_calcs, seeds, targets
 def create_mltraj_tasks(mltraj_task: MLTrajTask, train_calcs, targets, rand_seed, meth, md_wrapper,
                         traj_suffix='mldyn', snap_wrapper=None, two_targets=False, snap_targets=None):
     """
-    Returns a dictionary of MLTraj tasks, based on an input prototype task supplied by
-    the user, for all the required MLTraj tasks for an Active Learning task.
+    Returns a dict of ML trajectory tasks, copied from a prototype, that run MD driven by
+    each committee member of each calculator (generation), for each target state.
 
-    Takes lists of calculators, targets, random seeds, and strings stating the ML method
-    and wrappers for the MD itself and for the "committee" MD
+    The trajectory of committee member number ``i`` (counting from 0) on state number ``j``
+    of the target is labelled ``chr(ord('A') + i + j*len(rand_seed))``, so with three members
+    it is ``A``, ``B`` or ``C`` (and ``D``, ``E``, ``F`` for the second state of a
+    multi-head target). With the default ``traj_dir_suffix``, the trajectories are written to
+    ``{seed}_{targ}_{meth}{pref(calc)}_mldyn/{seed}_{targ}_{label}_{meth}{calc}{member}_{traj_suffix}.traj``,
+    eg ``{solu}_{solv}_gs_MACEac_mldyn/{solu}_{solv}_gs_A_MACEac0ua_mldyn.traj``, where the
+    tasks of :func:`create_clusters_tasks` and :func:`create_spectra_tasks` look for them.
+
+    mltraj_task: MLTrajTask
+        Prototype task, with the MD settings (eg ``md_steps``, ``nsnap``, ``md_timestep``),
+        ``geom_prefix``, ``md_init_traj_link`` and ``ntraj`` (the committee size) set. If
+        ``calc_seed`` is None it is set to ``'{solu}'``, and if ``calc_dir_suffix`` is None it
+        is set to ``'{meth}{pref(calc)}'`` from the first calculator.
+    train_calcs: list of str
+        Calculator names, one per generation, eg ``['MACEac0u', 'MACEac1u', 'MACEac2u']``.
+    targets: dict
+        Target states, eg ``{0: 'gs', 1: 'es1'}``. A dict-valued entry makes tasks for a
+        multi-head calculator that run MD on each of its states; ``'diff'`` keys are skipped.
+    rand_seed: dict
+        Committee members and their random seeds, eg ``{'a': 123, 'b': 456, 'c': 789}``.
+    meth: str
+        Prefix of the calculator names, eg ``''``.
+    md_wrapper:
+        Wrapper for the calculator that drives the MD, eg a ``MACEWrapper``.
+    traj_suffix: str
+        Suffix of the trajectory files after the calculator name, eg ``'mldyn'``, or
+        ``'specdyn'`` for longer runs for spectra.
+    snap_wrapper:
+        Wrapper for the calculators that evaluate each snapshot, or None for no
+        evaluation. Without ``snap_targets``, the whole committee evaluates each snapshot
+        on the MD state, giving the spread of predictions used by the clusters tasks.
+    two_targets: bool
+        Used only if ``snap_targets`` is given: if True, ``snap_targets`` is replaced by
+        ``[0, 1]`` for target 0 and ``[1, 0]`` otherwise, so that the ground state and the
+        first excited state are both evaluated, the MD state first.
+    snap_targets: list or None
+        If given (with ``snap_wrapper``), the states evaluated at each snapshot by the
+        calculator driving the MD alone, instead of by the committee.
+
+    Returns a dict of :class:`~esteem.tasks.ml_trajectories.MLTrajTask` objects. The keys are:
+
+    - ``'{targ}_{meth}{calc}{member}x{n}'``, eg ``'gs_MACEac0uax3'``, where ``n`` is the
+      committee size, when ``snap_wrapper`` is given without ``snap_targets``;
+    - ``'{targ}_{meth}{calc}{member}_{traj_suffix}'`` (followed by ``'_{carved_suffix}'`` if
+      the prototype's ``carved_suffix`` is set), eg ``'gs_MACEac0ua_specdyn'``, when both are given;
+    - ``'{targ}_{meth}{calc}{member}'`` when ``snap_wrapper`` is None.
+
+    The attributes set on each task include ``wrapper`` (``md_wrapper``, with
+    ``train_args.seed`` set to the member's random seed), ``target``, ``calc_suffix``
+    (``'{meth}{calc}{member}'``), ``calc_dir_suffix``, ``calc_prefix`` (``''``),
+    ``traj_suffix`` (``'{calc_suffix}_{traj_suffix}'``), ``which_trajs`` and
+    ``which_targets``, ``snap_wrapper``, ``snap_target``, and ``snap_calc_params``, which
+    locates the evaluating calculators: all the committee members (a dict of calculator
+    suffixes and random seeds), or only the driving calculator if ``snap_targets`` is given.
     """
 
     new_mltraj_tasks = {}
@@ -535,11 +914,65 @@ def create_mltraj_tasks(mltraj_task: MLTrajTask, train_calcs, targets, rand_seed
 def create_mltest_tasks(test_task: MLTestingTask, train_calcs, seeds, targets, rand_seed, truth, meth,
                         traj_suffixes={}, dir_suffixes={}, iter_dir_suffixes={}, ntraj={}, separate_valid=False):
     """
-    Returns a dictionary of MLTest tasks, based on an input prototype task supplied by
-    the user, for all the required MLTest tasks for an Active Learning task.
+    Returns a dict of ML testing tasks, copied from a prototype, that compare each
+    committee member of each calculator (generation) with the ground-truth data.
 
-    Takes lists of calculators, targets, random seeds, and strings stating the ground
-    truth method and the ML method
+    Two kinds of task are made for each target state, calculator ``calc`` and committee
+    member:
+
+    - a test against the static data (as for training, see :func:`add_trajectories`) and
+      the data selected by the clusters tasks of generations 0 to that of ``calc``. The data
+      of the calculator's own generation was selected from its own MD, after it was trained,
+      so it is a genuine test;
+    - for each calculator ``calc2`` in ``train_calcs``, a test against only the data
+      selected from the MD of generation ``calc2`` (see the ``only_gen`` argument of
+      :func:`add_iterating_trajectories`).
+
+    The tests run in ``{calc_seed}_{targ}_{meth}{pref(calc)}_test``, where links to the
+    trajectories are made (``traj_prefix``).
+
+    test_task: MLTestingTask
+        Prototype task, with the wrapper, script settings, ``calc_seed`` (eg
+        ``'{solu}_{solv}'``), ``ref_mol_dir`` and ``ntraj`` set. ``ntraj`` must be large
+        enough to include every trajectory label used.
+    train_calcs: list of str
+        Calculator names, one per generation, eg ``['MACEac0u', 'MACEac1u', 'MACEac2u']``.
+    seeds: list of str, or dict
+        Seeds whose data is tested against, as for :func:`create_mltrain_tasks`.
+    targets: dict
+        Target states, eg ``{0: 'gs', 1: 'es1'}``. A dict-valued entry makes tests of a
+        multi-head calculator. Unlike the other functions, a ``'diff'`` key is not skipped.
+    rand_seed: dict
+        Committee members and their random seeds, eg ``{'a': 123, 'b': 456, 'c': 789}``.
+    truth: str
+        Name of the ground-truth method, eg ``'orca'``, used as ``traj_suffix``.
+    meth: str
+        Prefix of the calculator names, eg ``''``.
+    traj_suffixes: list of str
+        Names of the sources of static data, eg ``['orca']``, as for
+        :func:`create_mltrain_tasks`.
+    dir_suffixes: dict
+        Directory suffix for each entry of ``traj_suffixes``, eg ``{'orca': 'init'}``.
+    iter_dir_suffixes: list of str, or dict
+        Where to find the data selected by the clusters tasks, usually ``['mlclus']``.
+    ntraj: dict
+        Number of static trajectories for each ``(state name, traj_suffix)`` tuple, eg
+        ``{('gs', 'orca'): 1, ('es1', 'orca'): 0}``.
+    separate_valid: bool
+        If True, ``traj_links_valid``, ``which_trajs_valid`` and ``which_targets_valid`` are
+        the same objects as ``traj_links``, ``which_trajs`` and ``which_targets``, so the
+        validation data (eg the ``'Q'`` trajectories) is added to the data tested against.
+
+    Returns a dict of :class:`~esteem.tasks.ml_testing.MLTestingTask` objects, keyed by
+    ``'{targ}_{meth}{calc}{member}'`` (eg ``'gs_MACEac0ua'``) for the first kind of test,
+    and ``'{targ}_{meth}{calc}{member}_mltraj_{meth}{calc2}'`` (eg
+    ``'gs_MACEac2ua_mltraj_MACEac1u'``) for the second. The attributes set on each task
+    include ``target``, ``calc_suffix`` (``'{meth}{calc}{member}'``), ``calc_dir_suffix``
+    (``'{meth}{pref(calc)}'``), ``calc_prefix`` (``''``), ``traj_suffix`` (``truth``),
+    ``traj_prefix``, ``traj_links``, ``which_trajs`` and ``which_targets`` (dicts, keyed by
+    trajectory label), ``ref_mol_seed_dict``, ``wrapper.train_args.seed``, and
+    ``plotfile``: ``'{solu}_{solv}_{calc_suffix}.png'``, or
+    ``'{solu}_{solv}_{calc_suffix}_mltraj_{meth}{calc2}.png'``.
     """
     new_test_tasks = {}
     for target in targets:
@@ -601,10 +1034,54 @@ def create_mltest_tasks(test_task: MLTestingTask, train_calcs, seeds, targets, r
 def create_spectra_tasks(spectra_task: SpectraTask, train_calcs, targets, rand_seed, meth,
                          traj_suffix='specdyn_recalc', corr_traj=False, diff_traj=False, task_suffix=None):
     """
-    Returns a dictionary of Spectra tasks, based on an input prototype task supplied by
-    the user, for all the required Spectra tasks for an Active Learning task.
+    Returns a dict of spectra tasks, copied from a prototype, that compute spectra from the
+    MD of each calculator, combining the trajectories of all its committee members.
 
-    Takes lists of calculators, targets, random seeds
+    For each committee member, the trajectory set is a pair of files written by the
+    tasks of :func:`create_mltraj_tasks`, both with the member's trajectory label ``{w}``
+    (``A``, ``B``, ... as in :func:`create_mltraj_tasks`)::
+
+        ./{solu}_{solv}_{state}_{w}_{meth}{calc}{member}_{traj_suffix}.traj
+        ./{solu}_{solv}_{other}_{w}_{meth}{calc}{member}_{traj_suffix}.traj
+
+    where ``{state}`` is the state of the MD and ``{other}`` is ``'es1'`` if it is
+    ``'gs'``, and ``'gs'`` otherwise. MD on ``'gs'`` gives an absorption spectrum and MD on
+    an excited state an emission spectrum. The files are read in the MD directory, set by
+    ``exc_suffix``.
+
+    spectra_task: SpectraTask
+        Prototype task, with the broadening, wavelength range and other spectrum settings.
+        If it has an ``exc_dir_suffix`` attribute, that replaces ``'mldyn'`` in the
+        directory name. If its ``wrapper`` is not None, the wrapper's ``task``,
+        ``rootname`` and ``input_filename`` are set.
+    train_calcs: list of str
+        Calculator names, eg ``['MACEac2u']`` for the final generation.
+    targets: dict
+        Target states, eg ``{0: 'gs', 1: 'es1'}``. A dict-valued entry makes a task for MD
+        on each state of a multi-head calculator.
+    rand_seed: dict
+        Committee members, eg ``{'a': 123, 'b': 456, 'c': 789}``. Only the keys are used.
+    meth: str
+        Prefix of the calculator names, eg ``''``.
+    traj_suffix: str
+        Suffix of the MD trajectory files after the calculator name, eg
+        ``'specdyn_recalc'`` or ``'specdyn_recalc_carved'``.
+    corr_traj: bool
+        If True, also set ``correction_trajectory``, from the same files with ``'_nosolu'``
+        appended (the clusters without the solute).
+    diff_traj: bool
+        If True, each trajectory set is a single file whose state is ``'esdiff'`` instead of
+        the pair of files.
+    task_suffix: str or None
+        Suffix of the task names and output files. If None, ``traj_suffix`` is used.
+
+    Returns a dict of :class:`~esteem.tasks.spectra.SpectraTask` objects keyed by
+    ``'{targ}_{meth}{calc}_{task_suffix}'``, eg ``'gs_MACEac2u_specdyn_recalc'``, or
+    ``'{targ}_{state}_{meth}{calc}_{task_suffix}'`` for each state of a multi-head target.
+    The attributes set on each task include ``mode``, ``trajectory``,
+    ``correction_trajectory``, ``vibration_trajectory`` (None), ``verbosity``
+    (``'normal'``), ``exc_suffix`` (``'{targ}_{meth}{pref(calc)}_mldyn'``) and
+    ``output`` (``'{solu}_{solv}_{targ}_{meth}{calc}_{task_suffix}.png'``).
     """
     new_spectra_tasks = {}
     task_suffix = traj_suffix if task_suffix is None else task_suffix
@@ -671,6 +1148,38 @@ def create_spectra_tasks(spectra_task: SpectraTask, train_calcs, targets, rand_s
 
 
 def setup_scripts(scriptname, seed, targstr, num_calcs, calc_suffix, method, script_settings, make_sbatch, allseed=None, task_list=None):
+    """
+    Writes SLURM job scripts, one per task in ``task_list``, that run the AL tasks as array
+    jobs. Each array task ID encodes the generation as its tens digit and the committee
+    member as its units digit (0 for ``a``, 1 for ``b``, ...), so the target run is eg
+    ``'{targstr}_{method}ac{generation}{selection}{member}'``, eg ``'gs_MACEac1ub'`` for ID 11.
+
+    scriptname: str
+        Name of the workflow script, without ``'.py'``.
+    seed: str
+        Seed for the MD and spectra tasks, eg ``'cate_cycl'``.
+    targstr: str
+        Target state, eg ``'gs'``.
+    num_calcs: int
+        Committee size, used in the names of the mltraj tasks (``'x3'``).
+    calc_suffix: str
+        Calculator name, eg ``'MACEac0u'``; its last character is the selection type, and it
+        is used in job names.
+    method: str
+        ML method at the start of the calculator names, eg ``'MACE'``. The tag ``'ac'`` is
+        assumed to follow it.
+    script_settings: dict
+        Settings passed to ``make_sbatch``. Its ``'declarations'`` entry is extended while
+        the scripts are written and then restored; other entries are overwritten.
+    make_sbatch: function
+        Function that writes a job script, eg :func:`esteem.parallel.make_sbatch`.
+    allseed: str or None
+        Seed for the training and testing tasks, eg ``'all_cycl'``. If None, ``seed`` is used.
+    task_list: list of str or None
+        Scripts to write, from ``'mltrain'``, ``'mltraj'``, ``'mltest'``, ``'mlfinaltest'``
+        (tests against the data from the generation-2 MD), ``'specdyn'``, ``'spectra'`` and
+        ``'cumul_spectra'``. If None, all of them are written.
+    """
 
     # Store original contents of declarations section
     store_decs = script_settings['declarations']
@@ -740,7 +1249,7 @@ echo "X="$X "YP="$YP
 
 def unit_test():
     """
-    Unit test for Active Learning
+    Unit test for Active Learning (out of date: its calls do not match the current arguments).
     """
     from types import SimpleNamespace
     import pprint
