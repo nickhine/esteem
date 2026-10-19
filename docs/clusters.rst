@@ -31,13 +31,15 @@ ClustersTask
 .. autoclass:: ClustersTask
    :members:
 
-Task Arguments
-------------------
+Task attributes
+---------------
 
-.. argparse::
-   :module: esteem.tasks.clusters
-   :func: get_parser
-   :nodescription:
+.. task-attributes:: esteem.tasks.clusters.ClustersTask
+
+   wrapper: The wrapper that runs the calculation on each cluster, for example ``ORCAWrapper()``. Setting it also sets ``output`` to the wrapper's output name.
+   script_settings: Settings for the job scripts written for each clusters directory (see :ref:`parallel-execution`).
+   target: The electronic states to calculate: a list of state indices, a dict of ML model heads, or an int ``n`` meaning states ``n`` to ``nroots``. If not set, states 0 to ``nroots`` are calculated. Set this explicitly: some code paths fail if it is missing.
+   exc_dir_suffix: If set, used instead of ``exc_suffix`` in the name of the calculation directory ``{solute}_{solvent}_{exc_dir_suffix}`` (set by :mod:`esteem.active_learning`).
 
 Standalone module routines
 --------------------------

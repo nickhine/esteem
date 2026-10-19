@@ -24,13 +24,17 @@ MLTrainingTask
 .. autoclass:: MLTrainingTask
    :members:
 
-Task Arguments
-------------------
+Task attributes
+---------------
 
-.. argparse::
-   :module: esteem.tasks.ml_training
-   :func: get_parser
-   :nodescription:
+.. task-attributes:: esteem.tasks.ml_training.MLTrainingTask
+
+   wrapper: The Machine Learning wrapper that trains the model, for example ``MACEWrapper()``.
+   script_settings: Settings for the job scripts written for this task (see :ref:`parallel-execution`).
+   train_params: Extra keyword arguments passed to the wrapper's ``train`` method.
+   which_targets: The state (for example ``'gs'``) of each trajectory in ``which_trajs``. Required when ``which_trajs`` is set.
+   which_targets_valid: As ``which_targets``, for the trajectories in ``which_trajs_valid``.
+   rand_seed: Random seed for the random split into training and validation data (123 if not set).
 
 Standalone module routines
 --------------------------

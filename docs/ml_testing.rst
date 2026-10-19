@@ -19,13 +19,14 @@ MLTestingTask
 .. autoclass:: MLTestingTask
    :members:
 
-Task Arguments
-------------------
+Task attributes
+---------------
 
-.. argparse::
-   :module: esteem.tasks.ml_testing
-   :func: get_parser
-   :nodescription:
+.. task-attributes:: esteem.tasks.ml_testing.MLTestingTask
+
+   wrapper: The Machine Learning wrapper that loads and evaluates the model, for example ``MACEWrapper()``.
+   script_settings: Settings for the job scripts written for this task (see :ref:`parallel-execution`).
+   which_targets: A dict giving the state of each trajectory label in ``which_trajs``. All the trajectories tested together must share one state, which selects the model head. Required when ``which_trajs`` is set.
 
 Standalone module routines
 --------------------------

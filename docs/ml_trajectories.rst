@@ -30,13 +30,18 @@ MLTrajTask
 .. autoclass:: MLTrajTask
    :members:
 
-Task Arguments
-------------------
+Task attributes
+---------------
 
-.. argparse::
-   :module: esteem.tasks.ml_trajectories
-   :func: get_parser
-   :nodescription:
+.. task-attributes:: esteem.tasks.ml_trajectories.MLTrajTask
+
+   wrapper: The Machine Learning wrapper whose model drives the MD, for example ``MACEWrapper()``.
+   script_settings: Settings for the job scripts written for this task (see :ref:`parallel-execution`).
+   snap_wrapper: The wrapper used to evaluate each snapshot, for example the whole committee of models. If None, ``wrapper`` is used. Also used to recalculate carved clusters.
+   snap_calc_params: Calculator parameters for ``snap_wrapper`` (keys such as ``'target'``, ``'calc_seed'``, ``'calc_suffix'`` (a dict for a committee), ``'calc_dir_suffix'`` and ``'calc_prefix'``). If None, the parameters of the MD calculator are used.
+   snap_target: The state or states evaluated at each snapshot (set by :mod:`esteem.active_learning`).
+   which_targets: The state of each trajectory in ``which_trajs``. An entry may be a list such as ``[1, 0]``: the first state drives the MD, and all are evaluated at each snapshot.
+   ref_mol_dir: Directory of reference solute and solvent results, used when recalculating carved clusters (``{target}`` is replaced by the state). Required if ``recalculate_carved_traj`` is True.
 
 Standalone module routines
 --------------------------

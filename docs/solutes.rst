@@ -30,13 +30,13 @@ SolutesTask
 .. autoclass:: SolutesTask
    :members:
 
-Task Arguments
-------------------
+Task attributes
+---------------
 
-.. argparse::
-   :module: esteem.tasks.solutes
-   :func: get_parser
-   :nodescription:
+.. task-attributes:: esteem.tasks.solutes.SolutesTask
+
+   wrapper: The electronic structure wrapper that runs the geometry optimisations, singlepoints, TDDFT and frequency calculations, for example ``ORCAWrapper()``.
+   script_settings: Settings for the job scripts written for the Solutes and Solvents tasks (see :ref:`parallel-execution`).
 
 Standalone module routines
 --------------------------
