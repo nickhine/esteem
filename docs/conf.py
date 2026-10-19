@@ -14,6 +14,7 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('.'))
 sys.path.insert(0, os.path.abspath('..'))
+sys.path.insert(0, os.path.abspath('_ext'))
 
 # -- Project information -----------------------------------------------------
 
@@ -33,7 +34,8 @@ from esteem import __version__ as release  # noqa: E402
 extensions = [
     'sphinxarg.ext',
  'sphinx.ext.autodoc',
- 'sphinx.ext.viewcode'
+ 'sphinx.ext.viewcode',
+ 'task_attributes'
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -59,6 +61,7 @@ html_theme = 'sphinx_rtd_theme'
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
+html_css_files = ['custom.css']
 
 autodoc_member_order = 'bysource'
 # Optional ML packages that may not be installed where the docs are built

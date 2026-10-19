@@ -1,0 +1,15 @@
+/* Let long descriptions wrap in tables (the Read the Docs theme keeps them on one line) */
+.wy-table-responsive table td,
+.wy-table-responsive table th {
+    white-space: normal;
+}
+
+/* Task attribute tables: fit the page width, with fixed column proportions */
+table.task-attributes {
+    width: 100%;
+    table-layout: fixed;
+}
+table.task-attributes code {
+    white-space: normal;
+    word-break: break-word;
+}

@@ -31,13 +31,14 @@ SolvateTask
 .. autoclass:: SolvateTask
    :members:
 
-Task Arguments
-------------------
+Task attributes
+---------------
 
-.. argparse::
-   :module: esteem.tasks.solvate
-   :func: get_parser
-   :nodescription:
+.. task-attributes:: esteem.tasks.solvate.SolvateTask
+
+   wrapper: The Molecular Dynamics wrapper that runs the MD phases, for example ``AmberWrapper()`` or ``MACEWrapper()``.
+   script_settings: Settings for the job script written in each solute-solvent MD directory (see :ref:`parallel-execution`).
+   setup_cell: Optional function that builds the solvated model in place of the default Amber setup. It is called from inside the wrapper's output directory.
 
 Standalone module routines
 --------------------------

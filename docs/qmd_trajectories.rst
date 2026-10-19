@@ -24,13 +24,13 @@ QMDTrajTask
 .. autoclass:: QMDTrajTask
    :members:
 
-Task Arguments
-------------------
+Task attributes
+---------------
 
-.. argparse::
-   :module: esteem.tasks.qmd_trajectories
-   :func: get_parser
-   :nodescription:
+.. task-attributes:: esteem.tasks.qmd_trajectories.QMDTrajTask
+
+   wrapper: The electronic structure wrapper that runs the MD and singlepoint calculations, for example ``ORCAWrapper()``.
+   script_settings: Settings for the job scripts written for this task (see :ref:`parallel-execution`).
 
 Standalone module routines
 --------------------------

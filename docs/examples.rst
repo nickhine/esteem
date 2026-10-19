@@ -27,7 +27,7 @@ The script adds the solvents to ``all_solutes``, so the Solutes task optimises t
 
 Array task IDs 0, 1 and 2 refer to ``cate``, ``cycl`` and ``meth``, in the order of ``all_solutes``.
 
-These will create a new directory ``gs_PBE`` (set by ``solutes_task.directory``) and run ORCA geometry optimisation and TDDFT calculations in there, first in gas phase then in implicit solvent. If your cluster does not allow ``wget`` to access the Chemical Structure Resolver, you will need to supply initial guess structures in ``xyz/`` for all three molecules. The outputs of the geometry optimisations will be in ``gs_PBE/geom`` and the resulting structures in ``gs_PBE/opt``. The calculations are then repeated in each implicit solvent, producing the final geometries in ``gs_PBE/is_opt_cycl`` and ``gs_PBE/is_opt_meth``, and implicit solvent excitations in ``gs_PBE/is_tddft_cycl`` and ``gs_PBE/is_tddft_meth``.
+These will create a new directory ``gs_PBE`` (set by ``solutes_task.directory``) and run ORCA geometry optimisation and TDDFT calculations in there, first in gas phase then in implicit solvent. The starting structures are downloaded from PubChem by name. If your cluster cannot reach PubChem, you will need to supply initial guess structures in ``xyz/`` for all three molecules. The outputs of the geometry optimisations will be in ``gs_PBE/geom`` and the resulting structures in ``gs_PBE/opt``. The calculations are then repeated in each implicit solvent, producing the final geometries in ``gs_PBE/is_opt_cycl`` and ``gs_PBE/is_opt_meth``, and implicit solvent excitations in ``gs_PBE/is_tddft_cycl`` and ``gs_PBE/is_tddft_meth``.
 
 Solvate Task
 ------------

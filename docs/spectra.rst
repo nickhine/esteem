@@ -29,13 +29,13 @@ SpectraTask
 .. autoclass:: SpectraTask
    :members:
 
-Task Arguments
-------------------
+Task attributes
+---------------
 
-.. argparse::
-   :module: esteem.tasks.spectra
-   :func: get_parser
-   :nodescription:
+.. task-attributes:: esteem.tasks.spectra.SpectraTask
+
+   wrapper: The wrapper used to process the excitations. An electronic structure wrapper (for example ``ORCAWrapper()``) reads the output files; a spectrum generation wrapper such as :ref:`MolSpeckPy <molspeckpy>` or :ref:`ezFCF <ezfcf>` calculates the lineshape.
+   script_settings: Settings for the job scripts written for this task (see :ref:`parallel-execution`).
 
 Standalone module routines
 --------------------------
