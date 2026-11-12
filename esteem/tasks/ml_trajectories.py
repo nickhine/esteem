@@ -102,7 +102,15 @@ class MLTrajTask:
 
         def restart_or_give_up(traj_label, traj_target, reason):
             """Schedules a restart of a trajectory that stopped early, or gives up on it (keeping
-            the snapshots so far as the finished trajectory) once max_restarts is exceeded"""
+            the snapshots so far as the finished trajectory) once max_restarts is exceeded, or
+            straight away if it stopped on committee disagreement and md_stop_restart is False"""
+            if reason == 'stopped on committee disagreement' and not self.md_stop_restart:
+                print(f'# Trajectory {traj_label} {reason} with {continuation_len[traj_label]} of '
+                      f'{self.nsnap} snapshots: md_stop_restart is False, so treating it as finished')
+                enough_data[traj_label] = True
+                for t in (traj_target if isinstance(traj_target, list) else [traj_target]):
+                    finish_md_output(self.seed, t, traj_label, self.traj_suffix)
+                return
             attempts[traj_label] += 1
             if attempts[traj_label] > self.max_restarts:
                 print(f'# Trajectory {traj_label} {reason} after {self.max_restarts} restarts: giving up '
@@ -277,7 +285,8 @@ class MLTrajTask:
         parser.add_argument('--nsnap', '-N', default=200, type=int, help='Number of snapshots to record in each trajectory, one every md_steps steps after equilibration.')
         parser.add_argument('--nequil', '-e', default=10, type=int, help='Number of equilibration runs, each of md_steps steps, performed and discarded before snapshots are recorded.')
         parser.add_argument('--max_restarts', default=10, type=int, help='Number of times a trajectory that stopped early (blew up, or stopped on committee disagreement) is restarted from a new initial geometry before giving up and keeping the snapshots recorded so far. Counted across resubmissions: the attempt number is stored in each snapshot (info["md_attempt"]).')
-        parser.add_argument('--md_stop_stde_thresh', default=None, type=float, help='Stop a trajectory once the committee energy standard deviation per atom (eV) exceeds this. Checked during equilibration as well as at snapshots; frames up to and including the one that crossed it are kept, and the trajectory is then restarted from a new initial geometry (appending to the snapshots so far, as for an aborted run) until it has nsnap snapshots or max_restarts is reached. None (default) disables the check.')
+        parser.add_argument('--md_stop_stde_thresh', default=None, type=float, help='Stop a trajectory once the committee energy standard deviation per atom (eV) exceeds this. Checked during equilibration as well as at snapshots; frames up to and including the one that crossed it are kept, and the trajectory is then restarted from a new initial geometry (appending to the snapshots so far, as for an aborted run) until it has nsnap snapshots or max_restarts is reached, unless md_stop_restart is False. None (default) disables the check.')
+        parser.add_argument('--md_stop_restart', default=True, type=bool, help='If True (default), a trajectory stopped on committee disagreement (see md_stop_stde_thresh) is restarted from a new initial geometry, appending to its snapshots, as suits active learning. If False, it is treated as finished with the snapshots it has, so that each trajectory is one continuous run, as suits production MD. Aborted (blown-up) trajectories are restarted either way.')
         parser.add_argument('--which_trajs', '-w', default=None, type=str, help="List of the trajectory labels (eg ['A', 'B']) to run in this task. If None, all ntraj trajectories are run on target; otherwise which_targets must give the target of each trajectory.")
         parser.add_argument('--carve_trajectory_radius', '-R', default=None, type=float, help="If set, after the MD, carve clusters from each snapshot containing the solute and all solvent molecules within this radius (Angstrom) of it, using the Clusters task. May be a dict keyed by '{solu}_{solv}' or by solvent name. None for no carving.")
         parser.add_argument('--carve_trajectory_max_atoms', '-m', default=None, type=float, help='Maximum number of atoms in each carved cluster. None for no limit.')

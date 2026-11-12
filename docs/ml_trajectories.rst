@@ -14,7 +14,9 @@ independent trajectories. It can also:
   an unfinished run (``continuation``).
 * stop a trajectory when a committee of models disagrees by more than
   ``md_stop_stde_thresh`` (useful for active learning), keeping its snapshots
-  and restarting from a new initial snapshot until it has ``nsnap``.
+  and restarting from a new initial snapshot until it has ``nsnap``. For
+  production MD, set ``md_stop_restart = False`` to keep each trajectory as
+  one continuous run, finished where it stopped.
 * carve each snapshot down to a cluster around the solute
   (``carve_trajectory_radius``) and recalculate it with a second wrapper.
 * post-process the dipole moment along the trajectory into an infrared
