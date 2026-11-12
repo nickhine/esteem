@@ -13,12 +13,12 @@ class SolutesTask:
         self.script_settings = None
         self.task_command = "solutes"
         default_args = self.make_parser().parse_args("")
-        # Set values of all parameters (defaults unless overridden)
         for arg in vars(default_args):
-            if arg in kwargs:
-                val = kwargs[arg]
-            else:
-                val = getattr(default_args, arg)
+            setattr(self, arg, getattr(default_args, arg))
+        # Override defaults (and other attributes such as wrapper) with any keyword arguments
+        for arg, val in kwargs.items():
+            if not hasattr(self, arg):
+                raise TypeError(f"Unrecognised argument '{arg}'")
             setattr(self, arg, val)
 
     def run(self, namelist):

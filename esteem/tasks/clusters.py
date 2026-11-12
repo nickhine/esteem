@@ -18,6 +18,11 @@ class ClustersTask:
         args = self.make_parser().parse_args("")
         for arg in vars(args):
             setattr(self, arg, getattr(args, arg))
+        # Override defaults (and other attributes such as wrapper) with any keyword arguments
+        for arg, val in kwargs.items():
+            if not hasattr(self, arg):
+                raise TypeError(f"Unrecognised argument '{arg}'")
+            setattr(self, arg, val)
 
     @property
     def wrapper(self):

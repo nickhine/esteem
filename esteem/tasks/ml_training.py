@@ -48,6 +48,11 @@ class MLTrainingTask:
         args = self.make_parser().parse_args("")
         for arg in vars(args):
             setattr(self, arg, getattr(args, arg))
+        # Override defaults (and other attributes such as wrapper) with any keyword arguments
+        for arg, val in kwargs.items():
+            if not hasattr(self, arg):
+                raise TypeError(f"Unrecognised argument '{arg}'")
+            setattr(self, arg, val)
 
     def get_which_trajs(self, prefix=""):
         """Returns the trajectory labels and targets used for training (or validation, if 'valid' is in prefix)"""
