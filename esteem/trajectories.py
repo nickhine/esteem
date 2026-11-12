@@ -88,6 +88,37 @@ def committee_stde_per_atom(energy, natoms):
     return np.std(e) / natoms if len(e) > 1 else 0.0
 
 
+def committee_mean_trajectory(infile, outfile=None):
+    """
+    Writes a copy of a trajectory whose results are committee arrays (eg energy of shape
+    (ncomm,), forces (ncomm, natoms, 3), dipole (ncomm, 3)) with each averaged over the
+    committee, so that it can be opened with ASE's GUI (``ase gui``, ``view``). Results
+    already of standard shape are copied unchanged. Returns the name of the file written,
+    by default '{infile stem}_mean.traj'.
+    """
+    from ase.calculators.singlepoint import SinglePointCalculator
+    if outfile is None:
+        outfile = infile[:-len('.traj')] + '_mean.traj' if infile.endswith('.traj') else infile + '_mean.traj'
+    # leading committee axis is present if the array has one more dimension than standard
+    std_ndim = {'energy': 0, 'free_energy': 0, 'forces': 2, 'stress': 1, 'dipole': 1,
+                'energies': 1, 'charges': 1, 'magmom': 0, 'magmoms': 1}
+    intraj = Trajectory(infile)
+    out = Trajectory(outfile, 'w')
+    for atoms in intraj:
+        if atoms.calc is not None:
+            results = {}
+            for key, val in atoms.calc.results.items():
+                val = np.asarray(val)
+                if key in std_ndim and val.ndim == std_ndim[key] + 1:
+                    val = val.mean(axis=0)
+                results[key] = float(val) if val.ndim == 0 else val
+            atoms.calc = SinglePointCalculator(atoms, **results)
+        out.write(atoms)
+    out.close()
+    intraj.close()
+    return outfile
+
+
 def generate_md_trajectory(model, seed, traj_target, traj_label, traj_suffix, traj_wrapper,
                            count_snaps, count_equil, md_steps, md_timestep, md_friction, temp,
                            traj_calc_params, charge=0, solvent=None, constraints=None, dynamics=None,
