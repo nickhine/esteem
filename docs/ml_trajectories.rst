@@ -13,7 +13,8 @@ independent trajectories. It can also:
 * restart a trajectory from a new initial snapshot if it blows up, and continue
   an unfinished run (``continuation``).
 * stop a trajectory when a committee of models disagrees by more than
-  ``md_stop_stde_thresh`` (useful for active learning).
+  ``md_stop_stde_thresh`` (useful for active learning), keeping its snapshots
+  and restarting from a new initial snapshot until it has ``nsnap``.
 * carve each snapshot down to a cluster around the solute
   (``carve_trajectory_radius``) and recalculate it with a second wrapper.
 * post-process the dipole moment along the trajectory into an infrared

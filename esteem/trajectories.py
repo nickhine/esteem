@@ -584,7 +584,22 @@ def cycle_step_labels_and_restarts(seed, traj_label,
 # In[ ]:
 
 
-def find_initial_geometry(seed, geom_opt_func=None, calc_params={}, which_traj=None, ntraj=-1):
+def md_init_frame_order(rand_seed, nframes):
+    """
+    Returns the order in which frames of an md_init trajectory are tried as MD starting points:
+    a permutation of range(nframes) fixed by rand_seed, so each restart gets a frame not used
+    before. The first entry is the frame random.seed(rand_seed); random.randrange(nframes)
+    would give, so a first attempt starts from the same frame as in earlier versions.
+    """
+    import random
+    rng = random.Random(rand_seed)
+    first = rng.randrange(nframes)
+    rest = [i for i in range(nframes) if i != first]
+    rng.shuffle(rest)
+    return [first] + rest
+
+
+def find_initial_geometry(seed, geom_opt_func=None, calc_params={}, which_traj=None, ntraj=-1, attempt=0):
     """
     Obtains a suitable initial geometry for the current seed and state.
     Optimises it if not present.
@@ -606,7 +621,12 @@ def find_initial_geometry(seed, geom_opt_func=None, calc_params={}, which_traj=N
         which_traj plus calc_params['calc_suffix'] (if present)
     ntraj: int
         If equal to the length of the md_init trajectory, frame i is used for the i-th trajectory
-        label instead of a random frame
+        label instead of a random frame (on the first attempt only)
+    attempt: int
+        Number of earlier attempts at this trajectory (0 for the first). Each attempt takes the
+        next frame of a random order of the md_init frames (see md_init_frame_order), so
+        restarts never repeat a frame until all have been used. The frame used is recorded in
+        the returned geometry's info['md_init_frame'].
     """
 
     # Construct name for input geometries
@@ -629,16 +649,18 @@ def find_initial_geometry(seed, geom_opt_func=None, calc_params={}, which_traj=N
         try:
             traj = Trajectory(md_init_traj)
             print(f'# MD starting positions trajectory {md_init_traj} found: length {len(traj)}')
-            import random
-            if ntraj == len(traj):
+            if ntraj == len(traj) and attempt == 0:
                 traj_list = get_trajectory_list(ntraj)
                 i = traj_list.index(which_traj)
                 print(f'# MD starting positions taken from snapshot {i} based on traj index {i} of {ntraj}==length')
             else:
-                random.seed(rand_seed)
-                i = random.randrange(len(traj))
-                print(f'# MD starting positions taken from snapshot {i} based on random seed {rand_seed}')
+                order = md_init_frame_order(rand_seed, len(traj))
+                if attempt >= len(order):
+                    print(f'# Warning: attempt {attempt} exceeds the {len(order)} starting frames: reusing them')
+                i = order[attempt % len(order)]
+                print(f'# MD starting positions taken from snapshot {i} (attempt {attempt}) based on random seed {rand_seed}')
             model_init = traj[i]
+            model_init.info['md_init_frame'] = i
             optimised = True
         except:
             print(f'# MD starting positions trajectory {md_init_traj} not found.')

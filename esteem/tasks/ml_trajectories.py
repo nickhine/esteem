@@ -57,7 +57,8 @@ class MLTrajTask:
         Runs each trajectory in which_trajs with
         :func:`esteem.trajectories.generate_md_trajectory`, starting from
         :func:`esteem.trajectories.find_initial_geometry` (or continuing an existing output file
-        if continuation is True). Aborted trajectories are restarted from a new initial geometry,
+        if continuation is True). Trajectories that stop early (aborted, or stopped on committee
+        disagreement) are restarted from a new initial geometry, appending to the snapshots so far,
         up to max_restarts times."""
 
         # Check input args are valid
@@ -91,9 +92,35 @@ class MLTrajTask:
         model = {}
         continuation_len = {}
         enough_data = {traj_label: False for traj_label in which_trajs}
-        offsets = {traj_label: '' for traj_label in which_trajs}
+        # Number of the current attempt at each trajectory (0 for the first; each restart takes the
+        # next frame of a random order of the md_init frames). It is stored in the info of every
+        # snapshot as 'md_attempt', so a resubmitted task carries on from where the last one got to
+        attempts = {traj_label: 0 for traj_label in which_trajs}
+        # set when a run stops early: the next pass restarts it from a new initial geometry,
+        # appending to the snapshots it already has
+        restart = {traj_label: False for traj_label in which_trajs}
+
+        def restart_or_give_up(traj_label, traj_target, reason):
+            """Schedules a restart of a trajectory that stopped early, or gives up on it (keeping
+            the snapshots so far as the finished trajectory) once max_restarts is exceeded"""
+            attempts[traj_label] += 1
+            if attempts[traj_label] > self.max_restarts:
+                print(f'# Trajectory {traj_label} {reason} after {self.max_restarts} restarts: giving up '
+                      f'with {continuation_len[traj_label]} of {self.nsnap} snapshots')
+                enough_data[traj_label] = True
+                # what there is counts as the finished trajectory (for every target evaluated)
+                for t in (traj_target if isinstance(traj_target, list) else [traj_target]):
+                    finish_md_output(self.seed, t, traj_label, self.traj_suffix)
+            else:
+                print(f'# Trajectory {traj_label} {reason} with {continuation_len[traj_label]} of '
+                      f'{self.nsnap} snapshots: restart {attempts[traj_label]} of '
+                      f'{self.max_restarts} from a new initial snapshot')
+                restart[traj_label] = True
+
         while not all(enough_data.values()):
             for traj_label, traj_target in zip(which_trajs, self.which_targets):
+                if enough_data[traj_label]:
+                    continue
 
                 # Find (or relax) initial geometry
                 calc_params['calc_prefix'] = f'../{self.calc_prefix}'
@@ -102,7 +129,11 @@ class MLTrajTask:
 
                 # Check if we have a continuation to load in
                 model[traj_label] = None
-                if self.continuation:
+                if restart[traj_label]:
+                    # restarting after an early stop: attempt already advanced and
+                    # continuation_len already known, so just find a new initial geometry below
+                    restart[traj_label] = False
+                elif self.continuation:
                     # an unfinished run is under the incomplete name, a finished one under the final name
                     final, incomplete = md_output_names(self.seed, driving_target(traj_target), traj_label, self.traj_suffix)
                     continuation_trajfile = incomplete if os.path.exists(incomplete) else final
@@ -110,23 +141,34 @@ class MLTrajTask:
                         continuation_traj = Trajectory(continuation_trajfile)
                         continuation_len[traj_label] = len(continuation_traj)
                         model[traj_label] = continuation_traj[-1]
+                        # trajectories written before attempts were recorded count as attempt 0
+                        attempts[traj_label] = model[traj_label].info.get('md_attempt', 0)
                         stde_last = committee_stde_per_atom(model[traj_label].get_potential_energy(),
                                                             len(model[traj_label]))
-                        # This trajectory was stopped on committee disagreement, so it is finished:
-                        # continuing would carry on from the poorly-described region
-                        if (self.md_stop_stde_thresh is not None and continuation_len[traj_label] < self.nsnap
-                                and stde_last > self.md_stop_stde_thresh):
-                            print(f'# Continuation file {continuation_trajfile} found, containing {continuation_len[traj_label]} snapshots. '
-                                  f'It was stopped on committee disagreement ({stde_last:.4f} > {self.md_stop_stde_thresh} eV/atom), so is finished.')
+                        if continuation_len[traj_label] >= self.nsnap:
+                            print(f'# Continuation file {continuation_trajfile} found, containing {continuation_len[traj_label]} snapshots. Complete.')
                             enough_data[traj_label] = True
-                        # This model already blew up, so increase offset and load a new one
+                        # This trajectory was stopped on committee disagreement: continuing would carry
+                        # on from the poorly-described region, so restart from a new initial geometry
+                        elif (self.md_stop_stde_thresh is not None
+                                and stde_last > self.md_stop_stde_thresh):
+                            print(f'# Continuation file {continuation_trajfile} found, containing {continuation_len[traj_label]} snapshots, '
+                                  f'from attempt {attempts[traj_label]}. Its last snapshot is above the committee '
+                                  f'disagreement threshold ({stde_last:.4f} > {self.md_stop_stde_thresh} eV/atom).')
+                            restart_or_give_up(traj_label, traj_target, 'stopped on committee disagreement')
+                        # This model already blew up, so restart from a new initial geometry
                         elif model[traj_label].get_temperature() > 10 * self.temp:
-                            offsets[traj_label] += "A"
-                            model[traj_label] = None
-                            print(f'# Continuation file {continuation_trajfile} found, containing {continuation_len[traj_label]} snapshots. Abort was flagged, restarting.')
+                            print(f'# Continuation file {continuation_trajfile} found, containing {continuation_len[traj_label]} snapshots, '
+                                  f'from attempt {attempts[traj_label]}. Abort was flagged.')
+                            restart_or_give_up(traj_label, traj_target, 'aborted')
                         else:
                             print(f'# Continuation file {continuation_trajfile} found, containing {continuation_len[traj_label]} snapshots. Continuing.')
                         continuation_traj.close()
+                        if restart[traj_label]:
+                            restart[traj_label] = False
+                            model[traj_label] = None
+                        if enough_data[traj_label]:
+                            continue
                     else:
                         self.continuation = False
                         continuation_len[traj_label] = 0
@@ -136,9 +178,11 @@ class MLTrajTask:
 
                 # If no continuation, find initial geometry
                 if model[traj_label] is None:
-                    offset_traj_label = traj_label + offsets[traj_label]
                     model[traj_label] = find_initial_geometry(self.seed, self.wrapper.geom_opt,
-                                                              calc_params, offset_traj_label)
+                                                              calc_params, traj_label,
+                                                              attempt=attempts[traj_label])
+                # recorded in every snapshot written from here on
+                model[traj_label].info['md_attempt'] = attempts[traj_label]
                 # Set up any constraints
                 if self.constraints is not None:
                     from ase.constraints import FixBondLengths, Hookean, FixInternals
@@ -194,25 +238,13 @@ class MLTrajTask:
                     continuation_len[traj_label] = 0
                 if continuation_len[traj_label] >= self.nsnap:
                     enough_data[traj_label] = True
-                elif status == 'stopped':
-                    # Stopped on committee disagreement: keep what we have, do not restart
-                    print(f'# Trajectory {traj_label} stopped on committee disagreement with '
-                          f'{continuation_len[traj_label]} of {self.nsnap} snapshots: treating it as finished')
-                    enough_data[traj_label] = True
                 else:
-                    # The run was aborted (eg temperature blew up): restart from a different
-                    # initial snapshot, giving up after max_restarts attempts
-                    offsets[traj_label] += 'A'
-                    if len(offsets[traj_label]) > self.max_restarts:
-                        print(f'# Trajectory {traj_label} aborted {len(offsets[traj_label])} times: giving up '
-                              f'with {continuation_len[traj_label]} of {self.nsnap} snapshots')
-                        enough_data[traj_label] = True
-                        # what there is counts as the finished trajectory (for every target evaluated)
-                        for t in (traj_target if isinstance(traj_target, list) else [traj_target]):
-                            finish_md_output(self.seed, t, traj_label, self.traj_suffix)
-                    else:
-                        print(f'# Trajectory {traj_label} aborted: restart {len(offsets[traj_label])} of '
-                              f'{self.max_restarts} from a new initial snapshot')
+                    # The run stopped early, either on committee disagreement (its snapshots are kept,
+                    # but it must not continue from the poorly-described region) or because it was
+                    # aborted (eg temperature blew up). Either way, restart from a different initial
+                    # snapshot, appending to the snapshots so far, giving up after max_restarts attempts
+                    restart_or_give_up(traj_label, traj_target,
+                                       'stopped on committee disagreement' if status == 'stopped' else 'aborted')
 
     def make_parser(self):
         "Makes a parser to setup input variables"
@@ -244,8 +276,8 @@ class MLTrajTask:
         parser.add_argument('--ntraj', '-n', default=1, type=int, help='Total number of trajectories (labelled A, B, C, ...) in the ensemble. If which_trajs is None, all of them are run.')
         parser.add_argument('--nsnap', '-N', default=200, type=int, help='Number of snapshots to record in each trajectory, one every md_steps steps after equilibration.')
         parser.add_argument('--nequil', '-e', default=10, type=int, help='Number of equilibration runs, each of md_steps steps, performed and discarded before snapshots are recorded.')
-        parser.add_argument('--max_restarts', default=10, type=int, help='Number of times an aborted (eg blown-up) trajectory is restarted from a new initial geometry before giving up and keeping the snapshots recorded so far.')
-        parser.add_argument('--md_stop_stde_thresh', default=None, type=float, help='Stop a trajectory once the committee energy standard deviation per atom (eV) exceeds this. Checked during equilibration as well as at snapshots; frames up to and including the one that crossed it are kept, and the trajectory is then treated as finished. None (default) disables the check.')
+        parser.add_argument('--max_restarts', default=10, type=int, help='Number of times a trajectory that stopped early (blew up, or stopped on committee disagreement) is restarted from a new initial geometry before giving up and keeping the snapshots recorded so far. Counted across resubmissions: the attempt number is stored in each snapshot (info["md_attempt"]).')
+        parser.add_argument('--md_stop_stde_thresh', default=None, type=float, help='Stop a trajectory once the committee energy standard deviation per atom (eV) exceeds this. Checked during equilibration as well as at snapshots; frames up to and including the one that crossed it are kept, and the trajectory is then restarted from a new initial geometry (appending to the snapshots so far, as for an aborted run) until it has nsnap snapshots or max_restarts is reached. None (default) disables the check.')
         parser.add_argument('--which_trajs', '-w', default=None, type=str, help="List of the trajectory labels (eg ['A', 'B']) to run in this task. If None, all ntraj trajectories are run on target; otherwise which_targets must give the target of each trajectory.")
         parser.add_argument('--carve_trajectory_radius', '-R', default=None, type=float, help="If set, after the MD, carve clusters from each snapshot containing the solute and all solvent molecules within this radius (Angstrom) of it, using the Clusters task. May be a dict keyed by '{solu}_{solv}' or by solvent name. None for no carving.")
         parser.add_argument('--carve_trajectory_max_atoms', '-m', default=None, type=float, help='Maximum number of atoms in each carved cluster. None for no limit.')
